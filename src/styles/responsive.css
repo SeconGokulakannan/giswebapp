@@ -1,0 +1,245 @@
+/* ===== RESPONSIVE DESIGN - REFINED ===== */
+
+/* ===== GLOBAL TITLE VISIBILITY ===== */
+.logo-title-full {
+    display: inline;
+}
+
+.logo-title-short {
+    display: none;
+}
+
+/* ===== TABLET & SMALL LAPTOP (768px - 1024px) ===== */
+@media (max-width: 1024px) {
+
+    /* Title switching */
+    .logo-title-full {
+        display: none;
+    }
+
+    .logo-title-short {
+        display: inline;
+    }
+
+    .logo-text h1 {
+        font-size: 16px;
+        white-space: nowrap;
+    }
+
+    .header-content {
+        padding: 8px 12px;
+        gap: 12px;
+    }
+
+    .search-container {
+        max-width: 250px;
+    }
+
+    /* Optimized Icons & Buttons */
+    .toolbar-button {
+        width: 34px;
+        height: 34px;
+    }
+
+    .toolbar-button svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* Scaling panel tool icons for tablet */
+    .tool-icon {
+        width: 20px !important;
+        height: 20px !important;
+    }
+
+    .tool-item {
+        min-height: 55px;
+        padding: 6px;
+    }
+
+    .tool-name {
+        font-size: 9px;
+    }
+
+    /* Sidebar - Maintain on side but scale down */
+    .elite-sidebar {
+        left: 8px;
+        top: 8px;
+        padding: 4px;
+        gap: 4px;
+    }
+
+    .elite-sidebar-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    .elite-sidebar-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Panel adjustments */
+    .panel {
+        width: 300px;
+        top: 80px;
+    }
+}
+
+/* ===== MOBILE (< 768px) ===== */
+@media (max-width: 768px) {
+
+    /* Title switching */
+    .logo-title-full {
+        display: none;
+    }
+
+    .logo-title-short {
+        display: inline;
+    }
+
+    .logo-text h1 {
+        font-size: 14px;
+        letter-spacing: 0;
+    }
+
+    .header-content {
+        padding: 6px 8px;
+        gap: 8px;
+    }
+
+    /* Hide search on mobile by default to keep header clean */
+    .search-container {
+        display: none;
+    }
+
+    /* Compact Toolbar */
+    .toolbar {
+        padding: 4px;
+        gap: 2px;
+    }
+
+    .toolbar-button {
+        width: 30px;
+        height: 30px;
+    }
+
+    .toolbar-button svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    /* Scaling panel tool icons for mobile */
+    .tool-icon {
+        width: 18px !important;
+        height: 18px !important;
+    }
+
+    .tool-item {
+        padding: 8px;
+        min-height: 48px;
+    }
+
+    .tool-name {
+        font-size: 10px;
+    }
+
+    .vertical-divider {
+        display: none;
+    }
+
+    /* Sidebar - Maintain on side but very compact */
+    .elite-sidebar {
+        left: 6px;
+        top: 6px;
+        padding: 3px;
+    }
+
+    .elite-sidebar-btn {
+        width: 28px;
+        height: 28px;
+    }
+
+    .elite-sidebar-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    /* Panel - Bottom sheet for mobile */
+    .panel {
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-height: 60vh;
+        border-radius: 20px 20px 0 0;
+        animation: slideUpMobile 0.3s ease-out;
+    }
+
+    .panel-header {
+        padding: 12px 16px;
+    }
+
+    .panel-content {
+        max-height: calc(60vh - 70px);
+        padding: 12px;
+    }
+
+    /* Tool grid - optimized for mobile touch */
+    .tool-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .tool-item {
+        padding: 10px;
+        min-height: 50px;
+    }
+
+    .tool-name {
+        font-size: 12px;
+    }
+
+    /* Status Bar compact */
+    .status-bar {
+        padding: 4px 8px;
+        height: auto;
+        flex-wrap: wrap;
+    }
+
+    .status-item {
+        font-size: 10px;
+        padding: 2px 4px;
+    }
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes slideUpMobile {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* ===== TOUCH OPTIMIZATIONS ===== */
+@media (pointer: coarse) {
+
+    .toolbar-button,
+    .elite-sidebar-btn,
+    .tool-item {
+        cursor: default;
+    }
+
+    .elite-sidebar-btn:active,
+    .toolbar-button:active {
+        background: var(--color-primary);
+        color: white;
+    }
+}
