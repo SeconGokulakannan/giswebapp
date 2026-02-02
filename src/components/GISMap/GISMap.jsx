@@ -161,7 +161,8 @@ function GISMap() {
         id: name,
         name: name.split(':').pop(), // Human readable name
         fullName: name,
-        visible: index < 2 // Default first 2 to visible as requested
+        visible: index < 2, // Default first 2 to visible as requested
+        opacity: 1 // Default opacity
       }));
       setGeoServerLayers(layerObjects);
     };
@@ -175,15 +176,21 @@ function GISMap() {
     geoServerLayers.forEach(layer => {
       const existingLayer = operationalLayersRef.current[layer.id];
 
-      if (layer.visible && !existingLayer) {
-        // Create and add layer
-        const wmsLayer = new TileLayer({
-          source: new TileWMS(getWMSSourceParams(layer.fullName)),
-          zIndex: 5, // Above base maps, below vector
-          properties: { id: layer.id }
-        });
-        mapInstanceRef.current.addLayer(wmsLayer);
-        operationalLayersRef.current[layer.id] = wmsLayer;
+      if (layer.visible) {
+        if (!existingLayer) {
+          // Create and add layer
+          const wmsLayer = new TileLayer({
+            source: new TileWMS(getWMSSourceParams(layer.fullName)),
+            zIndex: 5, // Above base maps, below vector
+            opacity: layer.opacity,
+            properties: { id: layer.id }
+          });
+          mapInstanceRef.current.addLayer(wmsLayer);
+          operationalLayersRef.current[layer.id] = wmsLayer;
+        } else {
+          // Update existing properties if needed (e.g. opacity)
+          existingLayer.setOpacity(layer.opacity);
+        }
       } else if (!layer.visible && existingLayer) {
         // Remove layer
         mapInstanceRef.current.removeLayer(existingLayer);
@@ -204,6 +211,39 @@ function GISMap() {
     setGeoServerLayers(prev => prev.map(l =>
       l.id === layerId ? { ...l, visible: !l.visible } : l
     ));
+  };
+
+  const handleLayerOpacityChange = (layerId, newOpacity) => {
+    setGeoServerLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, opacity: parseFloat(newOpacity) } : l
+    ));
+  };
+
+  const handleZoomToLayer = async (layerId) => {
+    if (!mapInstanceRef.current) return;
+    const layer = geoServerLayers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    try {
+      const bbox = await getLayerBBox(layer.fullName);
+      if (bbox) {
+        // [minx, miny, maxx, maxy] - OpenLayers expects [minx, miny, maxx, maxy]
+        // We need to transform from EPSG:4326 to View Projection (EPSG:3857)
+        const extent = [
+          ...fromLonLat([bbox[0], bbox[1]]),
+          ...fromLonLat([bbox[2], bbox[3]])
+        ];
+        mapInstanceRef.current.getView().fit(extent, {
+          padding: [50, 50, 50, 50],
+          maxZoom: 16,
+          duration: 1000
+        });
+      } else {
+        alert('Layer extent not available.');
+      }
+    } catch (err) {
+      console.error('Zoom error:', err);
+    }
   };
 
   // Elite: Automatic Tool Deactivation
@@ -1018,6 +1058,8 @@ function GISMap() {
             handleExportMap={handleExportMap}
             geoServerLayers={geoServerLayers}
             handleToggleGeoLayer={handleToggleGeoLayer}
+            handleLayerOpacityChange={handleLayerOpacityChange}
+            handleZoomToLayer={handleZoomToLayer}
           />
         </div>
 

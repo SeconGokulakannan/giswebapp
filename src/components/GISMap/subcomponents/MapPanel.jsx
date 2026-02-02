@@ -27,6 +27,9 @@ import {
     Maximize,
     Printer,
     Database,
+    Eye,
+    EyeOff,
+    Zap,
 } from 'lucide-react';
 
 const MapPanel = ({
@@ -66,10 +69,14 @@ const MapPanel = ({
     handleExportMap,
     geoServerLayers,
     handleToggleGeoLayer,
+    handleLayerOpacityChange,
+    handleZoomToLayer,
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
+
+    // ... rest of component
     const [isExporting, setIsExporting] = useState(false);
 
     // Reset location values when card is closed or switched
@@ -224,20 +231,117 @@ const MapPanel = ({
                                     No server layers connected.
                                 </div>
                             ) : (
-                                geoServerLayers.map(layer => (
-                                    <div className="layer-item" key={layer.id} style={{ marginBottom: '4px', padding: '6px 10px' }}>
-                                        <div className="layer-item-info">
-                                            <Database size={16} />
-                                            <span>{layer.name}</span>
+                                <div className="layer-list-container" style={{ maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
+                                    {geoServerLayers.map(layer => (
+                                        <div className="layer-item" key={layer.id} style={{ marginBottom: '4px', padding: '8px 10px', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                            <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div className="layer-item-info" style={{ flex: 1 }}>
+                                                    <Database size={16} />
+                                                    <span style={{ textTransform: 'capitalize' }}>{layer.name}</span>
+                                                </div>
+                                                <button
+                                                    className={`visibility-toggle-icon ${layer.visible ? 'visible' : ''}`}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        padding: 0,
+                                                        cursor: 'pointer',
+                                                        color: layer.visible ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                        display: 'flex',
+                                                        alignItems: 'center'
+                                                    }}
+                                                    onClick={() => handleToggleGeoLayer(layer.id)}
+                                                    title={layer.visible ? "Hide Layer" : "Show Layer"}
+                                                >
+                                                    {layer.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+                                                </button>
+                                            </div>
+
+                                            {layer.visible && (
+                                                <div style={{ width: '100%', marginTop: '8px', paddingLeft: '28px', paddingRight: '4px' }}>
+                                                    {/* Opacity Control */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '9px', opacity: 0.7, minWidth: '40px' }}>Opacity</span>
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="1"
+                                                            step="0.1"
+                                                            value={layer.opacity || 1}
+                                                            onChange={(e) => handleLayerOpacityChange(layer.id, e.target.value)}
+                                                            style={{
+                                                                flex: 1,
+                                                                height: '4px',
+                                                                accentColor: 'var(--color-primary)',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        />
+                                                        <span style={{ fontSize: '9px', opacity: 0.7, width: '24px', textAlign: 'right' }}>
+                                                            {Math.round((layer.opacity || 1) * 100)}%
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Layer Tools */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <button
+                                                            className="layer-tool-btn"
+                                                            onClick={() => handleZoomToLayer(layer.id)}
+                                                            style={{
+                                                                background: 'rgba(255,255,255,0.05)',
+                                                                border: '1px solid var(--color-border)',
+                                                                borderRadius: '4px',
+                                                                padding: '4px 8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                cursor: 'pointer',
+                                                                color: 'var(--color-text-primary)',
+                                                                fontSize: '10px',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                            onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                                                            onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                                            title="Zoom to Layer Extent"
+                                                        >
+                                                            <Maximize size={10} /> Zoom to
+                                                        </button>
+                                                        <button
+                                                            className="layer-tool-btn"
+                                                            style={{
+                                                                background: 'rgba(255,255,255,0.05)',
+                                                                border: '1px solid var(--color-border)',
+                                                                borderRadius: '4px',
+                                                                padding: '4px 8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                cursor: 'pointer',
+                                                                color: 'var(--color-text-primary)',
+                                                                fontSize: '10px',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                            onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                                                            onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                                            title="Highlight Layer"
+                                                            onClick={(e) => {
+                                                                const originalBg = e.currentTarget.style.background;
+                                                                e.currentTarget.style.background = 'var(--color-primary)';
+                                                                e.currentTarget.style.color = 'white';
+                                                                setTimeout(() => {
+                                                                    e.currentTarget.style.background = originalBg;
+                                                                    e.currentTarget.style.color = 'var(--color-text-primary)';
+                                                                }, 300);
+                                                            }}
+                                                        >
+                                                            <Zap size={10} /> Highlight
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                        <button
-                                            className={`visibility-toggle ${layer.visible ? 'visible' : ''}`}
-                                            onClick={() => handleToggleGeoLayer(layer.id)}
-                                        >
-                                            {layer.visible ? 'Visible' : 'Hidden'}
-                                        </button>
-                                    </div>
-                                ))
+                                    ))
+                                    }
+                                </div>
                             )}
                         </div>
                     </div>

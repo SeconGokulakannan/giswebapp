@@ -35,7 +35,7 @@ const AUTH_HEADER = 'Basic ' + btoa('admin:geoserver');
 
 // User Configuration
 const WORKSPACE = 'gisweb';
-const TARGET_LAYERS = ['districts', 'states', 'villages'];
+const TARGET_LAYERS = ['states', 'districts', 'villages'];
 
 /**
  * Fetch specific Layers from GeoServer
@@ -44,6 +44,51 @@ const TARGET_LAYERS = ['districts', 'states', 'villages'];
 export const getGeoServerLayers = async () => {
     // Return the specific layers requested by the user
     return TARGET_LAYERS.map(name => `${WORKSPACE}:${name}`);
+};
+
+/**
+ * Fetch Layer Bounding Box from GeoServer
+ * @param {string} fullLayerName "workspace:layer"
+ * @returns {Promise<Array|null>} Extent [minx, miny, maxx, maxy] or null
+ */
+export const getLayerBBox = async (fullLayerName) => {
+    try {
+        const [ws, name] = fullLayerName.split(':');
+        // Fetch resource details
+        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/layers/${name}.json`, {
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) return null;
+
+        // Start chain to get resource (featuretype or coverage)
+        const layerData = await response.json();
+        const resourceUrl = layerData.layer.resource.href;
+
+        // Fetch the actual resource to get the BBOX
+        const resResponse = await fetch(resourceUrl, {
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!resResponse.ok) return null;
+
+        const resData = await resResponse.json();
+        const info = resData.featureType || resData.coverage;
+
+        if (info && info.latLonBoundingBox) {
+            const bbox = info.latLonBoundingBox;
+            return [bbox.minx, bbox.miny, bbox.maxx, bbox.maxy];
+        }
+    } catch (err) {
+        console.error('Failed to fetch layer extent:', err);
+    }
+    return null;
 };
 
 /**
