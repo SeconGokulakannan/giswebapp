@@ -6,10 +6,11 @@ import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
+import TileWMS from 'ol/source/TileWMS';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { Draw, Modify, Snap, DragPan, DragZoom } from 'ol/interaction';
-import { createRegularPolygon } from 'ol/interaction/Draw';
+import { createRegularPolygon, createBox } from 'ol/interaction/Draw';
 import { always } from 'ol/events/condition';
 import { Stroke, Style, Circle as CircleStyle, Fill } from 'ol/style';
 import Feature from 'ol/Feature';
@@ -19,7 +20,9 @@ import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
 import Graticule from 'ol/layer/Graticule';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { Ruler, Lock, Unlock } from 'lucide-react';
+import { Ruler, Lock, Unlock, Printer } from 'lucide-react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // Sub-components
 import MapHeader from './subcomponents/MapHeader';
@@ -34,8 +37,13 @@ import {
   styleFunction,
   formatLength,
   formatArea,
-  searchLocation,
 } from '../../utils/mapUtils';
+
+import {
+  searchLocation,
+  getGeoServerLayers,
+  getWMSSourceParams
+} from '../../services/Server';
 
 
 function GISMap() {
@@ -64,11 +72,27 @@ function GISMap() {
   const [isLocked, setIsLocked] = useState(false);
   const [hasDrawings, setHasDrawings] = useState(false);
   const [hasMeasurements, setHasMeasurements] = useState(false);
+  const [showDrawingLabels, setShowDrawingLabels] = useState(() => {
+    const saved = localStorage.getItem('showDrawingLabels');
+    return saved === null ? false : saved === 'true'; // Default to false
+  });
+  const [showAnalysisLabels, setShowAnalysisLabels] = useState(() => {
+    const saved = localStorage.getItem('showAnalysisLabels');
+    return saved === null ? false : saved === 'true'; // Default to false
+  });
   const [measurementUnits, setMeasurementUnits] = useState(() => {
-    return localStorage.getItem('measurementUnits') || 'metric';
+    return localStorage.getItem('measurementUnits') || 'kilometers'; // Default to kilometers
   });
   const measurementUnitsRef = useRef(measurementUnits);
+  const showDrawingLabelsRef = useRef(showDrawingLabels);
+  const showAnalysisLabelsRef = useRef(showAnalysisLabels);
+  const [printTitle, setPrintTitle] = useState('');
+  const [printSubtitle, setPrintSubtitle] = useState('');
+  const [printFileName, setPrintFileName] = useState('Map');
+  const [exportFormat, setExportFormat] = useState('pdf');
+  const [geoServerLayers, setGeoServerLayers] = useState([]);
   const activeFeatureRef = useRef(null);
+  const operationalLayersRef = useRef({}); // Track layer instances
 
   // Persistence: Save Workspace to LocalStorage
   const saveWorkspace = () => {
@@ -82,6 +106,8 @@ function GISMap() {
 
     // Save Settings
     localStorage.setItem('measurementUnits', measurementUnitsRef.current);
+    localStorage.setItem('showDrawingLabels', showDrawingLabelsRef.current);
+    localStorage.setItem('showAnalysisLabels', showAnalysisLabelsRef.current);
     localStorage.setItem('theme', theme);
 
     // Save View State
@@ -95,6 +121,8 @@ function GISMap() {
   // Sync unit ref and trigger redraw when state changes
   useEffect(() => {
     measurementUnitsRef.current = measurementUnits;
+    showDrawingLabelsRef.current = showDrawingLabels;
+    showAnalysisLabelsRef.current = showAnalysisLabels;
     saveWorkspace();
 
     // Refresh map labels instantly
@@ -103,10 +131,9 @@ function GISMap() {
     }
 
     // Refresh active interaction labels
-    if (drawInteractionRef.current) {
+    if (drawInteractionRef.current && drawInteractionRef.current.getOverlay) {
       drawInteractionRef.current.getOverlay().getSource().getFeatures().forEach(f => f.changed());
     }
-
     // Update dashboard badge value if measuring
     if (activeFeatureRef.current) {
       const geom = activeFeatureRef.current.getGeometry();
@@ -115,7 +142,7 @@ function GISMap() {
         formatArea(geom, measurementUnits);
       setMeasurementValue(value);
     }
-  }, [measurementUnits]);
+  }, [measurementUnits, showDrawingLabels, showAnalysisLabels]);
 
   // ELITE: Debounced background save
   const saveTimeoutRef = useRef(null);
@@ -125,6 +152,76 @@ function GISMap() {
   };
 
   // Initialize theme from localStorage
+  // Load GeoServer Layers on Mount
+  useEffect(() => {
+    const loadLayers = async () => {
+      const layers = await getGeoServerLayers();
+      // Take top 2 default layers as requested or any first 2
+      const layerObjects = layers.map((name, index) => ({
+        id: name,
+        name: name.split(':').pop(), // Human readable name
+        fullName: name,
+        visible: index < 2 // Default first 2 to visible as requested
+      }));
+      setGeoServerLayers(layerObjects);
+    };
+    loadLayers();
+  }, []);
+
+  // Sync GeoServer Layers with Map
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    geoServerLayers.forEach(layer => {
+      const existingLayer = operationalLayersRef.current[layer.id];
+
+      if (layer.visible && !existingLayer) {
+        // Create and add layer
+        const wmsLayer = new TileLayer({
+          source: new TileWMS(getWMSSourceParams(layer.fullName)),
+          zIndex: 5, // Above base maps, below vector
+          properties: { id: layer.id }
+        });
+        mapInstanceRef.current.addLayer(wmsLayer);
+        operationalLayersRef.current[layer.id] = wmsLayer;
+      } else if (!layer.visible && existingLayer) {
+        // Remove layer
+        mapInstanceRef.current.removeLayer(existingLayer);
+        delete operationalLayersRef.current[layer.id];
+      }
+    });
+
+    // Handle deletions if state array shrinks (not expected here but good practice)
+    Object.keys(operationalLayersRef.current).forEach(id => {
+      if (!geoServerLayers.find(l => l.id === id)) {
+        mapInstanceRef.current.removeLayer(operationalLayersRef.current[id]);
+        delete operationalLayersRef.current[id];
+      }
+    });
+  }, [geoServerLayers]);
+
+  const handleToggleGeoLayer = (layerId) => {
+    setGeoServerLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, visible: !l.visible } : l
+    ));
+  };
+
+  // Elite: Automatic Tool Deactivation
+  useEffect(() => {
+    // If we move away from 'tools' or 'utility_tools' (analysis),
+    // or close the panel entirely, we should deactivate the tools.
+    if (activePanel !== 'tools' && activePanel !== 'utility_tools') {
+      // Small delay to prevent race conditions during state transitions
+      const timer = setTimeout(() => {
+        if (activeTool) {
+          setActiveTool(null);
+          removeInteractions();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [activePanel]);
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
@@ -161,22 +258,31 @@ function GISMap() {
   // High-performance animation loop (Non-blocking)
   useEffect(() => {
     const animate = () => {
-      animationOffsetRef.current = (animationOffsetRef.current + 0.8) % 30;
+      try {
+        animationOffsetRef.current = (animationOffsetRef.current + 0.8) % 30;
 
-      // Trigger map redraw without React re-render
-      if (vectorLayerRef.current) {
-        vectorLayerRef.current.changed();
+        // Trigger map redraw without React re-render
+        if (vectorLayerRef.current) {
+          vectorLayerRef.current.changed();
+        }
+
+        // Also animate interactions if active and supported
+        if (drawInteractionRef.current && typeof drawInteractionRef.current.getOverlay === 'function') {
+          const overlay = drawInteractionRef.current.getOverlay();
+          if (overlay) {
+            const overlaySource = overlay.getSource();
+            if (overlaySource) {
+              overlaySource.getFeatures().forEach((f) => f.changed());
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Animation loop warning:', err);
+      } finally {
+        animationFrameRef.current = requestAnimationFrame(animate);
       }
-
-      // Also animate interactions if active
-      if (drawInteractionRef.current) {
-        const overlaySource = drawInteractionRef.current.getOverlay().getSource();
-        overlaySource.getFeatures().forEach((f) => f.changed());
-      }
-
-      animationFrameRef.current = requestAnimationFrame(animate);
     };
-    animate();
+    animationFrameRef.current = requestAnimationFrame(animate);
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
@@ -219,7 +325,11 @@ function GISMap() {
 
     const vectorLayer = new VectorLayer({
       source: vectorSource,
-      style: (feature) => styleFunction(feature, true, null, null, animationOffsetRef.current, measurementUnitsRef.current),
+      style: (feature) => {
+        const isMeasurement = feature.get('isMeasurement');
+        const show = isMeasurement ? showAnalysisLabelsRef.current : showDrawingLabelsRef.current;
+        return styleFunction(feature, true, null, null, animationOffsetRef.current, measurementUnitsRef.current, show);
+      },
     });
     vectorLayerRef.current = vectorLayer;
 
@@ -385,11 +495,48 @@ function GISMap() {
     if (!mapInstanceRef.current || !vectorSourceRef.current || !type) return;
     removeInteractions();
 
+    // Determine the OpenLayers draw type and geometry function
+    let drawType = type;
+    let geometryFunction = undefined;
+    let freehand = false;
+
+    switch (type) {
+      case 'Circle':
+        drawType = 'Circle';
+        geometryFunction = createRegularPolygon(64);
+        break;
+      case 'Triangle':
+        drawType = 'Circle';
+        geometryFunction = createRegularPolygon(3);
+        break;
+      case 'Extent':
+        drawType = 'Circle';
+        geometryFunction = createBox();
+        break;
+      case 'Ellipse':
+        drawType = 'Circle';
+        // Ellipse is simulated with a 64-sided polygon (same as circle for now)
+        geometryFunction = createRegularPolygon(64);
+        break;
+      case 'FreehandLine':
+        drawType = 'LineString';
+        freehand = true;
+        break;
+      case 'FreehandPolygon':
+        drawType = 'Polygon';
+        freehand = true;
+        break;
+      default:
+        drawType = type;
+        break;
+    }
+
     const draw = new Draw({
       source: vectorSourceRef.current,
-      type: type === 'Circle' ? 'Circle' : type,
-      geometryFunction: type === 'Circle' ? createRegularPolygon(64) : undefined,
-      style: (feature) => styleFunction(feature, false, type, null, animationOffsetRef.current, measurementUnitsRef.current),
+      type: drawType,
+      geometryFunction: geometryFunction,
+      freehand: freehand,
+      style: (feature) => styleFunction(feature, false, type, null, animationOffsetRef.current, measurementUnitsRef.current, showDrawingLabelsRef.current),
     });
 
     draw.on('drawstart', (evt) => {
@@ -473,7 +620,7 @@ function GISMap() {
       source: vectorSourceRef.current,
       type: drawType,
       style: (feature) => {
-        return styleFunction(feature, true, drawType, tip, animationOffsetRef.current, measurementUnitsRef.current);
+        return styleFunction(feature, true, drawType, tip, animationOffsetRef.current, measurementUnitsRef.current, showAnalysisLabelsRef.current);
       },
     });
 
@@ -543,6 +690,11 @@ function GISMap() {
     setIsMeasuring(false);
     setMeasurementValue('');
     activeFeatureRef.current = null;
+  };
+
+  const resetTools = () => {
+    setActiveTool(null);
+    removeInteractions();
   };
 
   const handleToolClick = (tool) => {
@@ -701,6 +853,74 @@ function GISMap() {
     }
   };
 
+  const handlePrintClick = () => {
+    setActivePanel(activePanel === 'print' ? null : 'print');
+    setIsPanelMinimized(false);
+  };
+
+  const handleExportMap = async () => {
+    if (!mapRef.current) return;
+
+    try {
+      // Capture the map container
+      const canvas = await html2canvas(mapRef.current, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: theme === 'dark' ? '#111' : '#fff'
+      });
+
+      const fileName = printFileName || 'Map';
+      const fullFileName = fileName.toLowerCase().endsWith(`.${exportFormat}`) ? fileName : `${fileName}.${exportFormat}`;
+
+      if (exportFormat === 'pdf') {
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('l', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+
+        // Calculate image dimensions to fit page (maintaining aspect ratio)
+        const imgProps = pdf.getImageProperties(imgData);
+        const imgWidth = pdfWidth - 20; // 10mm margin on each side
+        const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+
+        // Header Section
+        pdf.setFillColor(theme === 'dark' ? 20 : 245);
+        pdf.rect(0, 0, pdfWidth, 40, 'F');
+
+        // Title
+        pdf.setTextColor(theme === 'dark' ? 255 : 33);
+        pdf.setFontSize(22);
+        pdf.text(printTitle || 'GIS Map Export', 10, 20);
+
+        // Subtitle
+        pdf.setFontSize(12);
+        pdf.setTextColor(theme === 'dark' ? 180 : 100);
+        pdf.text(printSubtitle || `Generated on ${new Date().toLocaleString()}`, 10, 30);
+
+        // The Map Image
+        pdf.addImage(imgData, 'PNG', 10, 45, imgWidth, imgHeight);
+
+        // Footer
+        pdf.setFontSize(10);
+        pdf.setTextColor(150);
+        pdf.text('Generated via CAMS GIS Workspace', 10, pdfHeight - 10);
+
+        pdf.save(fullFileName);
+      } else {
+        // Image formats (PNG/JPG)
+        const link = document.createElement('a');
+        link.download = fullFileName;
+        link.href = canvas.toDataURL(`image/${exportFormat === 'jpg' ? 'jpeg' : 'png'}`);
+        link.click();
+      }
+
+      alert('Map exported successfully!');
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to generate export. Please try again.');
+    }
+  };
+
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="app">
@@ -709,7 +929,7 @@ function GISMap() {
           setActivePanel={(panel) => {
             setActivePanel(panel);
             // Only deactivate tools if explicitly switching to a different non-tool panel region
-            if (panel !== null && panel !== 'tools' && panel !== 'utility_tools') {
+            if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
               setActiveTool(null);
               removeInteractions();
             }
@@ -718,7 +938,7 @@ function GISMap() {
           toggleTheme={toggleTheme}
           theme={theme}
           handleClearDrawings={handleClearDrawings}
-          handleSearch={handleSearch}
+          handlePrintClick={handlePrintClick}
           isLocked={isLocked}
           setIsLocked={setIsLocked}
           activeTool={activeTool}
@@ -778,8 +998,26 @@ function GISMap() {
             gotoLon={gotoLon}
             setGotoLon={setGotoLon}
             handleGoToLocation={handleGoToLocation}
+            handleSearch={handleSearch}
             measurementUnits={measurementUnits}
             setMeasurementUnits={setMeasurementUnits}
+            showDrawingLabels={showDrawingLabels}
+            setShowDrawingLabels={setShowDrawingLabels}
+            showAnalysisLabels={showAnalysisLabels}
+            setShowAnalysisLabels={setShowAnalysisLabels}
+            handleClearDrawings={handleClearDrawings}
+            resetTools={resetTools}
+            printTitle={printTitle}
+            setPrintTitle={setPrintTitle}
+            printSubtitle={printSubtitle}
+            setPrintSubtitle={setPrintSubtitle}
+            printFileName={printFileName}
+            setPrintFileName={setPrintFileName}
+            exportFormat={exportFormat}
+            setExportFormat={setExportFormat}
+            handleExportMap={handleExportMap}
+            geoServerLayers={geoServerLayers}
+            handleToggleGeoLayer={handleToggleGeoLayer}
           />
         </div>
 

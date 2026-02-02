@@ -14,6 +14,9 @@ import {
     Lock,
     Unlock,
     Wrench,
+    Toolbox,
+    Printer,
+    Bookmark,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -24,7 +27,7 @@ const MapHeader = ({
     toggleTheme,
     theme,
     handleClearDrawings,
-    handleSearch,
+    handlePrintClick,
     isLocked,
     setIsLocked,
     activeTool,
@@ -32,19 +35,6 @@ const MapHeader = ({
     hasDrawings,
     hasMeasurements,
 }) => {
-    const [searchQuery, setSearchQuery] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
-
-    const onSearchSubmit = async (e) => {
-        if (e.key === 'Enter' && searchQuery.trim()) {
-            setIsSearching(true);
-            const success = await handleSearch(searchQuery);
-            setIsSearching(false);
-            if (!success) {
-                alert('Location not found. Please try a different query.');
-            }
-        }
-    };
     return (
         <header className="header">
             <div className="header-content">
@@ -68,24 +58,6 @@ const MapHeader = ({
                     </Tooltip.Portal>
                 </Tooltip.Root>
 
-                {/* Center: Elite Search Bar */}
-                <div className="search-container">
-                    <div className={`search-wrapper ${isSearching ? 'loading' : ''}`}>
-                        {isSearching ? (
-                            <Loader2 className="search-icon animate-spin" size={18} />
-                        ) : (
-                            <Search className="search-icon" size={18} />
-                        )}
-                        <input
-                            type="text"
-                            placeholder="Find a city, address or coordinate..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={onSearchSubmit}
-                            className="elite-search-input"
-                        />
-                    </div>
-                </div>
 
                 {/* Right Side: Title and Tools */}
                 <div className="header-right-group">
@@ -117,7 +89,7 @@ const MapHeader = ({
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Base Map Selection
+                                        Base Maps
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -138,7 +110,7 @@ const MapHeader = ({
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        GIS Layers & Overlays
+                                        Layers
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -152,14 +124,14 @@ const MapHeader = ({
                                             setActivePanel(activePanel === 'tools' ? null : 'tools');
                                             setIsPanelMinimized(false);
                                         }}
-                                        aria-label="Draw Tools"
+                                        aria-label="Drawing Tools"
                                     >
                                         <PenTool size={20} />
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Drawing & Digitizing Tools
+                                        Drawing Tools
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -180,7 +152,7 @@ const MapHeader = ({
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Tools
+                                        Utility Tools
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -201,7 +173,25 @@ const MapHeader = ({
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Go to Coordinates
+                                        Go to Location
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className="toolbar-button"
+                                        onClick={() => { }}
+                                        aria-label="Bookmarks"
+                                    >
+                                        <Bookmark size={20} />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                                        Bookmarks
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -221,7 +211,7 @@ const MapHeader = ({
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        {isLocked ? "Unlock Map Navigation" : "Lock Map Navigation"}
+                                        {isLocked ? "Unlock Map" : "Lock Map"}
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -252,6 +242,24 @@ const MapHeader = ({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
+                                        className="toolbar-button success"
+                                        onClick={handlePrintClick}
+                                        aria-label="Print Map"
+                                    >
+                                        <Printer size={20} />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                                        Download Map
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
                                         className="toolbar-button danger"
                                         onClick={handleClearDrawings}
                                         aria-label="Clear Map"
@@ -261,7 +269,7 @@ const MapHeader = ({
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Clear All Map Features
+                                        Clear Map
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>

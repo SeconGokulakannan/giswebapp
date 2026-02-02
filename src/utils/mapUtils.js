@@ -36,9 +36,20 @@ export const flowGlowStyle = new Style({
 
 export const flowPulseStyle = new Style({
     stroke: new Stroke({
-        color: COLORS.whiteGlow,
-        width: 2,
-        lineDash: [10, 20],
+        color: 'rgba(255, 255, 255, 0.95)',
+        width: 2.5,
+        lineDash: [12, 18],
+    }),
+});
+
+/* Sonar Ripple Style */
+export const sonarStyle = (radius, opacity) => new Style({
+    image: new CircleStyle({
+        radius: radius,
+        stroke: new Stroke({
+            color: `rgba(59, 130, 246, ${opacity})`,
+            width: 2,
+        }),
     }),
 });
 
@@ -87,6 +98,8 @@ const UNIT_FACTORS = {
     meters: { length: 1, area: 1, label: 'm' },
     yards: { length: 1.09361, area: 1.19599, label: 'yd' },
     nautical: { length: 0.000539957, area: 0.000000291553, label: 'nmi' },
+    acres: { length: 1, area: 0.000247105, label: 'ac' },
+    hectares: { length: 1, area: 0.0001, label: 'ha' },
 };
 
 export const formatLength = function (line, unitKey = 'metric') {
@@ -154,7 +167,8 @@ export const formatArea = function (geometry, unitKey = 'metric') {
     } else {
         // Precise requested unit
         value = areaMeters * config.area;
-        unit = config.label + '\xB2';
+        // Don't append squared symbol for units like acres/hectares
+        unit = ['acres', 'hectares'].includes(unitKey) ? config.label : config.label + '\xB2';
     }
 
     return Math.round(value * 100) / 100 + ' ' + unit;
@@ -168,8 +182,9 @@ export const formatArea = function (geometry, unitKey = 'metric') {
  * @param {string} tip Interaction hint
  * @param {number} offset Animation dash offset
  * @param {string} units Measurement units (standard key)
+ * @param {boolean} showLabels Whether to display measurement labels (for drawing tools)
  */
-export const styleFunction = (feature, segments, drawType, tip, offset = 0, units = 'metric') => {
+export const styleFunction = (feature, segments, drawType, tip, offset = 0, units = 'metric', showLabels = true) => {
     const styles = [];
     const geometry = feature.getGeometry();
     if (!geometry) return styles;
@@ -196,8 +211,10 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
         pulseStyle.getStroke().setLineDashOffset(offset);
         styles.push(pulseStyle);
 
-        if (type === 'Polygon') {
-            point = geometry.getInteriorPoint();
+        const isAreaTool = ['Polygon', 'Circle', 'Triangle', 'Extent', 'Ellipse', 'FreehandPolygon'].includes(type);
+
+        if (type === 'Polygon' || type === 'FreehandPolygon' || type === 'Extent' || type === 'Triangle' || type === 'Ellipse') {
+            point = geometry.getInteriorPoint ? geometry.getInteriorPoint() : new Point(geometry.getClosestPoint(mapInstanceRef.current.getView().getCenter()));
             label = formatArea(geometry, units);
             line = new LineString(geometry.getCoordinates()[0]);
         } else if (type === 'Circle') {
@@ -211,13 +228,27 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
         }
     } else if (type === 'Point') {
         styles.push(style);
+
+        // ELITE: Sonar Pulse Animation
+        const sonarRadius = (offset % 15) + 6;
+        const sonarOpacity = 1 - ((sonarRadius - 6) / 15);
+        if (sonarOpacity > 0) {
+            styles.push(sonarStyle(sonarRadius, sonarOpacity));
+
+            // Second ripple for depth
+            const secondRadius = ((offset + 7.5) % 15) + 6;
+            const secondOpacity = 1 - ((secondRadius - 6) / 15);
+            if (secondOpacity > 0) {
+                styles.push(sonarStyle(secondRadius, secondOpacity));
+            }
+        }
     }
 
     // Check if feature is a Circle (either geometry type or tagged)
     const isCircle = type === 'Circle' || feature.get('isCircle');
 
-    // Dynamic Segment Labels - Hide for Circles
-    if (segments && line && !isCircle) {
+    // Dynamic Segment Labels - Hide for Circles and when showLabels is false
+    if (showLabels && segments && line && !isCircle) {
         line.forEachSegment(function (a, b) {
             const segment = new LineString([a, b]);
             const labelValue = formatLength(segment, units);
@@ -230,8 +261,8 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
         });
     }
 
-    // High-Contrast Labels - Hide for Circles
-    if (label && point && !isCircle) {
+    // High-Contrast Labels - Hide when showLabels is false
+    if (showLabels && label && point) {
         const activeLabel = labelStyle.clone();
         activeLabel.setGeometry(point);
         activeLabel.getText().setText(label);
@@ -267,25 +298,3 @@ export const modifyStyle = new Style({
         fill: new Fill({ color: COLORS.accent }),
     }),
 });
-
-/* GEOPROCESSING: Global Search */
-export const searchLocation = async (query) => {
-    if (!query) return null;
-    try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-        const response = await fetch(url, {
-            headers: { 'User-Agent': 'EliteGIS/1.0' }
-        });
-        const data = await response.json();
-        if (data && data.length > 0) {
-            return {
-                lon: parseFloat(data[0].lon),
-                lat: parseFloat(data[0].lat),
-                display_name: data[0].display_name
-            };
-        }
-    } catch (err) {
-        console.error('Geocoding error:', err);
-    }
-    return null;
-};
