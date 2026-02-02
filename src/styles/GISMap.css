@@ -957,16 +957,17 @@
 }
 
 .layer-icon {
-  width: 36px;
-  height: 36px;
+  /* width: 36px;
+  height: 36px; */
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--color-bg-secondary);
   border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
+  color: var(--color-primary);
   transition: all 0.2s ease;
   flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(59, 130, 246, 0.3));
 }
 
 .layer-item.active .layer-icon {
@@ -1949,4 +1950,218 @@
   border-radius: var(--radius-md) !important;
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.2) !important;
   transition: all 0.1s ease;
+}
+
+/* ========================================= */
+/* ===== REDESIGNED LAYER PANEL STYLES ===== */
+/* ========================================= */
+
+.layer-panel-container {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+  /* Ensure it fills the panel content area */
+  min-height: 350px;
+  margin: -8px;
+  /* Offset parent padding slightly if needed, or just work within it */
+}
+
+/* Sidebar Tool Strip */
+.layer-tools-sidebar {
+  width: 65px;
+  box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
+  background: rgba(255, 255, 255, 0.03);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 12px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  margin: -8px 0 -8px -8px;
+}
+
+.layer-tools-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.layer-tool-sidebar-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.layer-tool-sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-primary);
+  transform: translateY(-1px);
+}
+
+.layer-tool-sidebar-btn.active {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transform: scale(1.05);
+  /* Slight pop */
+}
+
+/* Layer List Area */
+.layer-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  padding: 0 0 0 12px;
+  overflow: hidden;
+  border: none;
+  box-shadow: none;
+}
+
+.layer-section-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.8px;
+  margin-top: 12px;
+  opacity: 0.7;
+  padding-left: 4px;
+}
+
+.layer-section-header:first-child {
+  margin-top: 0;
+}
+
+.layer-list-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  /* Remove gap for seamless list */
+}
+
+.layer-list-group.scrollable {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0 4px 0 0;
+  box-shadow: none;
+}
+
+/* Layer Item Row */
+.layer-item-redesigned {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  transition: all 0.15s ease;
+  margin-bottom: 1px;
+  margin-top: 0;
+  box-shadow: none;
+}
+
+.layer-item-redesigned:hover {
+  background: rgba(var(--color-bg-primary-rgb), 0.5);
+  transform: translateX(2px);
+}
+
+.layer-item-redesigned:last-child {
+  margin-bottom: 0;
+}
+
+.layer-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-text-primary);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+}
+
+.layer-icon {
+  color: var(--color-primary);
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+  transition: all 0.2s ease;
+}
+
+/* Operational Layer Badge */
+.layer-visibility-badge {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-primary);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+
+.layer-visibility-badge:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.layer-visibility-badge:not(.visible) {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--color-text-muted);
+  border-color: transparent;
+}
+
+/* GeoServer Layer Toggle */
+.icon-toggle {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  /* Slate-300 inactive */
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.icon-toggle.visible {
+  color: var(--color-primary);
+  /* Blue-500 active */
+  opacity: 1;
+}
+
+.icon-toggle:not(.visible):hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  opacity: 1;
+}
+
+.icon-toggle.visible:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.empty-layers-msg {
+  text-align: center;
+  padding: 30px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.6;
 }
