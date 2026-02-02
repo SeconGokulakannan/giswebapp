@@ -13,6 +13,7 @@ import {
     ChevronLeft,
     ChevronRight,
     SquareDashed,
+    X,
 } from 'lucide-react';
 
 const MapPanel = ({
@@ -56,27 +57,44 @@ const MapPanel = ({
                         {activePanel === 'location' && 'Enter precise coordinates'}
                     </p>
                 </div>
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button
-                            className="minimize-btn"
-                            onClick={() => {
-                                setIsPanelMinimized(!isPanelMinimized);
-                                if (!isPanelMinimized) {
-                                    setTimeout(() => setActivePanel(null), 300);
-                                }
-                            }}
-                        >
-                            {isPanelMinimized ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" sideOffset={5}>
-                            {isPanelMinimized ? 'Expand' : 'Minimize'} panel
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
+                <div className="panel-header-actions">
+                    <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                            <button
+                                className="minimize-btn"
+                                onClick={() => setIsPanelMinimized(!isPanelMinimized)}
+                            >
+                                {isPanelMinimized ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                            </button>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                            <Tooltip.Content className="TooltipContent" sideOffset={5}>
+                                {isPanelMinimized ? 'Expand' : 'Minimize'} panel
+                                <Tooltip.Arrow className="TooltipArrow" />
+                            </Tooltip.Content>
+                        </Tooltip.Portal>
+                    </Tooltip.Root>
+
+                    <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                            <button
+                                className="close-btn"
+                                onClick={() => {
+                                    setActivePanel(null);
+                                    setIsPanelMinimized(false);
+                                }}
+                            >
+                                <X size={16} />
+                            </button>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                            <Tooltip.Content className="TooltipContent" sideOffset={5}>
+                                Close panel
+                                <Tooltip.Arrow className="TooltipArrow" />
+                            </Tooltip.Content>
+                        </Tooltip.Portal>
+                    </Tooltip.Root>
+                </div>
             </div>
 
             <div className="panel-content">

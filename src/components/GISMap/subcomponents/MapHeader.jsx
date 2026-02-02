@@ -29,6 +29,8 @@ const MapHeader = ({
     setIsLocked,
     activeTool,
     handleToolClick,
+    hasDrawings,
+    hasMeasurements,
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
@@ -145,7 +147,7 @@ const MapHeader = ({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
-                                        className={`toolbar-button ${activePanel === 'tools' ? 'active' : ''}`}
+                                        className={`toolbar-button ${activePanel === 'tools' || hasDrawings ? 'active' : ''}`}
                                         onClick={() => {
                                             setActivePanel(activePanel === 'tools' ? null : 'tools');
                                             setIsPanelMinimized(false);
@@ -166,7 +168,7 @@ const MapHeader = ({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
-                                        className={`toolbar-button ${activePanel === 'utility_tools' ? 'active' : ''}`}
+                                        className={`toolbar-button ${activePanel === 'utility_tools' || hasMeasurements ? 'active' : ''}`}
                                         onClick={() => {
                                             setActivePanel(activePanel === 'utility_tools' ? null : 'utility_tools');
                                             setIsPanelMinimized(false);

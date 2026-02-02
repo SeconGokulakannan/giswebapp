@@ -62,6 +62,8 @@ function GISMap() {
   const [showGrid, setShowGrid] = useState(false);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [hasDrawings, setHasDrawings] = useState(false);
+  const [hasMeasurements, setHasMeasurements] = useState(false);
   const [measurementUnits, setMeasurementUnits] = useState(() => {
     return localStorage.getItem('measurementUnits') || 'metric';
   });
@@ -140,6 +142,17 @@ function GISMap() {
     setTimeout(saveWorkspace, 0); // Fast save preference
   };
 
+  // Update feature status based on vector source
+  const updateFeatureStatus = (source) => {
+    if (!source) return;
+    const features = source.getFeatures();
+    const drawings = features.some(f => !f.get('isMeasurement'));
+    const measurements = features.some(f => f.get('isMeasurement'));
+    setHasDrawings(drawings);
+    setHasMeasurements(measurements);
+  };
+
+
 
   // ELITE ANIMATION: Energy Flow & Sonar
   const animationOffsetRef = useRef(0);
@@ -195,8 +208,14 @@ function GISMap() {
       }
     }
 
+    // Initial status update
+    updateFeatureStatus(vectorSource);
+
     // Auto-save triggers
-    vectorSource.on(['addfeature', 'removefeature', 'changefeature'], triggerAutoSave);
+    vectorSource.on(['addfeature', 'removefeature', 'changefeature'], () => {
+      triggerAutoSave();
+      updateFeatureStatus(vectorSource);
+    });
 
     const vectorLayer = new VectorLayer({
       source: vectorSource,
@@ -579,6 +598,8 @@ function GISMap() {
     if (vectorSourceRef.current) {
       vectorSourceRef.current.clear();
       setMeasurementValue('');
+      setHasDrawings(false);
+      setHasMeasurements(false);
     }
   };
 
@@ -702,6 +723,8 @@ function GISMap() {
           setIsLocked={setIsLocked}
           activeTool={activeTool}
           handleToolClick={handleToolClick}
+          hasDrawings={hasDrawings}
+          hasMeasurements={hasMeasurements}
         />
 
         {/* Map Container */}
