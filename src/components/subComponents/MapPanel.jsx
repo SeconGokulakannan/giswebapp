@@ -43,6 +43,7 @@ import {
     Info,
     CircleDot,
 } from 'lucide-react';
+import LayerOperations from './LayerOperations';
 
 const MapPanel = ({
     activePanel,
@@ -83,12 +84,17 @@ const MapPanel = ({
     handleToggleGeoLayer,
     handleLayerOpacityChange,
     handleZoomToLayer,
+
+    handleToggleAllLayers,
+    activeLayerTool,
+    setActiveLayerTool,
+    handleToggleLayerQuery
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
 
-    const [activeLayerTool, setActiveLayerTool] = useState(null);
+
 
     // ... rest of component
     const [isExporting, setIsExporting] = useState(false);
@@ -161,6 +167,7 @@ const MapPanel = ({
                                 onClick={() => {
                                     setActivePanel(null);
                                     setIsPanelMinimized(false);
+                                    setIsPanelMinimized(false);
                                     resetTools();
                                     setActiveLayerTool(null);
                                 }}
@@ -223,86 +230,18 @@ const MapPanel = ({
                 )}
 
                 {activePanel === 'layers' && (
-                    <div className="layer-panel-container">
-                        <div className="layer-tools-sidebar">
-                            {[
-                                { icon: Eye, label: 'Visibility', id: 'visibility' },
-                                { icon: Settings2, label: 'Layer Density', id: 'density' },
-                                { icon: List, label: 'Layers Legend', id: 'legend' },
-                                { icon: Info, label: 'Info Tool', id: 'info' },
-                                { icon: MapPinned, label: 'Zoom To Layer', id: 'zoom' },
-                                { icon: Zap, label: 'Highlight Layer', id: 'highlight' },
-                                { icon: Palette, label: 'Layer Styles', id: 'styles' },
-                                { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
-                                { icon: Table, label: 'Attribute Table', id: 'attribute' },
-                                { icon: Plus, label: 'New Layer', id: 'new' },
-                                { icon: RefreshCw, label: 'Reload Layer', id: 'reload' },
-                                { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
-                                { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' }
-
-                            ].map((tool) => (
-                                <Tooltip.Root key={tool.id}>
-                                    <Tooltip.Trigger asChild>
-                                        <button
-                                            className={`layer-tool-sidebar-btn ${activeLayerTool === tool.id ? 'active' : ''}`}
-                                            onClick={() => setActiveLayerTool(activeLayerTool === tool.id ? null : tool.id)}
-                                        >
-                                            <tool.icon size={22} strokeWidth={1.5} />
-                                        </button>
-                                    </Tooltip.Trigger>
-                                    <Tooltip.Portal>
-                                        <Tooltip.Content className="TooltipContent" side="left" sideOffset={10}>
-                                            {tool.label}
-                                            <Tooltip.Arrow className="TooltipArrow" />
-                                        </Tooltip.Content>
-                                    </Tooltip.Portal>
-                                </Tooltip.Root>
-                            ))}
-                        </div>
-
-                        <div className="layer-list-content">
-                            <div className="layer-section-header">Operational Overlays</div>
-                            <div className="">
-                                <div className="layer-item-redesigned">
-                                    <div className="layer-info">
-                                        <Pencil size={14} className="layer-icon" />
-                                        <span>Workspace Drawings</span>
-                                    </div>
-                                    <button
-                                        className={`layer-visibility-badge ${isDrawingVisible ? 'visible' : ''}`}
-                                        onClick={() => setIsDrawingVisible(!isDrawingVisible)}
-                                    >
-                                        {isDrawingVisible ? 'VISIBLE' : 'HIDDEN'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="layer-section-header">GeoServer Layers</div>
-                            <div className="layer-list-group scrollable">
-                                {geoServerLayers.length === 0 ? (
-                                    <div className="empty-layers-msg">
-                                        No server layers connected.
-                                    </div>
-                                ) : (
-                                    geoServerLayers.map(layer => (
-                                        <div className="layer-item-redesigned" key={layer.id}>
-                                            <div className="layer-info">
-                                                <CircleDot size={14} className="layer-icon" />
-                                                <span>{layer.name}</span>
-                                            </div>
-                                            <button
-                                                className={`icon-toggle ${layer.visible ? 'visible' : ''}`}
-                                                onClick={() => handleToggleGeoLayer(layer.id)}
-                                                title={layer.visible ? "Hide" : "Show"}
-                                            >
-                                                {layer.visible ? <Eye size={18} /> : <EyeOff size={18} />}
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    <LayerOperations
+                        isDrawingVisible={isDrawingVisible}
+                        setIsDrawingVisible={setIsDrawingVisible}
+                        geoServerLayers={geoServerLayers}
+                        handleToggleGeoLayer={handleToggleGeoLayer}
+                        handleLayerOpacityChange={handleLayerOpacityChange}
+                        handleZoomToLayer={handleZoomToLayer}
+                        handleToggleAllLayers={handleToggleAllLayers}
+                        activeLayerTool={activeLayerTool}
+                        setActiveLayerTool={setActiveLayerTool}
+                        handleToggleLayerQuery={handleToggleLayerQuery}
+                    />
                 )}
 
                 {activePanel === 'tools' && (

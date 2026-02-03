@@ -20,15 +20,14 @@ import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
 import Graticule from 'ol/layer/Graticule';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { Ruler, Lock, Unlock, Printer } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 // Sub-components
-import MapHeader from './subcomponents/MapHeader';
-import MapSidebar from './subcomponents/MapSidebar';
-import MapPanel from './subcomponents/MapPanel';
-import MapStatusBar from './subcomponents/MapStatusBar';
+import MapHeader from '../subComponents/MapHeader';
+import MapSidebar from '../subComponents/MapSidebar';
+import MapPanel from '../subComponents/MapPanel';
+import MapStatusBar from '../subComponents/MapStatusBar';
 
 // Utils
 import {
@@ -44,6 +43,8 @@ import {
   getGeoServerLayers,
   getWMSSourceParams
 } from '../../services/Server';
+import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
+import FeatureInfoCard from '../subcomponents/FeatureInfoCard';
 
 
 function GISMap() {
@@ -93,8 +94,17 @@ function GISMap() {
   const [geoServerLayers, setGeoServerLayers] = useState([]);
   const activeFeatureRef = useRef(null);
   const operationalLayersRef = useRef({}); // Track layer instances
+  const [activeLayerTool, setActiveLayerTool] = useState(null);
 
-  // Persistence: Save Workspace to LocalStorage
+  const [featureInfoResult, setFeatureInfoResult] = useState(null);
+  const [featureInfoPosition, setFeatureInfoPosition] = useState(null);
+  const activeLayerToolRef = useRef(activeLayerTool);
+  const geoServerLayersRef = useRef(geoServerLayers);
+
+  useEffect(() => {
+    activeLayerToolRef.current = activeLayerTool;
+    geoServerLayersRef.current = geoServerLayers;
+  }, [activeLayerTool, geoServerLayers]);
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;
 
@@ -162,7 +172,8 @@ function GISMap() {
         name: name.split(':').pop(), // Human readable name
         fullName: name,
         visible: index < 2, // Default first 2 to visible as requested
-        opacity: 1 // Default opacity
+        opacity: 1, // Default opacity
+        queryable: true // Default queryable
       }));
       setGeoServerLayers(layerObjects);
     };
@@ -211,6 +222,16 @@ function GISMap() {
     setGeoServerLayers(prev => prev.map(l =>
       l.id === layerId ? { ...l, visible: !l.visible } : l
     ));
+  };
+
+  const handleToggleLayerQuery = (layerId) => {
+    setGeoServerLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, queryable: !l.queryable } : l
+    ));
+  };
+
+  const handleToggleAllLayers = (turnOn) => {
+    setGeoServerLayers(prev => prev.map(l => ({ ...l, visible: turnOn })));
   };
 
   const handleLayerOpacityChange = (layerId, newOpacity) => {
@@ -455,15 +476,79 @@ function GISMap() {
     };
 
     // ELITE INTERACTION: Sonar Ripple on Click
-    map.on('click', (evt) => {
+    map.on('click', async (evt) => {
       const pixel = map.getPixelFromCoordinate(evt.coordinate);
-      const ripple = document.createElement('div');
-      ripple.className = 'sonar-ripple';
-      ripple.style.left = `${pixel[0]}px`;
-      ripple.style.top = `${pixel[1]}px`;
-      mapRef.current.appendChild(ripple);
-      setTimeout(() => ripple.remove(), 1000);
+
+      if (activeLayerToolRef.current === 'info') {
+        const view = map.getView();
+        const viewResolution = view.getResolution();
+        const projection = view.getProjection();
+        const visibleLayers = geoServerLayersRef.current.filter(l => l.visible && l.queryable);
+
+        if (visibleLayers.length === 0) {
+          setFeatureInfoResult([]);
+          setFeatureInfoPosition({ x: pixel[0], y: pixel[1] });
+          return;
+        }
+
+        const fetchPromises = visibleLayers.map(async (layer) => {
+          const existingLayer = operationalLayersRef.current[layer.id];
+          if (!existingLayer) return null;
+
+          const source = existingLayer.getSource();
+          const url = source.getFeatureInfoUrl(
+            evt.coordinate,
+            viewResolution,
+            projection,
+            { 'INFO_FORMAT': 'application/json' }
+          );
+
+          if (url) {
+            try {
+              const res = await fetch(url, { headers: { 'Authorization': AUTH_HEADER } });
+              const data = await res.json();
+              return {
+                layerName: layer.name,
+                features: data.features
+              };
+            } catch (err) {
+              console.error("Error fetching feature info", err);
+              return { layerName: layer.name, features: [] };
+            }
+          }
+          return null;
+        });
+
+        const results = await Promise.all(fetchPromises);
+        const validResults = results.filter(r => r && r.features && r.features.length > 0);
+        setFeatureInfoResult(validResults);
+        setFeatureInfoPosition({ x: pixel[0], y: pixel[1] });
+
+      } else {
+        const ripple = document.createElement('div');
+        ripple.className = 'sonar-ripple';
+        ripple.style.left = `${pixel[0]}px`;
+        ripple.style.top = `${pixel[1]}px`;
+        mapRef.current.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 1000);
+      }
     });
+
+    // We will attach the click listener separately or use a consistent ref pattern.
+    // Let's use a separate useEffect for the click listener that depends on activeLayerTool to avoid stale closures,
+    // OR use refs. Given the size of GISMap, refs are safer for existing structure.
+
+    // Changing approach: Use a separate useEffect for click handling to keep closure fresh.
+
+    /* 
+       Existing click listener was:
+       map.on('click', (evt) => {
+         const pixel = map.getPixelFromCoordinate(evt.coordinate);
+         const ripple = document.createElement('div');
+         ...
+       });
+    */
+
 
     map.on('pointermove', (evt) => {
       const lonLat = toLonLat(evt.coordinate);
@@ -1059,7 +1144,19 @@ function GISMap() {
             handleToggleGeoLayer={handleToggleGeoLayer}
             handleLayerOpacityChange={handleLayerOpacityChange}
             handleZoomToLayer={handleZoomToLayer}
+            handleToggleAllLayers={handleToggleAllLayers}
+            activeLayerTool={activeLayerTool}
+            setActiveLayerTool={setActiveLayerTool}
+            handleToggleLayerQuery={handleToggleLayerQuery}
           />
+
+          {featureInfoResult && featureInfoPosition && (
+            <FeatureInfoCard
+              featureInfo={featureInfoResult}
+              position={featureInfoPosition}
+              onClose={() => setFeatureInfoResult(null)}
+            />
+          )}
         </div>
 
         {/* Measurement Badge - Hidden per user request */}
