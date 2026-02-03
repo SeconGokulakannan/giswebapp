@@ -905,7 +905,6 @@ function GISMap() {
       // Capture the map container
       const canvas = await html2canvas(mapRef.current, {
         useCORS: true,
-        allowTaint: true,
         backgroundColor: theme === 'dark' ? '#111' : '#fff'
       });
 

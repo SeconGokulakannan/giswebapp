@@ -5,6 +5,10 @@ import {
     Satellite,
     Mountain,
     PenTool,
+    Repeat,
+    FileChartPie,
+    DatabaseZap,
+    Settings2,
     MapPinned,
     Waypoints,
     Pentagon,
@@ -112,7 +116,7 @@ const MapPanel = ({
     if (!activePanel) return null;
 
     return (
-        <div className={`panel ${isPanelMinimized ? 'minimized' : ''}`}>
+        <div className={`panel ${isPanelMinimized ? 'minimized' : ''} panel-${activePanel}`}>
             <div className="panel-header">
                 <div className="panel-header-text">
                     <h3>
@@ -125,7 +129,7 @@ const MapPanel = ({
                     </h3>
                     <p>
                         {activePanel === 'basemaps' && 'Choose your map background'}
-                        {activePanel === 'layers' && 'Manage operational data layers'}
+                        {activePanel === 'layers' && 'Manage data layers'}
                         {activePanel === 'tools' && 'Create features on the map'}
                         {activePanel === 'utility_tools' && 'Measure and Analyze Map Data'}
                         {activePanel === 'location' && 'Enter precise coordinates'}
@@ -223,15 +227,19 @@ const MapPanel = ({
                         <div className="layer-tools-sidebar">
                             {[
                                 { icon: Eye, label: 'Visibility', id: 'visibility' },
+                                { icon: Settings2, label: 'Layer Density', id: 'density' },
+                                { icon: List, label: 'Layers Legend', id: 'legend' },
+                                { icon: Info, label: 'Info Tool', id: 'info' },
                                 { icon: MapPinned, label: 'Zoom To Layer', id: 'zoom' },
                                 { icon: Zap, label: 'Highlight Layer', id: 'highlight' },
                                 { icon: Palette, label: 'Layer Styles', id: 'styles' },
-                                { icon: ArrowUpDown, label: 'Reorder Layers', id: 'reorder' },
+                                { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
                                 { icon: Table, label: 'Attribute Table', id: 'attribute' },
-                                { icon: List, label: 'Layers Legend', id: 'legend' },
                                 { icon: Plus, label: 'New Layer', id: 'new' },
                                 { icon: RefreshCw, label: 'Reload Layer', id: 'reload' },
-                                { icon: Info, label: 'Info Tool', id: 'info' },
+                                { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
+                                { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' }
+
                             ].map((tool) => (
                                 <Tooltip.Root key={tool.id}>
                                     <Tooltip.Trigger asChild>
@@ -254,7 +262,7 @@ const MapPanel = ({
 
                         <div className="layer-list-content">
                             <div className="layer-section-header">Operational Overlays</div>
-                            <div className="layer-list-group">
+                            <div className="">
                                 <div className="layer-item-redesigned">
                                     <div className="layer-info">
                                         <Pencil size={14} className="layer-icon" />

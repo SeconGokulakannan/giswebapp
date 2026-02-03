@@ -35,7 +35,7 @@ const AUTH_HEADER = 'Basic ' + btoa('admin:geoserver');
 
 // User Configuration
 const WORKSPACE = 'gisweb';
-const TARGET_LAYERS = ['states', 'districts', 'villages'];
+const TARGET_LAYERS = ['states', 'districts', 'villages', 'states', 'districts', 'villages', 'states', 'districts', 'villages', 'states', 'districts', 'villages', 'states', 'districts', 'villages', 'states', 'districts', 'villages'];
 
 /**
  * Fetch specific Layers from GeoServer

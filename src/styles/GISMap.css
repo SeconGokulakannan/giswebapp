@@ -804,6 +804,12 @@
   scrollbar-color: var(--color-border-dark) transparent;
 }
 
+.panel-layers .panel-content {
+  max-height: none;
+  overflow: visible;
+  height: auto;
+}
+
 .panel-section {
   margin-bottom: var(--spacing-xl);
 }
@@ -1957,13 +1963,10 @@
 /* ========================================= */
 
 .layer-panel-container {
-  display: flex;
-  gap: 12px;
-  height: 100%;
-  /* Ensure it fills the panel content area */
-  min-height: 350px;
+  position: relative;
+  min-height: 450px;
   margin: -8px;
-  /* Offset parent padding slightly if needed, or just work within it */
+  display: block;
 }
 
 /* Sidebar Tool Strip */
@@ -1977,11 +1980,9 @@
   flex-direction: column;
   align-items: center;
   padding: 12px 0;
-  gap: 12px;
-  flex-shrink: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  margin: -8px 0 -8px -8px;
+  gap: 6px;
+  height: auto;
+  min-height: 100%;
 }
 
 .layer-tools-sidebar::-webkit-scrollbar {
@@ -1989,9 +1990,9 @@
 }
 
 .layer-tool-sidebar-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 35px;
+  height: 35px;
+  border-radius: 30%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2018,11 +2019,16 @@
 
 /* Layer List Area */
 .layer-list-content {
-  flex: 1;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 65px;
+  /* Sidebar width */
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: 0 0 0 12px;
+  padding: 8px 12px 8px 12px;
   overflow: hidden;
   border: none;
   box-shadow: none;
@@ -2048,14 +2054,24 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  /* Remove gap for seamless list */
+  background: rgba(var(--color-bg-primary-rgb), 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 4px;
+  margin-top: 4px;
+  overflow-y: auto;
+  flex: 1;
+  /* Take available space */
+  scrollbar-width: thin;
+  min-height: 0;
+  /* Important for nested flex scrolling */
 }
 
 .layer-list-group.scrollable {
-  overflow-y: auto;
-  flex: 1;
-  padding: 0 4px 0 0;
+  /* Inherits flex: 1 from base class */
+  padding: 4px;
   box-shadow: none;
+  max-height: none;
 }
 
 /* Layer Item Row */
