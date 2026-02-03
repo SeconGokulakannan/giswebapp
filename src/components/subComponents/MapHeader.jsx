@@ -16,7 +16,7 @@ import {
     Wrench,
     Toolbox,
     Printer,
-    Bookmark,
+    Bookmark
 } from 'lucide-react';
 import { useState } from 'react';
 

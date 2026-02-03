@@ -88,7 +88,12 @@ const MapPanel = ({
     handleToggleAllLayers,
     activeLayerTool,
     setActiveLayerTool,
-    handleToggleLayerQuery
+    handleToggleLayerQuery,
+    activeZoomLayerId,
+    handleHighlightLayer,
+    activeHighlightLayerId,
+    isHighlightAnimating,
+    handleUpdateLayerStyle
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -241,6 +246,11 @@ const MapPanel = ({
                         activeLayerTool={activeLayerTool}
                         setActiveLayerTool={setActiveLayerTool}
                         handleToggleLayerQuery={handleToggleLayerQuery}
+                        activeZoomLayerId={activeZoomLayerId}
+                        handleHighlightLayer={handleHighlightLayer}
+                        activeHighlightLayerId={activeHighlightLayerId}
+                        isHighlightAnimating={isHighlightAnimating}
+                        handleUpdateLayerStyle={handleUpdateLayerStyle}
                     />
                 )}
 

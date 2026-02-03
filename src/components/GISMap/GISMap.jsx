@@ -20,6 +20,7 @@ import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
 import Graticule from 'ol/layer/Graticule';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import Overlay from 'ol/Overlay';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -41,10 +42,13 @@ import {
 import {
   searchLocation,
   getGeoServerLayers,
-  getWMSSourceParams
+  getWMSSourceParams,
+  getLayerBBox,
+  getLayerStyle,
+  updateLayerStyle
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
-import FeatureInfoCard from '../subcomponents/FeatureInfoCard';
+import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 
 
 function GISMap() {
@@ -97,14 +101,24 @@ function GISMap() {
   const [activeLayerTool, setActiveLayerTool] = useState(null);
 
   const [featureInfoResult, setFeatureInfoResult] = useState(null);
-  const [featureInfoPosition, setFeatureInfoPosition] = useState(null);
+  const [featureInfoCoordinate, setFeatureInfoCoordinate] = useState(null);
+  const [mapRenderKey, setMapRenderKey] = useState(0); // Forces card re-render on map move
+  const [activeZoomLayerId, setActiveZoomLayerId] = useState(null);
+  const [activeHighlightLayerId, setActiveHighlightLayerId] = useState(null);
+  const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
+  const featureInfoOverlayRef = useRef(null);
+  const popupElementRef = useRef(null);
   const activeLayerToolRef = useRef(activeLayerTool);
   const geoServerLayersRef = useRef(geoServerLayers);
+  const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
+  const isHighlightAnimatingRef = useRef(isHighlightAnimating);
 
   useEffect(() => {
     activeLayerToolRef.current = activeLayerTool;
     geoServerLayersRef.current = geoServerLayers;
-  }, [activeLayerTool, geoServerLayers]);
+    activeHighlightLayerIdRef.current = activeHighlightLayerId;
+    isHighlightAnimatingRef.current = isHighlightAnimating;
+  }, [activeLayerTool, geoServerLayers, activeHighlightLayerId, isHighlightAnimating]);
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;
 
@@ -245,15 +259,19 @@ function GISMap() {
     const layer = geoServerLayers.find(l => l.id === layerId);
     if (!layer) return;
 
+    // Set as the active selected layer
+    setActiveZoomLayerId(layerId);
+    setActiveHighlightLayerId(null); // Clear other tool's selection
+
     try {
       const bbox = await getLayerBBox(layer.fullName);
       if (bbox) {
         // [minx, miny, maxx, maxy] - OpenLayers expects [minx, miny, maxx, maxy]
-        // We need to transform from EPSG:4326 to View Projection (EPSG:3857)
-        const extent = [
-          ...fromLonLat([bbox[0], bbox[1]]),
-          ...fromLonLat([bbox[2], bbox[3]])
-        ];
+        // Transform coordinates to map projection
+        const p1 = fromLonLat([bbox[0], bbox[1]]);
+        const p2 = fromLonLat([bbox[2], bbox[3]]);
+        const extent = [p1[0], p1[1], p2[0], p2[1]];
+
         mapInstanceRef.current.getView().fit(extent, {
           padding: [50, 50, 50, 50],
           maxZoom: 16,
@@ -265,6 +283,68 @@ function GISMap() {
     } catch (err) {
       console.error('Zoom error:', err);
     }
+  };
+
+  const handleHighlightLayer = async (layerId) => {
+    if (!mapInstanceRef.current) return;
+    const layer = geoServerLayers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    // Toggle logic
+    if (activeHighlightLayerId === layerId && isHighlightAnimating) {
+      // STOP animating
+      setIsHighlightAnimating(false);
+      // Reset opacity to original
+      const olLayer = operationalLayersRef.current[layerId];
+      if (olLayer) olLayer.setOpacity(layer.opacity || 1);
+      return;
+    }
+
+    // START animating (or switch to new layer)
+    // If switching, reset previous layer first
+    if (activeHighlightLayerId && activeHighlightLayerId !== layerId) {
+      const prevLayer = operationalLayersRef.current[activeHighlightLayerId];
+      const prevLayerData = geoServerLayers.find(l => l.id === activeHighlightLayerId);
+      if (prevLayer && prevLayerData) prevLayer.setOpacity(prevLayerData.opacity || 1);
+    }
+
+    setActiveHighlightLayerId(layerId);
+    setIsHighlightAnimating(true);
+    setActiveZoomLayerId(null);
+
+    try {
+      const bbox = await getLayerBBox(layer.fullName);
+      if (bbox) {
+        // Pan to the layer
+        const p1 = fromLonLat([bbox[0], bbox[1]]);
+        const p2 = fromLonLat([bbox[2], bbox[3]]);
+        const extent = [p1[0], p1[1], p2[0], p2[1]];
+
+        mapInstanceRef.current.getView().fit(extent, {
+          padding: [50, 50, 50, 50],
+          maxZoom: 14,
+          duration: 800
+        });
+      }
+    } catch (err) {
+      console.error('Highlight error:', err);
+    }
+  };
+
+  const handleUpdateLayerStyle = async (layerId, fullLayerName, sldBody) => {
+    const success = await updateLayerStyle(fullLayerName, sldBody);
+    if (success) {
+      // Refresh the layer on the map by updating its source params
+      const olLayer = operationalLayersRef.current[layerId];
+      if (olLayer) {
+        const source = olLayer.getSource();
+        const params = source.getParams();
+        // Add a timestamp to bypass browser cache
+        source.updateParams({ ...params, _t: Date.now() });
+      }
+      return true;
+    }
+    return false;
   };
 
   // Elite: Automatic Tool Deactivation
@@ -335,6 +415,17 @@ function GISMap() {
             if (overlaySource) {
               overlaySource.getFeatures().forEach((f) => f.changed());
             }
+          }
+        }
+
+        // ELITE: Wave Animation for Highlighted Layer
+        if (isHighlightAnimatingRef.current && activeHighlightLayerIdRef.current) {
+          const olLayer = operationalLayersRef.current[activeHighlightLayerIdRef.current];
+          if (olLayer) {
+            const time = Date.now() / 1000;
+            // Wave animation: oscillating opacity between 0.3 and 1.0 at moderate speed (3 rad/s)
+            const waveOpacity = 0.65 + 0.35 * Math.sin(time * 3);
+            olLayer.setOpacity(waveOpacity);
           }
         }
       } catch (err) {
@@ -475,7 +566,7 @@ function GISMap() {
       street: streetLayer,
     };
 
-    // ELITE INTERACTION: Sonar Ripple on Click
+    // ELITE INTERACTION: Feature Info on Click
     map.on('click', async (evt) => {
       const pixel = map.getPixelFromCoordinate(evt.coordinate);
 
@@ -485,9 +576,41 @@ function GISMap() {
         const projection = view.getProjection();
         const visibleLayers = geoServerLayersRef.current.filter(l => l.visible && l.queryable);
 
+        // Hide previous card immediately
+        setFeatureInfoResult(null);
+        setFeatureInfoCoordinate(null);
+
+        // Simple Approach: Always position the click point at an optimal Y location
+        // The card appears ABOVE the click, so we want the click point to be in 
+        // the lower portion of the screen (around 70% from top)
+        const mapSize = map.getSize();
+
+        if (mapSize) {
+          const optimalClickY = mapSize[1] * 0.7; // 70% from top = 30% from bottom
+          const currentClickY = pixel[1];
+          const yDifference = currentClickY - optimalClickY;
+
+          // Calculate new center that puts click point at optimal position
+          const currentCenter = view.getCenter();
+          const currentCenterPixel = map.getPixelFromCoordinate(currentCenter);
+          const newCenterPixel = [currentCenterPixel[0], currentCenterPixel[1] + yDifference];
+          const targetCenter = map.getCoordinateFromPixel(newCenterPixel);
+
+          // Always animate to optimal position
+          view.animate({
+            center: targetCenter,
+            duration: 400
+          });
+        }
+
+        // Delay showing the card until after animation to prevent jitter
+        const clickCoord = evt.coordinate;
+
         if (visibleLayers.length === 0) {
-          setFeatureInfoResult([]);
-          setFeatureInfoPosition({ x: pixel[0], y: pixel[1] });
+          setTimeout(() => {
+            setFeatureInfoCoordinate(clickCoord);
+            setFeatureInfoResult([]);
+          }, 450);
           return;
         }
 
@@ -521,8 +644,12 @@ function GISMap() {
 
         const results = await Promise.all(fetchPromises);
         const validResults = results.filter(r => r && r.features && r.features.length > 0);
-        setFeatureInfoResult(validResults);
-        setFeatureInfoPosition({ x: pixel[0], y: pixel[1] });
+
+        // Show card after animation completes (400ms) + small buffer
+        setTimeout(() => {
+          setFeatureInfoCoordinate(clickCoord);
+          setFeatureInfoResult(validResults);
+        }, 450);
 
       } else {
         const ripple = document.createElement('div');
@@ -533,21 +660,6 @@ function GISMap() {
         setTimeout(() => ripple.remove(), 1000);
       }
     });
-
-    // We will attach the click listener separately or use a consistent ref pattern.
-    // Let's use a separate useEffect for the click listener that depends on activeLayerTool to avoid stale closures,
-    // OR use refs. Given the size of GISMap, refs are safer for existing structure.
-
-    // Changing approach: Use a separate useEffect for click handling to keep closure fresh.
-
-    /* 
-       Existing click listener was:
-       map.on('click', (evt) => {
-         const pixel = map.getPixelFromCoordinate(evt.coordinate);
-         const ripple = document.createElement('div');
-         ...
-       });
-    */
 
 
     map.on('pointermove', (evt) => {
@@ -580,6 +692,30 @@ function GISMap() {
 
     return () => map.setTarget(undefined);
   }, []); // Fixed: No measurementUnits dependency
+
+  // Feature Info Card - Update position only on moveend (debounced)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !featureInfoCoordinate) return;
+
+    let updateTimeout = null;
+
+    const handleMapMove = () => {
+      // Debounce updates to prevent jitter
+      if (updateTimeout) clearTimeout(updateTimeout);
+      updateTimeout = setTimeout(() => {
+        setMapRenderKey(prev => prev + 1);
+      }, 100);
+    };
+
+    mapInstanceRef.current.on('moveend', handleMapMove);
+
+    return () => {
+      if (updateTimeout) clearTimeout(updateTimeout);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.un('moveend', handleMapMove);
+      }
+    };
+  }, [featureInfoCoordinate]);
 
   // Sync Graticule Visibility
   useEffect(() => {
@@ -818,7 +954,17 @@ function GISMap() {
   };
 
   const resetTools = () => {
+    // Reset Higlight opacity if animating
+    if (isHighlightAnimating && activeHighlightLayerId) {
+      const olLayer = operationalLayersRef.current[activeHighlightLayerId];
+      const layerData = geoServerLayers.find(l => l.id === activeHighlightLayerId);
+      if (olLayer && layerData) olLayer.setOpacity(layerData.opacity || 1);
+    }
+
     setActiveTool(null);
+    setActiveZoomLayerId(null);
+    setActiveHighlightLayerId(null);
+    setIsHighlightAnimating(false);
     removeInteractions();
   };
 
@@ -1107,7 +1253,16 @@ function GISMap() {
 
           <MapPanel
             activePanel={activePanel}
-            setActivePanel={setActivePanel}
+            setActivePanel={(panel) => {
+              setActivePanel(panel);
+              if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
+                setActiveTool(null);
+                removeInteractions();
+              }
+              if (panel === null) {
+                setActiveLayerTool(null);
+              }
+            }}
             isPanelMinimized={isPanelMinimized}
             setIsPanelMinimized={setIsPanelMinimized}
             baseLayer={baseLayer}
@@ -1144,19 +1299,37 @@ function GISMap() {
             handleToggleGeoLayer={handleToggleGeoLayer}
             handleLayerOpacityChange={handleLayerOpacityChange}
             handleZoomToLayer={handleZoomToLayer}
+            handleHighlightLayer={handleHighlightLayer}
             handleToggleAllLayers={handleToggleAllLayers}
             activeLayerTool={activeLayerTool}
             setActiveLayerTool={setActiveLayerTool}
             handleToggleLayerQuery={handleToggleLayerQuery}
+            activeHighlightLayerId={activeHighlightLayerId}
+            isHighlightAnimating={isHighlightAnimating}
+            handleUpdateLayerStyle={handleUpdateLayerStyle}
           />
 
-          {featureInfoResult && featureInfoPosition && (
-            <FeatureInfoCard
-              featureInfo={featureInfoResult}
-              position={featureInfoPosition}
-              onClose={() => setFeatureInfoResult(null)}
-            />
-          )}
+          {/* Feature Info Card - Positioned at clicked location */}
+          {featureInfoResult && featureInfoResult.length > 0 && featureInfoCoordinate && mapInstanceRef.current && (() => {
+            const pixel = mapInstanceRef.current.getPixelFromCoordinate(featureInfoCoordinate);
+            if (!pixel) return null;
+            return (
+              <FeatureInfoCard
+                featureInfo={featureInfoResult}
+                onClose={() => {
+                  setFeatureInfoResult(null);
+                  setFeatureInfoCoordinate(null);
+                }}
+                style={{
+                  position: 'absolute',
+                  left: pixel[0],
+                  top: pixel[1],
+                  transform: 'translate(-18px, -100%) translateY(-10px)',
+                  zIndex: 1000
+                }}
+              />
+            );
+          })()}
         </div>
 
         {/* Measurement Badge - Hidden per user request */}

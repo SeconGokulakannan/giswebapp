@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, ChevronDown, ChevronRight, Layers } from 'lucide-react';
 
-const FeatureInfoCard = ({ featureInfo, onClose, position }) => {
+const FeatureInfoCard = ({ featureInfo, onClose, style }) => {
     const [expandedLayer, setExpandedLayer] = useState(null);
 
     if (!featureInfo || featureInfo.length === 0) return null;
@@ -10,27 +10,14 @@ const FeatureInfoCard = ({ featureInfo, onClose, position }) => {
         setExpandedLayer(prev => prev === layerName ? null : layerName);
     };
 
-    // Initialize default expansion state
+    // Initialize default expansion state - always collapsed by default
     React.useEffect(() => {
-        if (featureInfo && featureInfo.length === 1) {
-            // If only one layer has features, expand it
-            setExpandedLayer(featureInfo[0].layerName);
-        } else {
-            // If multiple layers have features, collapse all by default
-            setExpandedLayer(null);
-        }
+        setExpandedLayer(null);
     }, [featureInfo]);
 
 
     return (
-        <div
-            className="feature-info-card fade-in"
-            style={{
-                left: position.x - 18, // Arrow tip at left: 12px + 6px (center)
-                top: position.y - 6,  // Tip protrusion offset
-                transform: 'translateY(-100%)'
-            }}
-        >
+        <div className="feature-info-card fade-in" style={style}>
             <div style={{ borderRadius: 'inherit', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
                 <div className="feature-info-header">
                     <h4>
@@ -49,7 +36,7 @@ const FeatureInfoCard = ({ featureInfo, onClose, position }) => {
                                 className="layer-group-header"
                                 onClick={() => toggleLayer(layerData.layerName)}
                             >
-                                <span>{layerData.layerName}</span>
+                                <span style={{ color: 'var(--color-primary)' }}>{layerData.layerName}</span>
                                 {expandedLayer === layerData.layerName ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </div>
 

@@ -1,9 +1,19 @@
 import { useState } from 'react';
-import { getLegendUrl } from '../../services/Server';
+import { getLegendUrl, getLayerStyle } from '../../services/Server';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { Eye, Settings2, List, Info, MapPinned, Zap, Palette, Repeat, Table, Plus, RefreshCw, DatabaseZap, FileChartPie, Pencil, CircleDot } from 'lucide-react';
+import {
+    Eye, Settings2, List, Info, MapPinned, Zap, Square,
+    Palette, Repeat, Table, Plus, RefreshCw, DatabaseZap,
+    LayersPlus, FileChartPie, Pencil, CircleDot, Save, Loader2
+} from 'lucide-react';
 
-const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayers, handleToggleGeoLayer, handleLayerOpacityChange, handleZoomToLayer, handleToggleAllLayers, activeLayerTool, setActiveLayerTool, handleToggleLayerQuery }) => {
+const LayerOperations = ({
+    isDrawingVisible, setIsDrawingVisible, geoServerLayers,
+    handleToggleGeoLayer, handleLayerOpacityChange, handleZoomToLayer,
+    handleToggleAllLayers, activeLayerTool, setActiveLayerTool,
+    handleToggleLayerQuery, activeZoomLayerId, handleHighlightLayer,
+    activeHighlightLayerId, isHighlightAnimating, handleUpdateLayerStyle
+}) => {
 
     const tools = [
         { icon: Eye, label: 'Visibility', id: 'visibility' },
@@ -14,12 +24,125 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
         { icon: Zap, label: 'Highlight Layer', id: 'highlight' },
         { icon: Palette, label: 'Layer Styles', id: 'styles' },
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
-        { icon: Table, label: 'Attribute Table', id: 'attribute' },
-        { icon: Plus, label: 'New Layer', id: 'new' },
         { icon: RefreshCw, label: 'Reload Layer', id: 'reload' },
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
-        { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' }
+        { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
+        { icon: Table, label: 'Attribute Table', id: 'attribute' },
+        { icon: LayersPlus, label: 'Layer Management', id: 'layermanagement' }
     ];
+
+    const [editingStyleLayer, setEditingStyleLayer] = useState(null);
+    const [styleData, setStyleData] = useState(null); // { styleName, sldBody, properties, availableProps }
+    const [isSavingStyle, setIsSavingStyle] = useState(false);
+
+    const parseSLD = (sldBody) => {
+        const props = {
+            fill: '#cccccc',
+            fillOpacity: 1,
+            stroke: '#333333',
+            strokeWidth: 1,
+            strokeOpacity: 1
+        };
+        const availableProps = {
+            fill: false,
+            fillOpacity: false,
+            stroke: false,
+            strokeWidth: false,
+            strokeOpacity: false
+        };
+
+        const check = (name) => {
+            const regex = new RegExp(`<[^>]*:(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>`);
+            const fallbackRegex = new RegExp(`<(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>`);
+            return regex.test(sldBody) || fallbackRegex.test(sldBody);
+        };
+
+        const extract = (name, defaultValue) => {
+            const regex = new RegExp(`<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>([^<]+)</(?:[\\w-]*:)?(?:Css|Svg)Parameter>`);
+            const match = sldBody.match(regex);
+            if (match) {
+                availableProps[name.replace('-width', 'Width').replace('-opacity', 'Opacity')] = true;
+                return match[1].trim();
+            }
+            return defaultValue;
+        };
+
+        props.fill = extract('fill', props.fill);
+        props.fillOpacity = parseFloat(extract('fill-opacity', props.fillOpacity));
+        props.stroke = extract('stroke', props.stroke);
+        props.strokeWidth = parseFloat(extract('stroke-width', props.strokeWidth));
+        props.strokeOpacity = parseFloat(extract('stroke-opacity', props.strokeOpacity));
+
+        // Map dash-names back to state keys for availability check
+        availableProps.fill = check('fill');
+        availableProps.fillOpacity = check('fill-opacity');
+        availableProps.stroke = check('stroke');
+        availableProps.strokeWidth = check('stroke-width');
+        availableProps.strokeOpacity = check('stroke-opacity');
+
+        return { props, availableProps };
+    };
+
+    const applyStyleChanges = (sldBody, props) => {
+        let newSld = sldBody;
+        const replace = (name, value) => {
+            // Robust regex for replacement as well
+            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]+(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`);
+            if (newSld.match(regex)) {
+                newSld = newSld.replace(regex, `$1${value}$2`);
+            } else {
+                console.warn(`Could not find ${name} in SLD to replace.`);
+            }
+        };
+
+        replace('fill', props.fill);
+        replace('fill-opacity', props.fillOpacity);
+        replace('stroke', props.stroke);
+        replace('stroke-width', props.strokeWidth);
+        replace('stroke-opacity', props.strokeOpacity);
+
+        return newSld;
+    };
+
+    const handleLoadStyle = async (layer) => {
+        if (editingStyleLayer === layer.id) {
+            setEditingStyleLayer(null);
+            setStyleData(null);
+            return;
+        }
+
+        setEditingStyleLayer(layer.id);
+        const data = await getLayerStyle(layer.fullName);
+        if (data) {
+            const { props, availableProps } = parseSLD(data.sldBody);
+            setStyleData({ ...data, properties: props, availableProps });
+        }
+    };
+
+    const handleSaveStyle = async () => {
+        if (!styleData || !editingStyleLayer) return;
+
+        const layer = geoServerLayers.find(l => l.id === editingStyleLayer);
+        if (!layer) return;
+
+        setIsSavingStyle(true);
+        const updatedSld = applyStyleChanges(styleData.sldBody, styleData.properties);
+        const success = await handleUpdateLayerStyle(editingStyleLayer, layer.fullName, updatedSld);
+
+        if (success) {
+            setStyleData({ ...styleData, sldBody: updatedSld });
+        } else {
+            alert('Failed to update style on server.');
+        }
+        setIsSavingStyle(false);
+    };
+
+    const updateStyleProp = (key, value) => {
+        setStyleData(prev => ({
+            ...prev,
+            properties: { ...prev.properties, [key]: value }
+        }));
+    };
 
     const allLayersVisible = geoServerLayers.length > 0 && geoServerLayers.every(l => l.visible);
 
@@ -84,6 +207,31 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
                         />
                     </div>
                 );
+            case 'styles':
+                return (
+                    <button
+                        className={`icon-toggle ${editingStyleLayer === layer.id ? 'active' : ''}`}
+                        onClick={() => handleLoadStyle(layer)}
+                        title="Customize Styles"
+                    >
+                        <Palette size={18} />
+                    </button>
+                );
+            case 'highlight': {
+                const isCurrentAnimating = isHighlightAnimating && activeHighlightLayerId === layer.id;
+                return (
+                    <button
+                        className={`icon-toggle ${isCurrentAnimating ? 'active animating' : ''}`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleHighlightLayer(layer.id);
+                        }}
+                        title={isCurrentAnimating ? "Stop Animation" : "Highlight Layer"}
+                    >
+                        {isCurrentAnimating ? <Square size={16} fill="currentColor" /> : <Zap size={18} />}
+                    </button>
+                );
+            }
             default:
                 return null;
         }
@@ -97,7 +245,13 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
                         <Tooltip.Trigger asChild>
                             <button
                                 className={`layer-tool-sidebar-btn ${activeLayerTool === tool.id ? 'active' : ''}`}
-                                onClick={() => setActiveLayerTool(activeLayerTool === tool.id ? null : tool.id)}
+                                onClick={() => {
+                                    setActiveLayerTool(activeLayerTool === tool.id ? null : tool.id);
+                                    if (activeLayerTool !== 'styles') {
+                                        setEditingStyleLayer(null);
+                                        setStyleData(null);
+                                    }
+                                }}
                             >
                                 <tool.icon size={22} strokeWidth={1.5} />
                             </button>
@@ -113,8 +267,7 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
             </div>
 
             <div className="layer-list-content">
-
-                {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && (
+                {(activeLayerTool === 'visibility') && (
                     <>
                         <div className="layer-section-header">Operational Overlays</div>
                         <div>
@@ -123,10 +276,7 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
                                     <Pencil size={13} style={{ color: "var(--color-primary)" }} />
                                     <span>Workspace Drawings</span>
                                 </div>
-                                <label
-                                    className="toggle-switch"
-                                    style={{ transform: 'scale(0.8)', marginRight: '-4px' }}
-                                >
+                                <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
                                     <input
                                         type="checkbox"
                                         checked={isDrawingVisible}
@@ -155,16 +305,17 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
                         </div>
                     )}
                 </div>
+
                 <div className="layer-list-group scrollable">
                     {(() => {
-                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info')
+                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles')
                             ? geoServerLayers.filter(l => l.visible)
                             : geoServerLayers;
 
                         if (displayedLayers.length === 0) {
                             return (
                                 <div className="empty-layers-msg">
-                                    {(activeLayerTool === 'density' || activeLayerTool === 'legend')
+                                    {(activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'styles')
                                         ? "No visible layers."
                                         : "No server layers connected."}
                                 </div>
@@ -172,12 +323,141 @@ const LayerOperations = ({ isDrawingVisible, setIsDrawingVisible, geoServerLayer
                         }
 
                         return displayedLayers.map(layer => (
-                            <div className="layer-item-redesigned" key={layer.id}>
-                                <div className="layer-info" style={{ flex: activeLayerTool === 'density' ? '0 0 auto' : '1', maxWidth: activeLayerTool === 'density' ? '120px' : 'none' }}>
-                                    <CircleDot size={14} className="layer-icon" />
-                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '13px', fontWeight: '500' }}>{layer.name}</span>
+                            <div key={layer.id}>
+                                <div
+                                    className={`layer-item-redesigned 
+                                        ${activeLayerTool === 'zoom' && activeZoomLayerId === layer.id ? 'active' : ''} 
+                                        ${activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id ? 'active' : ''}
+                                        ${activeLayerTool === 'styles' && editingStyleLayer === layer.id ? 'active' : ''}
+                                    `}
+                                    onClick={() => {
+                                        if (activeLayerTool === 'zoom') {
+                                            handleZoomToLayer(layer.id);
+                                        } else if (activeLayerTool === 'highlight') {
+                                            handleHighlightLayer(layer.id);
+                                        } else if (activeLayerTool === 'styles') {
+                                            handleLoadStyle(layer);
+                                        }
+                                    }}
+                                    style={{
+                                        cursor: (activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles') ? 'pointer' : 'default',
+                                        borderLeft: (
+                                            (activeLayerTool === 'zoom' && activeZoomLayerId === layer.id) ||
+                                            (activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id) ||
+                                            (activeLayerTool === 'styles' && editingStyleLayer === layer.id)
+                                        ) ? '3px solid var(--color-primary)' : 'none',
+                                        backgroundColor: (
+                                            (activeLayerTool === 'zoom' && activeZoomLayerId === layer.id) ||
+                                            (activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id) ||
+                                            (activeLayerTool === 'styles' && editingStyleLayer === layer.id)
+                                        ) ? 'rgba(var(--color-primary-rgb), 0.12)' : 'transparent'
+                                    }}
+                                >
+                                    <div className="layer-info" style={{
+                                        flex: activeLayerTool === 'density' ? '0 0 auto' : '1',
+                                        maxWidth: activeLayerTool === 'density' ? '120px' : 'none'
+                                    }}>
+                                        <CircleDot size={14} className="layer-icon" />
+                                        <span style={{
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            fontSize: '13px',
+                                            fontWeight: '500'
+                                        }}>
+                                            {layer.name}
+                                        </span>
+                                    </div>
+                                    {renderLayerContent(layer)}
                                 </div>
-                                {renderLayerContent(layer)}
+
+                                {/* Style Editor Panel */}
+                                {activeLayerTool === 'styles' && editingStyleLayer === layer.id && styleData && (
+                                    <div className="style-editor-panel" style={{
+                                        padding: '12px',
+                                        margin: '4px 8px 12px 34px',
+                                        background: 'rgba(var(--color-primary-rgb), 0.03)',
+                                        borderRadius: '8px',
+                                        border: '1px solid rgba(var(--color-primary-rgb), 0.1)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '10px'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                            <span style={{ fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', opacity: 0.6 }}>Custom Style Editor</span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleSaveStyle(); }}
+                                                disabled={isSavingStyle}
+                                                style={{
+                                                    fontSize: '11px',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    background: 'var(--color-primary)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {isSavingStyle ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                                {isSavingStyle ? 'Saving...' : 'Update Style'}
+                                            </button>
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                            {styleData.availableProps.fill && (
+                                                <div className="style-field">
+                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Fill Color</label>
+                                                    <input
+                                                        type="color"
+                                                        value={styleData.properties.fill}
+                                                        onChange={(e) => updateStyleProp('fill', e.target.value)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        style={{ width: '100%', height: '20px', border: 'none', padding: 0, background: 'none' }}
+                                                    />
+                                                </div>
+                                            )}
+                                            {styleData.availableProps.stroke && (
+                                                <div className="style-field">
+                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Stroke Color</label>
+                                                    <input
+                                                        type="color"
+                                                        value={styleData.properties.stroke}
+                                                        onChange={(e) => updateStyleProp('stroke', e.target.value)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        style={{ width: '100%', height: '20px', border: 'none', padding: 0, background: 'none' }}
+                                                    />
+                                                </div>
+                                            )}
+                                            {styleData.availableProps.fillOpacity && (
+                                                <div className="style-field">
+                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Fill Opacity ({Math.round(styleData.properties.fillOpacity * 100)}%)</label>
+                                                    <input
+                                                        type="range" min="0" max="1" step="0.1"
+                                                        value={styleData.properties.fillOpacity}
+                                                        onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        style={{ width: '100%' }}
+                                                    />
+                                                </div>
+                                            )}
+                                            {styleData.availableProps.strokeWidth && (
+                                                <div className="style-field">
+                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Stroke Width ({styleData.properties.strokeWidth}px)</label>
+                                                    <input
+                                                        type="range" min="0" max="10" step="0.5"
+                                                        value={styleData.properties.strokeWidth}
+                                                        onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        style={{ width: '100%' }}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ));
                     })()}
