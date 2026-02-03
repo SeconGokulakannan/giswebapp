@@ -133,17 +133,36 @@ const LayerOperations = ({
         props.haloRadius = parseFloat(extractTag('Radius', props.haloRadius));
         props.haloColor = extract('fill', props.haloColor); // Simplified
 
-        // Map dash-names back to state keys for availability check
-        availableProps.fill = check('fill');
-        availableProps.fillOpacity = check('fill-opacity');
-        availableProps.stroke = check('stroke');
-        availableProps.strokeWidth = check('stroke-width');
-        availableProps.strokeOpacity = check('stroke-opacity');
-        availableProps.strokeDasharray = check('stroke-dasharray');
-        availableProps.strokeLinecap = check('stroke-linecap');
-        availableProps.strokeLinejoin = check('stroke-linejoin');
-        availableProps.fontSize = check('font-size');
-        availableProps.haloRadius = availableProps.radius; // Sync with extractTag naming
+        // Detect Symbolizer presence
+        const hasPoint = sldBody.includes('PointSymbolizer');
+        const hasLine = sldBody.includes('LineSymbolizer');
+        const hasPolygon = sldBody.includes('PolygonSymbolizer');
+        const hasText = sldBody.includes('TextSymbolizer');
+
+        // Force availability for common target layers if detected
+        if (hasPolygon || (!hasPoint && !hasLine)) {
+            availableProps.fill = true;
+            availableProps.fillOpacity = true;
+            availableProps.stroke = true;
+            availableProps.strokeWidth = true;
+            availableProps.strokeDasharray = true;
+        }
+        if (hasPoint) {
+            availableProps.size = true;
+            availableProps.wellknownname = true;
+            availableProps.stroke = true;
+            availableProps.fill = true;
+        }
+        if (hasLine) {
+            availableProps.stroke = true;
+            availableProps.strokeWidth = true;
+            availableProps.strokeDasharray = true;
+        }
+        if (hasText) {
+            availableProps.fontSize = true;
+            availableProps.haloRadius = true;
+            availableProps.fontColor = true;
+        }
 
         return { props, availableProps };
     };
@@ -151,13 +170,38 @@ const LayerOperations = ({
     const applyStyleChanges = (sldBody, props) => {
         let newSld = sldBody;
 
-        const replace = (name, value, parentTagName) => {
-            if (value === undefined || value === null || value === '') return;
+        // Ensure parent tags exist BEFORE replacing children
+        const ensureParent = (parentTag, containerTag) => {
+            // Case-insensitive check for the tag presence
+            const tagRegex = new RegExp(`<${parentTag}[^>]*>`, 'i');
+            if (!newSld.match(tagRegex)) {
+                const containerRegex = new RegExp(`(<(?:[\\w-]*:)?${containerTag}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${containerTag}>)`, 'i');
+                const match = newSld.match(containerRegex);
+                if (match) {
+                    const prefixMatch = match[1].match(/<([\w-]*:)/);
+                    const prefix = prefixMatch ? prefixMatch[1] : '';
+                    const newParent = `\n            <${prefix}${parentTag}></${prefix}${parentTag}>`;
+                    newSld = newSld.replace(containerRegex, `$1$2${newParent}$3`);
+                }
+            }
+        };
 
-            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]+(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
+        ensureParent('Fill', 'PolygonSymbolizer');
+        ensureParent('Stroke', 'PolygonSymbolizer');
+        ensureParent('Stroke', 'LineSymbolizer');
+        ensureParent('Fill', 'Mark');
+        ensureParent('Stroke', 'Mark');
+        ensureParent('Halo', 'TextSymbolizer');
+        ensureParent('Font', 'TextSymbolizer');
+        ensureParent('Fill', 'TextSymbolizer');
+
+        const replace = (name, value, parentTagName) => {
+            if (value === undefined || value === null) return;
+
+            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
             if (newSld.match(regex)) {
                 newSld = newSld.replace(regex, `$1${value}$2`);
-            } else if (parentTagName) {
+            } else if (parentTagName && value !== '') {
                 // If not found, try to insert into parent
                 const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
                 const match = newSld.match(parentRegex);
@@ -168,6 +212,9 @@ const LayerOperations = ({
                     const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
                     newSld = newSld.replace(parentRegex, `$1$2${newParam}$3`);
                 }
+            } else if (name === 'stroke-dasharray' && value === '') {
+                // Special case: for solid lines, if the parameter exists but we want it blank,
+                // we've already handled replacement above. If it doesn't exist, we don't need to add it.
             }
         };
 
@@ -252,11 +299,17 @@ const LayerOperations = ({
         setIsSavingStyle(false);
     };
 
-    const updateStyleProp = (key, value) => {
-        setStyleData(prev => ({
-            ...prev,
-            properties: { ...prev.properties, [key]: value }
-        }));
+    const updateStyleProp = (key, value, autoSave = false) => {
+        setStyleData(prev => {
+            const newData = {
+                ...prev,
+                properties: { ...prev.properties, [key]: value }
+            };
+            if (autoSave) {
+                // We'll call save after state update in the onClick
+            }
+            return newData;
+        });
     };
 
     const allLayersVisible = geoServerLayers.length > 0 && geoServerLayers.every(l => l.visible);
@@ -558,9 +611,18 @@ const LayerOperations = ({
                                                                     key={color}
                                                                     className="ref-preset-item"
                                                                     style={{ backgroundColor: color }}
-                                                                    onClick={() => {
-                                                                        updateStyleProp('fill', color);
-                                                                        updateStyleProp('stroke', color);
+                                                                    onClick={async () => {
+                                                                        const updatedProps = { ...styleData.properties, fill: color, stroke: color };
+                                                                        const updatedSld = applyStyleChanges(styleData.sldBody, updatedProps);
+                                                                        const layer = geoServerLayers.find(l => l.id === editingStyleLayer);
+                                                                        if (layer) {
+                                                                            setIsSavingStyle(true);
+                                                                            const success = await handleUpdateLayerStyle(editingStyleLayer, layer.fullName, updatedSld);
+                                                                            if (success) {
+                                                                                setStyleData({ ...styleData, properties: updatedProps, sldBody: updatedSld });
+                                                                            }
+                                                                            setIsSavingStyle(false);
+                                                                        }
                                                                     }}
                                                                 />
                                                             ))}
