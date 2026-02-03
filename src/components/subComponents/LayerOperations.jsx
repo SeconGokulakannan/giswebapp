@@ -34,6 +34,26 @@ const LayerOperations = ({
     const [editingStyleLayer, setEditingStyleLayer] = useState(null);
     const [styleData, setStyleData] = useState(null); // { styleName, sldBody, properties, availableProps }
     const [isSavingStyle, setIsSavingStyle] = useState(false);
+    const [activeStyleTab, setActiveStyleTab] = useState('symbology'); // symbology, labels
+
+    const PRESET_COLORS = [
+        '#3366cc', '#cc0000', '#669933', '#3399cc', '#cc6600', '#993399', '#3399ff', '#ff3333', '#99cc66',
+        '#6699ff', '#ff6666', '#aaddff', '#ffaaaa', '#99ff99', '#ffff66', '#ffcc00', '#ff9933', '#663300'
+    ];
+
+    const DASH_STYLES = {
+        'Solid': '',
+        'Dash': '5 2',
+        'Dot': '2 2',
+        'Dash dot': '5 2 2 2',
+        'Dash dot dot': '5 2 2 2 2 2'
+    };
+
+    const getDashName = (dashArray) => {
+        if (!dashArray) return 'Solid';
+        const entry = Object.entries(DASH_STYLES).find(([name, val]) => val === dashArray);
+        return entry ? entry[0] : 'Solid';
+    };
 
     const parseSLD = (sldBody) => {
         const props = {
@@ -41,14 +61,34 @@ const LayerOperations = ({
             fillOpacity: 1,
             stroke: '#333333',
             strokeWidth: 1,
-            strokeOpacity: 1
+            strokeOpacity: 1,
+            strokeDasharray: '',
+            strokeLinecap: 'butt',
+            strokeLinejoin: 'miter',
+            size: 10,
+            rotation: 0,
+            wellKnownName: 'circle',
+            fontSize: 12,
+            fontColor: '#000000',
+            haloRadius: 0,
+            haloColor: '#ffffff'
         };
         const availableProps = {
             fill: false,
             fillOpacity: false,
             stroke: false,
             strokeWidth: false,
-            strokeOpacity: false
+            strokeOpacity: false,
+            strokeDasharray: false,
+            strokeLinecap: false,
+            strokeLinejoin: false,
+            size: false,
+            rotation: false,
+            wellKnownName: false,
+            fontSize: false,
+            fontColor: false,
+            haloRadius: false,
+            haloColor: false
         };
 
         const check = (name) => {
@@ -67,11 +107,31 @@ const LayerOperations = ({
             return defaultValue;
         };
 
+        const extractTag = (tagName, defaultValue) => {
+            const regex = new RegExp(`<${tagName}>([^<]+)</${tagName}>`);
+            const match = sldBody.match(regex);
+            if (match) {
+                availableProps[tagName.toLowerCase()] = true;
+                return match[1].trim();
+            }
+            return defaultValue;
+        };
+
         props.fill = extract('fill', props.fill);
         props.fillOpacity = parseFloat(extract('fill-opacity', props.fillOpacity));
         props.stroke = extract('stroke', props.stroke);
         props.strokeWidth = parseFloat(extract('stroke-width', props.strokeWidth));
         props.strokeOpacity = parseFloat(extract('stroke-opacity', props.strokeOpacity));
+        props.strokeDasharray = extract('stroke-dasharray', props.strokeDasharray);
+        props.strokeLinecap = extract('stroke-linecap', props.strokeLinecap);
+        props.strokeLinejoin = extract('stroke-linejoin', props.strokeLinejoin);
+        props.size = parseFloat(extractTag('Size', props.size));
+        props.rotation = parseFloat(extractTag('Rotation', props.rotation));
+        props.wellKnownName = extractTag('WellKnownName', props.wellKnownName);
+        props.fontSize = parseFloat(extract('font-size', props.fontSize));
+        props.fontColor = extract('fill', props.fontColor); // Simplified, ideally check context
+        props.haloRadius = parseFloat(extractTag('Radius', props.haloRadius));
+        props.haloColor = extract('fill', props.haloColor); // Simplified
 
         // Map dash-names back to state keys for availability check
         availableProps.fill = check('fill');
@@ -79,27 +139,82 @@ const LayerOperations = ({
         availableProps.stroke = check('stroke');
         availableProps.strokeWidth = check('stroke-width');
         availableProps.strokeOpacity = check('stroke-opacity');
+        availableProps.strokeDasharray = check('stroke-dasharray');
+        availableProps.strokeLinecap = check('stroke-linecap');
+        availableProps.strokeLinejoin = check('stroke-linejoin');
+        availableProps.fontSize = check('font-size');
+        availableProps.haloRadius = availableProps.radius; // Sync with extractTag naming
 
         return { props, availableProps };
     };
 
     const applyStyleChanges = (sldBody, props) => {
         let newSld = sldBody;
-        const replace = (name, value) => {
-            // Robust regex for replacement as well
-            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]+(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`);
+
+        const replace = (name, value, parentTagName) => {
+            if (value === undefined || value === null || value === '') return;
+
+            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]+(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
             if (newSld.match(regex)) {
                 newSld = newSld.replace(regex, `$1${value}$2`);
-            } else {
-                console.warn(`Could not find ${name} in SLD to replace.`);
+            } else if (parentTagName) {
+                // If not found, try to insert into parent
+                const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
+                const match = newSld.match(parentRegex);
+                if (match) {
+                    const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+                    const prefixMatch = match[1].match(/<([\w-]*:)/);
+                    const prefix = prefixMatch ? prefixMatch[1] : '';
+                    const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
+                    newSld = newSld.replace(parentRegex, `$1$2${newParam}$3`);
+                }
             }
         };
 
-        replace('fill', props.fill);
-        replace('fill-opacity', props.fillOpacity);
-        replace('stroke', props.stroke);
-        replace('stroke-width', props.strokeWidth);
-        replace('stroke-opacity', props.strokeOpacity);
+        const replaceTag = (tagName, value, parentTagName) => {
+            if (value === undefined || value === null) return;
+            const regex = new RegExp(`(<(?:[\\w-]*:)?${tagName}[^>]*>)[^<]*(</(?:[\\w-]*:)?${tagName}>)`, 'i');
+            if (newSld.match(regex)) {
+                newSld = newSld.replace(regex, `$1${value}$2`);
+            } else if (parentTagName) {
+                const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
+                const match = newSld.match(parentRegex);
+                if (match) {
+                    const prefixMatch = match[1].match(/<([\w-]*:)/);
+                    const prefix = prefixMatch ? prefixMatch[1] : '';
+                    const newTag = `\n            <${prefix}${tagName}>${value}</${prefix}${tagName}>`;
+                    newSld = newSld.replace(parentRegex, `$1$2${newTag}$3`);
+                }
+            }
+        };
+
+        replace('fill', props.fill, 'Fill');
+        replace('fill-opacity', props.fillOpacity, 'Fill');
+        replace('stroke', props.stroke, 'Stroke');
+        replace('stroke-width', props.strokeWidth, 'Stroke');
+        replace('stroke-opacity', props.strokeOpacity, 'Stroke');
+        replace('stroke-dasharray', props.strokeDasharray, 'Stroke');
+        replace('stroke-linecap', props.strokeLinecap, 'Stroke');
+        replace('stroke-linejoin', props.strokeLinejoin, 'Stroke');
+
+        replaceTag('Size', props.size, 'Mark');
+        replaceTag('Rotation', props.rotation, 'Mark');
+        replaceTag('WellKnownName', props.wellKnownName, 'Mark');
+
+        replace('font-size', props.fontSize, 'Font');
+        replaceTag('Radius', props.haloRadius, 'Halo');
+
+        // Special handling for nested colors (Halo/Font)
+        const replaceNestedFill = (parentTag, value) => {
+            if (!value) return;
+            const regex = new RegExp(`(<(?:[\\w-]*:)?${parentTag}>[\\s\\S]*?<[\\w-]*:?Fill>[\\s\\S]*?<[\\w-]*:?(?:Css|Svg)Parameter name="fill">)[^<]+(</[\\w-]*:?(?:Css|Svg)Parameter>)`, 'i');
+            if (newSld.match(regex)) {
+                newSld = newSld.replace(regex, `$1${value}$2`);
+            }
+        };
+
+        replaceNestedFill('Halo', props.haloColor);
+        replaceNestedFill('TextSymbolizer', props.fontColor);
 
         return newSld;
     };
@@ -406,53 +521,135 @@ const LayerOperations = ({
                                             </button>
                                         </div>
 
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                            {styleData.availableProps.fill && (
-                                                <div className="style-field">
-                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Fill Color</label>
-                                                    <input
-                                                        type="color"
-                                                        value={styleData.properties.fill}
-                                                        onChange={(e) => updateStyleProp('fill', e.target.value)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        style={{ width: '100%', height: '20px', border: 'none', padding: 0, background: 'none' }}
-                                                    />
+                                        {/* Tabs Header */}
+                                        <div className="style-tabs">
+                                            <button
+                                                className={`style-tab-btn ${activeStyleTab === 'symbology' ? 'active' : ''}`}
+                                                onClick={(e) => { e.stopPropagation(); setActiveStyleTab('symbology'); }}
+                                            >
+                                                <Palette size={14} /> Symbology
+                                            </button>
+                                            <button
+                                                className={`style-tab-btn ${activeStyleTab === 'labels' ? 'active' : ''}`}
+                                                onClick={(e) => { e.stopPropagation(); setActiveStyleTab('labels'); }}
+                                            >
+                                                <List size={14} /> Labels
+                                            </button>
+                                        </div>
+
+                                        <div className="style-tab-content modern-ref">
+                                            {activeStyleTab === 'symbology' ? (
+                                                <div className="tab-pane ref-layout">
+                                                    {/* PREVIEW HEADER */}
+                                                    <div className="ref-row preview-header">
+                                                        <span className="ref-label">Preview:</span>
+                                                        <div className="ref-preview-swatches">
+                                                            {[1, 2, 3, 4, 5].map(i => (
+                                                                <div key={i} className="ref-preview-dot" style={{ backgroundColor: styleData.properties.fill }} />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* PRESET GRID */}
+                                                    <div className="ref-preset-container">
+                                                        <div className="ref-preset-grid">
+                                                            {PRESET_COLORS.map(color => (
+                                                                <div
+                                                                    key={color}
+                                                                    className="ref-preset-item"
+                                                                    style={{ backgroundColor: color }}
+                                                                    onClick={() => {
+                                                                        updateStyleProp('fill', color);
+                                                                        updateStyleProp('stroke', color);
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* COLOR FIELD */}
+                                                    <div className="ref-row">
+                                                        <span className="ref-label">Color:</span>
+                                                        <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fill }}>
+                                                            <input
+                                                                type="color"
+                                                                value={styleData.properties.fill}
+                                                                onChange={(e) => {
+                                                                    updateStyleProp('fill', e.target.value);
+                                                                    updateStyleProp('stroke', e.target.value);
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* STYLE FIELD */}
+                                                    <div className="ref-row">
+                                                        <span className="ref-label">Style:</span>
+                                                        <div className="ref-select-wrapper">
+                                                            <select
+                                                                value={getDashName(styleData.properties.strokeDasharray)}
+                                                                onChange={(e) => updateStyleProp('strokeDasharray', DASH_STYLES[e.target.value])}
+                                                            >
+                                                                {Object.keys(DASH_STYLES).map(name => (
+                                                                    <option key={name} value={name}>{name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* TRANSPARENCY FIELD */}
+                                                    <div className="ref-row">
+                                                        <span className="ref-label">Transparency:</span>
+                                                        <div className="ref-input-group">
+                                                            <input
+                                                                type="range" min="0" max="1" step="0.1"
+                                                                value={styleData.properties.fillOpacity}
+                                                                onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
+                                                            />
+                                                            <span className="ref-value-text">{Math.round(styleData.properties.fillOpacity * 100)}%</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* WIDTH FIELD */}
+                                                    <div className="ref-row">
+                                                        <span className="ref-label">Width:</span>
+                                                        <div className="ref-input-group">
+                                                            <input
+                                                                type="range" min="0" max="10" step="0.5"
+                                                                value={styleData.properties.strokeWidth}
+                                                                onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
+                                                            />
+                                                            <span className="ref-value-text">{styleData.properties.strokeWidth}pt</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            )}
-                                            {styleData.availableProps.stroke && (
-                                                <div className="style-field">
-                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Stroke Color</label>
-                                                    <input
-                                                        type="color"
-                                                        value={styleData.properties.stroke}
-                                                        onChange={(e) => updateStyleProp('stroke', e.target.value)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        style={{ width: '100%', height: '20px', border: 'none', padding: 0, background: 'none' }}
-                                                    />
-                                                </div>
-                                            )}
-                                            {styleData.availableProps.fillOpacity && (
-                                                <div className="style-field">
-                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Fill Opacity ({Math.round(styleData.properties.fillOpacity * 100)}%)</label>
-                                                    <input
-                                                        type="range" min="0" max="1" step="0.1"
-                                                        value={styleData.properties.fillOpacity}
-                                                        onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        style={{ width: '100%' }}
-                                                    />
-                                                </div>
-                                            )}
-                                            {styleData.availableProps.strokeWidth && (
-                                                <div className="style-field">
-                                                    <label style={{ fontSize: '10px', display: 'block', marginBottom: '2px' }}>Stroke Width ({styleData.properties.strokeWidth}px)</label>
-                                                    <input
-                                                        type="range" min="0" max="10" step="0.5"
-                                                        value={styleData.properties.strokeWidth}
-                                                        onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        style={{ width: '100%' }}
-                                                    />
+                                            ) : (
+                                                <div className="tab-pane">
+                                                    {/* LABELING SECTION KEEPING MINIMALIST BUT ALIGNED */}
+                                                    <div className="symbology-header">
+                                                        <Info size={13} /> Labeling Settings
+                                                    </div>
+
+                                                    {(styleData.availableProps.fontSize || styleData.availableProps.haloRadius) ? (
+                                                        <div className="style-category minimalist">
+                                                            <div className="style-grid">
+                                                                {styleData.availableProps.fontSize && (
+                                                                    <div className="style-field">
+                                                                        <label>Font Size</label>
+                                                                        <input type="range" min="6" max="72" step="1" value={styleData.properties.fontSize} onChange={(e) => updateStyleProp('fontSize', parseFloat(e.target.value))} />
+                                                                    </div>
+                                                                )}
+                                                                {styleData.availableProps.haloRadius && (
+                                                                    <div className="style-field">
+                                                                        <label>Halo Radius</label>
+                                                                        <input type="range" min="0" max="10" step="0.5" value={styleData.properties.haloRadius} onChange={(e) => updateStyleProp('haloRadius', parseFloat(e.target.value))} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="no-props-hint">No labeling data found.</div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
