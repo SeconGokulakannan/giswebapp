@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getLegendUrl, getLayerStyle, uploadIcon, getLayerAttributes } from '../../services/Server';
+import toast from 'react-hot-toast';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
     Eye, Settings2, List, Info, MapPinned, Zap, Square, Play,
@@ -15,7 +16,9 @@ const LayerOperations = ({
     handleToggleAllLayers, activeLayerTool, setActiveLayerTool,
     handleToggleLayerQuery, activeZoomLayerId, handleHighlightLayer,
     activeHighlightLayerId, isHighlightAnimating, handleUpdateLayerStyle,
-    infoSelectionMode, setInfoSelectionMode, saveSequence
+    infoSelectionMode, setInfoSelectionMode, saveSequence, refreshLayers,
+    selectedAttributeLayerId, setSelectedAttributeLayerId,
+    showAttributeTable, setShowAttributeTable, GetLayerAttributes
 }) => {
 
     const tools = [
@@ -42,7 +45,6 @@ const LayerOperations = ({
     const [isSavingSequences, setIsSavingSequences] = useState(false);
     const [localLayers, setLocalLayers] = useState([]);
 
-    // Initialize localLayers from geoServerLayers
     useEffect(() => {
         if (geoServerLayers && geoServerLayers.length > 0) {
             setLocalLayers([...geoServerLayers]);
@@ -65,10 +67,18 @@ const LayerOperations = ({
             }));
 
             await saveSequence(sequenceList);
-            alert('Sequences saved successfully!');
+
+            // Re-fetch sorted layers from server after a small delay to ensure persistence
+            await new Promise(r => setTimeout(r, 500));
+
+            if (refreshLayers) {
+                await refreshLayers();
+            }
+
+            toast.success('Sequences saved successfully!');
         } catch (error) {
             console.error("Failed to save sequences", error);
-            alert('Failed to save sequences.');
+            toast.error('Failed to save sequences.');
         } finally {
             setIsSavingSequences(false);
         }
@@ -465,8 +475,9 @@ const LayerOperations = ({
                 const { props, availableProps } = parseSLD(newData.sldBody);
                 setStyleData({ ...newData, properties: props, availableProps });
             }
+            toast.success('Style updated successfully!');
         } else {
-            alert('Failed to update style on server.');
+            toast.error('Failed to update style on server.');
         }
         setIsSavingStyle(false);
     };
@@ -485,8 +496,9 @@ const LayerOperations = ({
 
         if (filename) {
             updateStyleProp('externalGraphicUrl', filename, true);
+            toast.success('Icon uploaded successfully!');
         } else {
-            alert('Failed to upload icon to server.');
+            toast.error('Failed to upload icon to server.');
         }
     };
 
@@ -611,6 +623,30 @@ const LayerOperations = ({
                         <span style={{ fontSize: '12px' }}>#{projectedSeq}</span>
                         <GripVertical size={16} style={{ cursor: 'grab', opacity: 0.6 }} />
                     </div>
+                );
+            }
+
+            case 'attribute': {
+                const isSelected = selectedAttributeLayerId === layer.id;
+                return (
+                    <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                                const checked = e.target.checked;
+                                if (checked) {
+                                    setSelectedAttributeLayerId(layer.id);
+                                    setShowAttributeTable(true);
+                                    GetLayerAttributes(layer.id);
+                                } else {
+                                    setSelectedAttributeLayerId(null);
+                                    setShowAttributeTable(false);
+                                }
+                            }}
+                        />
+                        <span className="toggle-slider"></span>
+                    </label>
                 );
             }
 
@@ -767,7 +803,7 @@ const LayerOperations = ({
                     {(() => {
                         const sourceLayers = activeLayerTool === 'reorder' ? localLayers : geoServerLayers;
 
-                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles')
+                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles' || activeLayerTool === 'attribute')
                             ? sourceLayers.filter(l => l.visible)
                             : sourceLayers;
 

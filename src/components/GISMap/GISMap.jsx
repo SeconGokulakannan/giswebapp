@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import Map from 'ol/Map';
 import '../../styles/GISMap.css';
 import '../../styles/responsive.css';
@@ -50,6 +51,7 @@ import {
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 import FeatureInfoCard from '../subComponents/FeatureInfoCard';
+import AttributeTableCard from '../subComponents/AttributeTableCard';
 
 
 function GISMap() {
@@ -108,6 +110,8 @@ function GISMap() {
   const [activeZoomLayerId, setActiveZoomLayerId] = useState(null);
   const [activeHighlightLayerId, setActiveHighlightLayerId] = useState(null);
   const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
+  const [selectedAttributeLayerId, setSelectedAttributeLayerId] = useState(null);
+  const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const featureInfoOverlayRef = useRef(null);
   const popupElementRef = useRef(null);
@@ -223,7 +227,7 @@ function GISMap() {
         opacity: 1,
         queryable: true
       }));
-      setGeoServerLayers(layerObjects);
+      setGeoServerLayers(layerObjects.sort((a, b) => (a.sequence || 999) - (b.sequence || 999)));
     } catch (err) {
       console.error('Failed to load layers:', err);
     }
@@ -253,8 +257,9 @@ function GISMap() {
           mapInstanceRef.current.addLayer(wmsLayer);
           operationalLayersRef.current[layer.id] = wmsLayer;
         } else {
-          // Update existing properties if needed (e.g. opacity)
+          // Update existing properties if needed (e.g. opacity, sequence/zIndex)
           existingLayer.setOpacity(layer.opacity);
+          existingLayer.setZIndex(1000 - (layer.sequence || 999));
         }
       } else if (!layer.visible && existingLayer) {
         // Remove layer
@@ -318,7 +323,8 @@ function GISMap() {
           duration: 1000
         });
       } else {
-        alert('Layer extent not available.');
+        setMapIsZooming(false);
+        toast.error('Layer extent not available.');
       }
     } catch (err) {
       console.error('Zoom error:', err);
@@ -385,6 +391,11 @@ function GISMap() {
       return true;
     }
     return false;
+  };
+
+  const GetLayerAttributes = (layerId) => {
+    console.log(`Getting attributes for layer: ${layerId}`);
+    // Stub for now
   };
 
   // Elite: Automatic Tool Deactivation
@@ -1079,12 +1090,12 @@ function GISMap() {
     const lon = parseFloat(gotoLon);
 
     if (isNaN(lat) || isNaN(lon)) {
-      alert('Please enter valid coordinates');
+      toast.error('Please enter valid coordinates');
       return;
     }
 
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      alert('Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)');
+      toast.error('Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)');
       return;
     }
 
@@ -1202,7 +1213,7 @@ function GISMap() {
         },
         (error) => {
           console.error('Geolocation error:', error);
-          alert('Unable to retrieve your location. Please check your browser permissions.');
+          toast.error('Unable to retrieve your location. Please check your browser permissions.');
         },
         {
           enableHighAccuracy: true,
@@ -1211,7 +1222,7 @@ function GISMap() {
         }
       );
     } else {
-      alert('Geolocation is not supported by your browser.');
+      toast.error('Geolocation is not supported by your browser.');
     }
   };
 
@@ -1264,7 +1275,7 @@ function GISMap() {
         // Footer
         pdf.setFontSize(10);
         pdf.setTextColor(150);
-        pdf.text('Generated via CAMS GIS Workspace', 10, pdfHeight - 10);
+        pdf.text('Generated via GIS Workspace', 10, pdfHeight - 10);
 
         pdf.save(fullFileName);
       } else {
@@ -1275,10 +1286,10 @@ function GISMap() {
         link.click();
       }
 
-      alert('Map exported successfully!');
+      toast.success('Map exported successfully!');
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Failed to generate export. Please try again.');
+      toast.error('Failed to generate export. Please try again.');
     }
   };
 
@@ -1401,6 +1412,12 @@ function GISMap() {
             infoSelectionMode={infoSelectionMode}
             setInfoSelectionMode={setInfoSelectionMode}
             saveSequence={saveSequence}
+            refreshLayers={handleFetchGeoServerLayers}
+            selectedAttributeLayerId={selectedAttributeLayerId}
+            setSelectedAttributeLayerId={setSelectedAttributeLayerId}
+            showAttributeTable={showAttributeTable}
+            setShowAttributeTable={setShowAttributeTable}
+            GetLayerAttributes={GetLayerAttributes}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
@@ -1424,6 +1441,19 @@ function GISMap() {
               />
             );
           })()}
+
+          {/* Attribute Table Card */}
+          {showAttributeTable && selectedAttributeLayerId && (
+            <AttributeTableCard
+              isOpen={showAttributeTable}
+              onClose={() => {
+                setShowAttributeTable(false);
+                setSelectedAttributeLayerId(null);
+              }}
+              layerName={geoServerLayers.find(l => l.id === selectedAttributeLayerId)?.name || 'Unknown Layer'}
+              data={[]} // Future: will be fetched data
+            />
+          )}
         </div>
 
         {/* Measurement Badge - Hidden per user request */}

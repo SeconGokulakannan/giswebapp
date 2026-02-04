@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
     Map as MapIcon,
@@ -104,7 +105,13 @@ const MapPanel = ({
     handleUpdateLayerStyle,
     infoSelectionMode,
     setInfoSelectionMode,
-    saveSequence
+    saveSequence,
+    refreshLayers,
+    selectedAttributeLayerId,
+    setSelectedAttributeLayerId,
+    showAttributeTable,
+    setShowAttributeTable,
+    GetLayerAttributes
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -130,7 +137,7 @@ const MapPanel = ({
             const success = await handleSearch(searchQuery);
             setIsSearching(false);
             if (!success) {
-                alert('Location not found. Please try a different query.');
+                toast.error('Location not found. Please try a different query.');
             }
         }
     };
@@ -265,6 +272,12 @@ const MapPanel = ({
                         infoSelectionMode={infoSelectionMode}
                         setInfoSelectionMode={setInfoSelectionMode}
                         saveSequence={saveSequence}
+                        refreshLayers={refreshLayers}
+                        selectedAttributeLayerId={selectedAttributeLayerId}
+                        setSelectedAttributeLayerId={setSelectedAttributeLayerId}
+                        showAttributeTable={showAttributeTable}
+                        setShowAttributeTable={setShowAttributeTable}
+                        GetLayerAttributes={GetLayerAttributes}
                     />
                 )}
 
