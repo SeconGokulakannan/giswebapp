@@ -1,22 +1,14 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
-    Map as MapIcon,
-    Layers,
-    PenTool,
-    Ruler,
-    MapPin,
-    Moon,
-    Sun,
-    Trash2,
+    Map as MapIcon, Layers, PenTool, MapPin,
+    Moon, Sun, Trash2,
     ArrowLeft,
-    Search,
-    Loader2,
     Lock,
     Unlock,
     Wrench,
-    Toolbox,
     Printer,
-    Bookmark
+    Bookmark,
+    PanelRight
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -119,6 +111,28 @@ const MapHeader = ({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
+                                        className={`toolbar-button ${activePanel === 'swipetool' ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setActivePanel(activePanel === 'swipetool' ? null : 'swipetool');
+                                            setIsPanelMinimized(false);
+                                        }}
+                                        aria-label="Swipe Layers"
+                                    >
+                                        <PanelRight size={20} />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                                        Swipe Layers
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+
+                            <div className="toolbar-divider" />
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
                                         className={`toolbar-button ${activePanel === 'tools' || hasDrawings ? 'active' : ''}`}
                                         onClick={() => {
                                             setActivePanel(activePanel === 'tools' ? null : 'tools');
@@ -157,7 +171,7 @@ const MapHeader = ({
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
                             </Tooltip.Root>
-
+                            <div className="toolbar-divider" />
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button

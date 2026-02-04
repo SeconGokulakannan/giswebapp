@@ -9,9 +9,9 @@ import XYZ from 'ol/source/XYZ';
 import TileWMS from 'ol/source/TileWMS';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
-import { Draw, Modify, Snap, DragPan, DragZoom } from 'ol/interaction';
+import { Draw, Modify, Snap, DragPan, DragZoom, DragBox } from 'ol/interaction';
 import { createRegularPolygon, createBox } from 'ol/interaction/Draw';
-import { always } from 'ol/events/condition';
+import { always, platformModifierKeyOnly } from 'ol/events/condition';
 import { Stroke, Style, Circle as CircleStyle, Fill } from 'ol/style';
 import Feature from 'ol/Feature';
 import { fromLonLat, toLonLat } from 'ol/proj';
@@ -45,7 +45,8 @@ import {
   getWMSSourceParams,
   getLayerBBox,
   getLayerStyle,
-  updateLayerStyle
+  updateLayerStyle,
+  saveSequence
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 import FeatureInfoCard from '../subComponents/FeatureInfoCard';
@@ -99,6 +100,7 @@ function GISMap() {
   const activeFeatureRef = useRef(null);
   const operationalLayersRef = useRef({}); // Track layer instances
   const [activeLayerTool, setActiveLayerTool] = useState(null);
+  const [infoSelectionMode, setInfoSelectionMode] = useState('click'); // 'click' or 'drag'
 
   const [featureInfoResult, setFeatureInfoResult] = useState(null);
   const [featureInfoCoordinate, setFeatureInfoCoordinate] = useState(null);
@@ -106,19 +108,50 @@ function GISMap() {
   const [activeZoomLayerId, setActiveZoomLayerId] = useState(null);
   const [activeHighlightLayerId, setActiveHighlightLayerId] = useState(null);
   const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const featureInfoOverlayRef = useRef(null);
   const popupElementRef = useRef(null);
+  const dragBoxRef = useRef(null);
   const activeLayerToolRef = useRef(activeLayerTool);
+  const infoSelectionModeRef = useRef(infoSelectionMode);
   const geoServerLayersRef = useRef(geoServerLayers);
   const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
   const isHighlightAnimatingRef = useRef(isHighlightAnimating);
 
   useEffect(() => {
     activeLayerToolRef.current = activeLayerTool;
+    infoSelectionModeRef.current = infoSelectionMode;
     geoServerLayersRef.current = geoServerLayers;
     activeHighlightLayerIdRef.current = activeHighlightLayerId;
     isHighlightAnimatingRef.current = isHighlightAnimating;
-  }, [activeLayerTool, geoServerLayers, activeHighlightLayerId, isHighlightAnimating]);
+  }, [activeLayerTool, infoSelectionMode, geoServerLayers, activeHighlightLayerId, isHighlightAnimating]);
+
+  // Manage interaction activation based on current tool/mode
+  useEffect(() => {
+    if (!mapInstanceRef.current || !dragBoxRef.current || !mapReady) return;
+
+    const isDragMode = activeLayerTool === 'info' && infoSelectionMode === 'drag';
+
+    // Toggle DragBox
+    dragBoxRef.current.setActive(isDragMode);
+
+    // Toggle DragPan - Disable panning if we're in DragBox selection mode
+    mapInstanceRef.current.getInteractions().forEach((interaction) => {
+      if (interaction instanceof DragPan) {
+        interaction.setActive(!isDragMode && !isLocked);
+      }
+    });
+
+    // Update cursor
+    const viewport = mapInstanceRef.current.getViewport();
+    if (isDragMode) {
+      viewport.style.cursor = 'cell';
+    } else if (activeLayerTool === 'info') {
+      viewport.style.cursor = 'pointer';
+    } else {
+      viewport.style.cursor = '';
+    }
+  }, [activeLayerTool, infoSelectionMode, isLocked, mapReady]);
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;
 
@@ -176,22 +209,29 @@ function GISMap() {
   };
 
   // Initialize theme from localStorage
-  // Load GeoServer Layers on Mount
-  useEffect(() => {
-    const loadLayers = async () => {
-      const layers = await getGeoServerLayers();
-      // Take top 2 default layers as requested or any first 2
-      const layerObjects = layers.map((name, index) => ({
-        id: name,
-        name: name.split(':').pop(), // Human readable name
-        fullName: name,
-        visible: index < 2, // Default first 2 to visible as requested
-        opacity: 1, // Default opacity
-        queryable: true // Default queryable
+  // ELITE: Background Layer Loader
+  const handleFetchGeoServerLayers = async () => {
+    try {
+      const layers = await getGeoServerLayers(); // Now returns [{fullName, sequence, initialVisibility}, ...]
+      const layerObjects = layers.map((layer) => ({
+        id: layer.fullName,
+        name: layer.fullName.split(':').pop(),
+        fullName: layer.fullName,
+        sequence: layer.sequence,
+        layerId: layer.layerId, // Store the numeric/database ID
+        visible: layer.initialVisibility, // Use API property for initial visibility
+        opacity: 1,
+        queryable: true
       }));
       setGeoServerLayers(layerObjects);
-    };
-    loadLayers();
+    } catch (err) {
+      console.error('Failed to load layers:', err);
+    }
+  };
+
+  // Load GeoServer Layers on Mount
+  useEffect(() => {
+    handleFetchGeoServerLayers();
   }, []);
 
   // Sync GeoServer Layers with Map
@@ -206,7 +246,7 @@ function GISMap() {
           // Create and add layer
           const wmsLayer = new TileLayer({
             source: new TileWMS(getWMSSourceParams(layer.fullName)),
-            zIndex: 5, // Above base maps, below vector
+            zIndex: 1000 - (layer.sequence || 999), // Higher sequence = lower zIndex (sequence 1 is on top)
             opacity: layer.opacity,
             properties: { id: layer.id }
           });
@@ -570,7 +610,7 @@ function GISMap() {
     map.on('click', async (evt) => {
       const pixel = map.getPixelFromCoordinate(evt.coordinate);
 
-      if (activeLayerToolRef.current === 'info') {
+      if (activeLayerToolRef.current === 'info' && infoSelectionModeRef.current === 'click') {
         const view = map.getView();
         const viewResolution = view.getResolution();
         const projection = view.getProjection();
@@ -661,6 +701,57 @@ function GISMap() {
       }
     });
 
+    // DRAGBOX INTERACTION for Spatial Query
+    const dragBox = new DragBox({
+      condition: always,
+      active: false // Critical: Don't block panning initially!
+    });
+    dragBoxRef.current = dragBox;
+    map.addInteraction(dragBox);
+
+    dragBox.on('boxend', async () => {
+      if (activeLayerToolRef.current === 'info' && infoSelectionModeRef.current === 'drag') {
+        const extent = dragBox.getGeometry().getExtent();
+        const center = [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
+        const projection = map.getView().getProjection().getCode();
+        const visibleLayers = geoServerLayersRef.current.filter(l => l.visible && l.queryable);
+
+        setFeatureInfoResult(null);
+        setFeatureInfoCoordinate(null);
+
+        if (visibleLayers.length === 0) return;
+
+        const results = await Promise.all(visibleLayers.map(async (layer) => {
+          // Construct WFS BBOX query
+          const [ws, name] = layer.fullName.split(':');
+          const bboxStr = `${extent[0]},${extent[1]},${extent[2]},${extent[3]},${projection}`;
+          const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&outputFormat=application/json&srsName=${projection}&bbox=${bboxStr}&maxFeatures=100`;
+
+          try {
+            const res = await fetch(url, { headers: { 'Authorization': AUTH_HEADER } });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return {
+              layerName: layer.name,
+              features: data.features
+            };
+          } catch (err) {
+            console.error(`WFS selection failed for ${layer.name}`, err);
+            return null;
+          }
+        }));
+
+        const validResults = results.filter(r => r && r.features && r.features.length > 0);
+        setFeatureInfoResult(validResults);
+        setFeatureInfoCoordinate(center);
+      }
+    });
+
+    dragBox.on('boxstart', () => {
+      setFeatureInfoCoordinate(null);
+    });
+
+    setMapReady(true);
 
     map.on('pointermove', (evt) => {
       const lonLat = toLonLat(evt.coordinate);
@@ -1307,6 +1398,9 @@ function GISMap() {
             activeHighlightLayerId={activeHighlightLayerId}
             isHighlightAnimating={isHighlightAnimating}
             handleUpdateLayerStyle={handleUpdateLayerStyle}
+            infoSelectionMode={infoSelectionMode}
+            setInfoSelectionMode={setInfoSelectionMode}
+            saveSequence={saveSequence}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}

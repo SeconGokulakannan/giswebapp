@@ -45,6 +45,14 @@ import {
 } from 'lucide-react';
 import LayerOperations from './LayerOperations';
 
+// Import Basemap Images directly for Vite (Ensures paths work after builds/moves)
+import osmImg from '../../assets/images/basemaps/osm.png';
+import satelliteImg from '../../assets/images/basemaps/satellite.png';
+import terrainImg from '../../assets/images/basemaps/terrain.png';
+import darkImg from '../../assets/images/basemaps/dark.png';
+import lightImg from '../../assets/images/basemaps/light.png';
+import navigationImg from '../../assets/images/basemaps/navigation.png';
+
 const MapPanel = ({
     activePanel,
     setActivePanel,
@@ -93,7 +101,10 @@ const MapPanel = ({
     handleHighlightLayer,
     activeHighlightLayerId,
     isHighlightAnimating,
-    handleUpdateLayerStyle
+    handleUpdateLayerStyle,
+    infoSelectionMode,
+    setInfoSelectionMode,
+    saveSequence
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -196,12 +207,12 @@ const MapPanel = ({
                         <div className="panel-section-title">Base Map Style</div>
                         <div className="layer-grid basemaps-minimal">
                             {[
-                                { id: 'osm', name: 'Street Map', img: '/assets/basemaps/osm.png', tip: 'Default street map' },
-                                { id: 'satellite', name: 'Satellite', img: '/assets/basemaps/satellite.png', tip: 'Aerial imagery' },
-                                { id: 'terrain', name: 'Topo', img: '/assets/basemaps/terrain.png', tip: 'Topographic terrain' },
-                                { id: 'dark', name: 'Dark', img: '/assets/basemaps/dark.png', tip: 'Night-optimized map' },
-                                { id: 'light', name: 'Light', img: '/assets/basemaps/light.png', tip: 'Clean light map' },
-                                { id: 'street', name: 'Navigation', img: '/assets/basemaps/navigation.png', tip: 'Driving-optimized view' },
+                                { id: 'osm', name: 'Street Map', img: osmImg, tip: 'Default street map' },
+                                { id: 'satellite', name: 'Satellite', img: satelliteImg, tip: 'Aerial imagery' },
+                                { id: 'terrain', name: 'Topo', img: terrainImg, tip: 'Topographic terrain' },
+                                { id: 'dark', name: 'Dark', img: darkImg, tip: 'Night-optimized map' },
+                                { id: 'light', name: 'Light', img: lightImg, tip: 'Clean light map' },
+                                { id: 'street', name: 'Navigation', img: navigationImg, tip: 'Driving-optimized view' },
                             ].map((layer) => (
                                 <Tooltip.Root key={layer.id}>
                                     <Tooltip.Trigger asChild>
@@ -251,6 +262,9 @@ const MapPanel = ({
                         activeHighlightLayerId={activeHighlightLayerId}
                         isHighlightAnimating={isHighlightAnimating}
                         handleUpdateLayerStyle={handleUpdateLayerStyle}
+                        infoSelectionMode={infoSelectionMode}
+                        setInfoSelectionMode={setInfoSelectionMode}
+                        saveSequence={saveSequence}
                     />
                 )}
 
