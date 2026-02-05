@@ -2994,6 +2994,49 @@ input:checked:hover+.toggle-slider::before {
   /* Solid white for dark mode */
 }
 
+.attribute-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.attribute-table-actions .action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.attribute-table-actions .action-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.attribute-table-actions .action-btn.highlight-btn:hover:not(:disabled) {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.attribute-table-actions .action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.attribute-table-actions .action-btn svg {
+  flex-shrink: 0;
+}
+
 .attribute-table-header .close-btn {
   width: 22px;
   height: 22px;
@@ -3012,6 +3055,75 @@ input:checked:hover+.toggle-slider::before {
   background: var(--color-danger);
   color: white;
   border-color: var(--color-danger);
+}
+
+.attribute-table-header .minimize-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #000;
+  opacity: 0.6;
+  margin-right: 4px;
+}
+
+.attribute-table-header .minimize-btn:hover {
+  background: var(--color-primary);
+  color: white;
+  opacity: 1;
+  border-radius: 3px;
+}
+
+[data-theme="dark"] .attribute-table-header .minimize-btn,
+[data-theme="dark"] .attribute-table-header .close-btn {
+  color: #fff;
+}
+
+/* Minimized State */
+.attribute-table-card.minimized {
+  width: auto !important;
+  height: auto !important;
+  left: 130px !important;
+  bottom: 20px !important;
+  top: auto !important;
+  animation: slideToCorner 0.3s ease-out;
+}
+
+.attribute-table-card.minimized .attribute-table-header {
+  cursor: pointer;
+}
+
+.attribute-table-card.minimized .header-title {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes slideToCorner {
+  from {
+    left: 28%;
+    bottom: 20px;
+  }
+
+  to {
+    left: 20px;
+    bottom: 20px;
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .attribute-table-content {
@@ -3089,4 +3201,28 @@ input:checked:hover+.toggle-slider::before {
 
 .ag-root-wrapper-body {
   height: 300px !important;
+}
+
+.ag-picker-field-wrapper {
+  min-height: 0px !important;
+}
+
+/* Edit Mode Highlighting */
+.ag-theme-alpine .cell-dirty {
+  background-color: rgba(255, 235, 59, 0.4) !important;
+  /* Semi-transparent yellow */
+  transition: background-color 0.3s ease;
+}
+
+[data-theme="dark"] .ag-theme-alpine .cell-dirty {
+  background-color: rgba(255, 235, 59, 0.2) !important;
+}
+
+.ag-theme-alpine .row-dirty {
+  background-color: rgba(255, 152, 0, 0.1) !important;
+  /* Very light orange */
+}
+
+[data-theme="dark"] .ag-theme-alpine .row-dirty {
+  background-color: rgba(255, 152, 0, 0.05) !important;
 }

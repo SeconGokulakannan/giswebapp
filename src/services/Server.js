@@ -293,7 +293,7 @@ export const uploadIcon = async (file, workspace) => {
 export const getFeaturesForAttributeTable = async (layerId, fullLayerName) => {
     try {
         // WFS GetFeature request for the specified layer
-        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&maxFeatures=100`;
+        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&maxFeatures=100000`;
         const response = await fetch(url, { headers: { 'Authorization': AUTH_HEADER } });
         if (response.ok) {
             const data = await response.json();
@@ -319,4 +319,132 @@ export const getLayerAttributes = async (fullLayerName) => {
         console.error('Failed to fetch layer attributes:', err);
     }
     return [];
+};
+
+export const deleteFeature = async (fullLayerName, feature) => {
+    try {
+        const fid = feature.id || (feature.properties && (feature.properties.id || feature.properties.fid));
+
+        if (!fid) {
+            console.error("Could not find Feature ID for deletion");
+            return false;
+        }
+
+        // Construct WFS-T Delete XML
+        const wfsTransactionXml = `
+<wfs:Transaction service="WFS" version="1.1.0"
+xmlns:wfs="http://www.opengis.net/wfs"
+xmlns:ogc="http://www.opengis.net/ogc"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+<wfs:Delete typeName="${fullLayerName}"><ogc:Filter><ogc:FeatureId fid="${fid}"/></ogc:Filter></wfs:Delete>
+</wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'text/xml'
+            },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            // Check for success in the XML response
+            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalDeleted>1</wfs:totalDeleted>')) {
+                return true;
+            } else if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Exception:', resultText);
+                return false;
+            }
+            return true; // Assume success if no exception and ok status
+        }
+        return false;
+    } catch (error) {
+        console.error(`Failed to delete feature via WFS-T (${fullLayerName}):`, error);
+        return false;
+    }
+};
+
+export const updateFeature = async (fullLayerName, featureId, properties) => {
+    try {
+        if (!featureId) {
+            console.error("No Feature ID provided for update");
+            return false;
+        }
+
+        // Construct WFS-T Update XML
+        let propertyXml = '';
+        for (const [key, value] of Object.entries(properties)) {
+            // Skip internal properties if any
+            if (key === 'id' || key === 'ogc_fid' || key === 'geometry' || key === '_feature' || key === 'isDirty' || key === 'objectid' || key === 'fid' || key === 'featid') continue;
+
+            propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
+        }
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Update typeName="${fullLayerName}">${propertyXml}<ogc:Filter><ogc:FeatureId fid="${featureId}"/></ogc:Filter></wfs:Update>
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'text/xml'
+            },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalUpdated>1</wfs:totalUpdated>')) {
+                return true;
+            } else if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Update Exception:', resultText);
+                return false;
+            }
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error(`Failed to update feature via WFS-T (${fullLayerName}):`, error);
+        return false;
+    }
+};
+
+export const QueryBuilderFilter = (conditions) => {
+    if (!conditions || conditions.length === 0) return null;
+
+    const validConditions = conditions.filter(c => c.field && c.value);
+    if (validConditions.length === 0) return null;
+
+    let cqlParts = [];
+    validConditions.forEach((cond, index) => {
+        let formattedValue = cond.value;
+
+        // Handle LIKE/ILIKE wrapping
+        if (cond.operator === 'LIKE' || cond.operator === 'ILIKE') {
+            formattedValue = `'%${cond.value}%'`;
+        } else {
+            // Check if value is numeric
+            if (cond.value === '' || isNaN(cond.value)) {
+                formattedValue = `'${cond.value}'`;
+            }
+        }
+
+        const part = `${cond.field} ${cond.operator} ${formattedValue}`;
+
+        if (index > 0) {
+            cqlParts.push(` ${cond.logic} `);
+        }
+        cqlParts.push(part);
+    });
+
+    return cqlParts.join("");
 };

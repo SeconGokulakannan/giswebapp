@@ -30,6 +30,10 @@ import MapHeader from '../subComponents/MapHeader';
 import MapSidebar from '../subComponents/MapSidebar';
 import MapPanel from '../subComponents/MapPanel';
 import MapStatusBar from '../subComponents/MapStatusBar';
+import FeatureInfoCard from '../subComponents/FeatureInfoCard';
+import AttributeTableCard from '../subComponents/AttributeTableCard';
+import QueryBuilderCard from '../subComponents/QueryBuilderCard';
+
 
 // Utils
 import {
@@ -48,11 +52,11 @@ import {
   getLayerBBox,
   getLayerStyle,
   updateLayerStyle,
-  saveSequence
+  saveSequence,
+  deleteFeature,
+  updateFeature
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
-import FeatureInfoCard from '../subComponents/FeatureInfoCard';
-import AttributeTableCard from '../subComponents/AttributeTableCard';
 
 
 function GISMap() {
@@ -115,6 +119,7 @@ function GISMap() {
   const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
   const [selectedAttributeLayerId, setSelectedAttributeLayerId] = useState(null);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
+  const [isAttributeTableMinimized, setIsAttributeTableMinimized] = useState(false);
   const [attributeTableData, setAttributeTableData] = useState([]);
   const [isAttributeTableLoading, setIsAttributeTableLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
@@ -126,6 +131,10 @@ function GISMap() {
   const geoServerLayersRef = useRef(geoServerLayers);
   const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
   const isHighlightAnimatingRef = useRef(isHighlightAnimating);
+
+  // Query Builder State
+  const [showQueryBuilder, setShowQueryBuilder] = useState(false);
+  const [queryingLayer, setQueryingLayer] = useState(null);
 
   useEffect(() => {
     activeLayerToolRef.current = activeLayerTool;
@@ -230,7 +239,8 @@ function GISMap() {
         layerId: layer.layerId, // Store the numeric/database ID
         visible: layer.initialVisibility, // Use API property for initial visibility
         opacity: 1,
-        queryable: true
+        queryable: true,
+        cqlFilter: null
       }));
       setGeoServerLayers(layerObjects.sort((a, b) => (a.sequence || 999) - (b.sequence || 999)));
     } catch (err) {
@@ -253,8 +263,13 @@ function GISMap() {
       if (layer.visible) {
         if (!existingLayer) {
           // Create and add layer
+          const sourceParams = getWMSSourceParams(layer.fullName);
+          if (layer.cqlFilter) {
+            sourceParams.params['CQL_FILTER'] = layer.cqlFilter;
+          }
+
           const wmsLayer = new TileLayer({
-            source: new TileWMS(getWMSSourceParams(layer.fullName)),
+            source: new TileWMS(sourceParams),
             zIndex: 1000 - (layer.sequence || 999), // Higher sequence = lower zIndex (sequence 1 is on top)
             opacity: layer.opacity,
             properties: { id: layer.id }
@@ -262,9 +277,16 @@ function GISMap() {
           mapInstanceRef.current.addLayer(wmsLayer);
           operationalLayersRef.current[layer.id] = wmsLayer;
         } else {
-          // Update existing properties if needed (e.g. opacity, sequence/zIndex)
+          // Update existing properties if needed (e.g. opacity, sequence/zIndex, cqlFilter)
           existingLayer.setOpacity(layer.opacity);
           existingLayer.setZIndex(1000 - (layer.sequence || 999));
+
+          // Update CQL Filter if changed
+          const source = existingLayer.getSource();
+          const currentParams = source.getParams();
+          if (currentParams['CQL_FILTER'] !== layer.cqlFilter) {
+            source.updateParams({ 'CQL_FILTER': layer.cqlFilter });
+          }
         }
       } else if (!layer.visible && existingLayer) {
         // Remove layer
@@ -328,7 +350,7 @@ function GISMap() {
           duration: 1000
         });
       } else {
-        setMapIsZooming(false);
+        // setMapIsZooming(false); // This state doesn't exist, removed.
         toast.error('Layer extent not available.');
       }
     } catch (err) {
@@ -398,9 +420,21 @@ function GISMap() {
     return false;
   };
 
-  const GetLayerAttributes = (layerId) => {
+  const handleApplyLayerFilter = (layerId, cqlFilter) => {
+    setGeoServerLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, cqlFilter: cqlFilter } : l
+    ));
+
+    // Also update the currently querying layer if it matches
+    if (queryingLayer && queryingLayer.id === layerId) {
+      setQueryingLayer(prev => ({ ...prev, cqlFilter: cqlFilter }));
+    }
+  };
+
+  const GetLayerAttributesStub = (layerId) => {
     console.log(`Getting attributes for layer: ${layerId}`);
-    // Stub for now
+    // This is used by AttributeTableCard, but for Query Builder in LayerOperations 
+    // we might call getLayerAttributes directly from the service or via a prop.
   };
 
   // Elite: Automatic Tool Deactivation
@@ -1490,7 +1524,11 @@ function GISMap() {
             setSelectedAttributeLayerId={setSelectedAttributeLayerId}
             showAttributeTable={showAttributeTable}
             setShowAttributeTable={setShowAttributeTable}
-            GetLayerAttributes={GetLayerAttributes}
+            GetLayerAttributes={GetLayerAttributesStub}
+            handleApplyLayerFilter={handleApplyLayerFilter}
+            setShowQueryBuilder={setShowQueryBuilder}
+            setQueryingLayer={setQueryingLayer}
+            queryingLayer={queryingLayer}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
@@ -1521,14 +1559,122 @@ function GISMap() {
             <AttributeTableCard
               isOpen={showAttributeTable}
               onClose={() => {
+                // Clear highlights when closing table
+                if (selectionSourceRef.current) {
+                  selectionSourceRef.current.clear();
+                }
                 setShowAttributeTable(false);
                 setSelectedAttributeLayerId(null);
               }}
-              layerName={geoServerLayers.find(l => l.id === selectedAttributeLayerId)?.name || 'Unknown Layer'}
+              layerName={geoServerLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId)?.name || 'Unknown Layer'}
+              layerFullName={geoServerLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId)?.fullName}
+              layerId={selectedAttributeLayerId}
               data={attributeTableData}
               isLoading={isAttributeTableLoading}
+              onHighlightFeatures={(features) => {
+                if (!features || features.length === 0) return;
+
+                // Clear previous highlights
+                if (selectionSourceRef.current) {
+                  selectionSourceRef.current.clear();
+                }
+
+                // Parse and add features to selection layer
+                const geoJsonFormat = new GeoJSON();
+                features.forEach(feature => {
+                  try {
+                    // Parse the GeoJSON feature
+                    const olFeature = geoJsonFormat.readFeature(feature, {
+                      dataProjection: 'EPSG:4326',
+                      featureProjection: 'EPSG:3857'
+                    });
+
+                    // Add to selection source for highlighting
+                    if (selectionSourceRef.current) {
+                      selectionSourceRef.current.addFeature(olFeature);
+                    }
+                  } catch (error) {
+                    console.error('Error parsing feature for highlight:', error, feature);
+                  }
+                });
+
+                // Zoom to highlighted features
+                if (selectionSourceRef.current && selectionSourceRef.current.getFeatures().length > 0) {
+                  const extent = selectionSourceRef.current.getExtent();
+                  mapInstanceRef.current.getView().fit(extent, {
+                    padding: [50, 50, 50, 50],
+                    duration: 500,
+                    maxZoom: 18
+                  });
+
+                  toast.success(`Highlighted ${features.length} feature(s) on map`);
+                }
+              }}
+              onClearHighlights={() => {
+                // Clear highlights when Stop button is clicked
+                if (selectionSourceRef.current) {
+                  selectionSourceRef.current.clear();
+                }
+                toast.info('Highlights cleared');
+              }}
+              onDeleteFeature={async (fullLayerName, feature) => {
+                const success = await deleteFeature(fullLayerName, feature);
+                if (success) {
+                  toast.success("Feature deleted successfully");
+                  // Refresh the table data using the current layer ID
+                  const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+                  if (activeLayer) {
+                    const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+                    setAttributeTableData(data);
+                  }
+                } else {
+                  toast.error("Failed to delete feature. Ensure WFS-T is enabled on GeoServer.");
+                }
+              }}
+              onUpdateFeatures={async (fullLayerName, changes) => {
+                let successCount = 0;
+                let failCount = 0;
+                const rowIds = Object.keys(changes);
+
+                toast.loading(`Saving changes to ${rowIds.length} row(s)...`, { id: 'save-toast' });
+
+                for (const rowId of rowIds) {
+                  const success = await updateFeature(fullLayerName, rowId, changes[rowId]);
+                  if (success) successCount++;
+                  else failCount++;
+                }
+
+                if (successCount > 0) {
+                  toast.success(`Successfully updated ${successCount} feature(s)`, { id: 'save-toast' });
+                  // Refresh data
+                  const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+                  if (activeLayer) {
+                    const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+                    setAttributeTableData(data);
+                    return true;
+                  }
+                  return true; // Return true even if activeLayer not found but updates succeeded
+                }
+
+                if (failCount > 0) {
+                  toast.error(`Failed to update ${failCount} feature(s)`, { id: 'save-toast' });
+                }
+                return false;
+              }}
+              isMinimized={isAttributeTableMinimized}
+              onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
             />
           )}
+
+          <QueryBuilderCard
+            isOpen={showQueryBuilder}
+            onClose={() => {
+              setShowQueryBuilder(false);
+              setQueryingLayer(null);
+            }}
+            layer={queryingLayer}
+            handleApplyLayerFilter={handleApplyLayerFilter}
+          />
         </div>
 
         {/* Measurement Badge - Hidden per user request */}

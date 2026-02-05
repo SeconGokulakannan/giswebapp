@@ -4,10 +4,11 @@ import toast from 'react-hot-toast';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
     Eye, Settings2, List, Info, MapPinned, Zap, Square, Play,
-    Palette, Repeat, Table, Plus, RefreshCw, DatabaseZap, Goal,
+    Palette, Repeat, Table, Plus, RefreshCw, DatabaseZap, Goal, X,
     LayersPlus, FileChartPie, Pencil, CircleDot, Save, Loader2, Upload,
     MousePointer2, BoxSelect, GripVertical,
-    Brush
+    Brush,
+    LayoutGrid
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -18,7 +19,9 @@ const LayerOperations = ({
     activeHighlightLayerId, isHighlightAnimating, handleUpdateLayerStyle,
     infoSelectionMode, setInfoSelectionMode, saveSequence, refreshLayers,
     selectedAttributeLayerId, setSelectedAttributeLayerId,
-    showAttributeTable, setShowAttributeTable, GetLayerAttributes
+    showAttributeTable, setShowAttributeTable, GetLayerAttributes,
+    handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
+    queryingLayer
 }) => {
 
     const tools = [
@@ -32,7 +35,7 @@ const LayerOperations = ({
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
         { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
-        { icon: Table, label: 'Attribute Table', id: 'attribute' },
+        { icon: LayoutGrid, label: 'Attribute Table', id: 'attribute' },
         { icon: LayersPlus, label: 'Layer Management', id: 'layermanagement' }
     ];
 
@@ -118,11 +121,10 @@ const LayerOperations = ({
     ];
 
     const DASH_STYLES = {
-        'Solid': '',
-        'Dash': '5 2',
-        'Dot': '2 2',
-        'Dash dot': '5 2 2 2',
-        'Dash dot dot': '5 2 2 2 2 2'
+        'Solid': null,
+        'Dash': '5, 5',
+        'Dot': '1, 5',
+        'Dash-Dot': '5, 5, 1, 5'
     };
 
     const HATCH_PATTERNS = {
@@ -647,6 +649,54 @@ const LayerOperations = ({
                         />
                         <span className="toggle-slider"></span>
                     </label>
+                );
+            }
+
+            case 'querybuilder': {
+                const hasFilter = !!layer.cqlFilter;
+
+                return (
+                    <div className="query-builder-toggle-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {hasFilter && (
+                            <button
+                                className="clear-filter-btn-mini"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleApplyLayerFilter(layer.id, null);
+                                }}
+                                title="Clear Filter"
+                                style={{
+                                    border: 'none',
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    color: '#ef4444',
+                                    padding: '4px',
+                                    borderRadius: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <RefreshCw size={12} />
+                            </button>
+                        )}
+                        <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                            <input
+                                type="checkbox"
+                                checked={layer.id === queryingLayer?.id}
+                                onChange={async (e) => {
+                                    const checked = e.target.checked;
+                                    if (checked) {
+                                        setQueryingLayer(layer);
+                                        setShowQueryBuilder(true);
+                                    } else {
+                                        setQueryingLayer(null);
+                                        setShowQueryBuilder(false);
+                                    }
+                                }}
+                            />
+                            <span className="toggle-slider" style={{ backgroundColor: layer.id === queryingLayer?.id ? 'var(--color-primary)' : '' }}></span>
+                        </label>
+                    </div>
                 );
             }
 
@@ -1225,6 +1275,8 @@ const LayerOperations = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Query Builder UI removed from here, now in QueryBuilderCard */}
                             </div>
                         ));
                     })()}

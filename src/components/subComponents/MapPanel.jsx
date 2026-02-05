@@ -111,7 +111,8 @@ const MapPanel = ({
     setSelectedAttributeLayerId,
     showAttributeTable,
     setShowAttributeTable,
-    GetLayerAttributes
+    GetLayerAttributes,
+    handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer, queryingLayer
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -278,6 +279,10 @@ const MapPanel = ({
                         showAttributeTable={showAttributeTable}
                         setShowAttributeTable={setShowAttributeTable}
                         GetLayerAttributes={GetLayerAttributes}
+                        handleApplyLayerFilter={handleApplyLayerFilter}
+                        setShowQueryBuilder={setShowQueryBuilder}
+                        setQueryingLayer={setQueryingLayer}
+                        queryingLayer={queryingLayer}
                     />
                 )}
 
