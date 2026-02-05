@@ -290,6 +290,21 @@ export const uploadIcon = async (file, workspace) => {
     return null;
 };
 
+export const getFeaturesForAttributeTable = async (layerId, fullLayerName) => {
+    try {
+        // WFS GetFeature request for the specified layer
+        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&maxFeatures=100`;
+        const response = await fetch(url, { headers: { 'Authorization': AUTH_HEADER } });
+        if (response.ok) {
+            const data = await response.json();
+            return data.features || [];
+        }
+    } catch (err) {
+        console.error(`Failed to fetch features for attribute table (LayerID: ${layerId}):`, err);
+    }
+    return [];
+};
+
 export const getLayerAttributes = async (fullLayerName) => {
     try {
         const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=DescribeFeatureType&typeName=${fullLayerName}&outputFormat=application/json`;

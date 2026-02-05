@@ -279,6 +279,62 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
     return styles;
 };
 
+/**
+ * Animated Highlight Style for Selected Features
+ * @param {Feature} feature The selected feature
+ * @param {number} offset Animation dash offset
+ */
+export const highlightStyleFunction = (feature, offset = 0) => {
+    const geometry = feature.getGeometry();
+    if (!geometry) return [];
+
+    const styles = [];
+    const type = geometry.getType();
+
+    // 1. OUTER GLOW (Pulsating)
+    const glowRadius = 8 + Math.sin(offset / 10) * 4;
+    const glowOpacity = 0.3 + Math.sin(offset / 10) * 0.1;
+
+    styles.push(new Style({
+        stroke: new Stroke({
+            color: `rgba(59, 130, 246, ${glowOpacity})`,
+            width: glowRadius * 2,
+        }),
+        fill: new Fill({
+            color: 'rgba(59, 130, 246, 0.1)',
+        }),
+        image: type === 'Point' ? new CircleStyle({
+            radius: glowRadius,
+            fill: new Fill({ color: `rgba(59, 130, 246, ${glowOpacity})` }),
+        }) : null,
+    }));
+
+    // 2. PRIMARY BORDER (Electric Blue)
+    styles.push(new Style({
+        stroke: new Stroke({
+            color: COLORS.primary,
+            width: 3,
+        }),
+        image: type === 'Point' ? new CircleStyle({
+            radius: 6,
+            stroke: new Stroke({ color: '#fff', width: 2 }),
+            fill: new Fill({ color: COLORS.primary }),
+        }) : null,
+    }));
+
+    // 3. ENERGY PULSE (Animated Dash)
+    styles.push(new Style({
+        stroke: new Stroke({
+            color: '#fff',
+            width: 1.5,
+            lineDash: [10, 15],
+            lineDashOffset: -offset * 0.5,
+        }),
+    }));
+
+    return styles;
+};
+
 export const tipStyle = new Style({
     text: new Text({
         font: '12px "Inter", sans-serif',

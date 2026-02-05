@@ -3,45 +3,70 @@ import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { X, Table } from 'lucide-react';
 
+// AG Grid Styles
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-quartz.css';
+
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const AttributeTableCard = ({ isOpen, onClose, layerName, data }) => {
+const AttributeTableCard = ({ isOpen, onClose, layerName, data, isLoading }) => {
     if (!isOpen) return null;
 
-    // Define column definitions (stub for now)
-    const columnDefs = [
-        { headerName: "Property", field: "property", flex: 1 },
-        { headerName: "Value", field: "value", flex: 2 }
-    ];
+    // Use features properties for columns and rows
+    let columnDefs = [];
+    let rowData = [];
 
-    // Define row data (stub for now)
-    const rowData = [
-        { property: "Layer Name", value: layerName },
-        { property: "Status", value: "Loading attributes..." }
-    ];
+    if (data && data.length > 0) {
+        // Extract properties from the first feature to define columns
+        // We look for the first feature that actually has properties
+        const firstWithProps = data.find(f => f.properties && Object.keys(f.properties).length > 0);
+
+        if (firstWithProps) {
+            const firstFeatureProps = firstWithProps.properties;
+            columnDefs = Object.keys(firstFeatureProps).map(key => ({
+                headerName: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+                field: key,
+                sortable: true,
+                filter: true,
+                resizable: true,
+                flex: 1,
+                minWidth: 100
+            }));
+
+            // Map all features to row data
+            rowData = data.map(feature => ({
+                id: feature.id,
+                ...feature.properties
+            }));
+        }
+    }
 
     return (
-        <div className="attribute-table-card fade-in">
+        <div className="attribute-table-card">
             <div className="attribute-table-header">
                 <div className="header-title">
-                    <Table size={18} />
-                    <span>Attribute Table: {layerName}</span>
+                    <Table size={14} strokeWidth={1.5} />
+                    <span>ATTRIBUTE TABLE: {layerName.toUpperCase()}</span>
                 </div>
-                <button className="close-btn" onClick={onClose}>
-                    <X size={18} />
+                <button className="close-btn" onClick={onClose} title="Close Table">
+                    <X size={14} strokeWidth={1.5} />
                 </button>
             </div>
             <div className="attribute-table-content ag-theme-quartz">
                 <AgGridReact
                     rowData={rowData}
                     columnDefs={columnDefs}
-                    domLayout='autoHeight'
                     animateRows={true}
+                    headerHeight={26}
+                    rowHeight={24}
+                    loading={isLoading}
+                    pagination={true}
+                    paginationPageSize={10}
+                    suppressMovableColumns={false}
+                    overlayLoadingTemplate={'<span class="ag-overlay-loading-center">Fetching Attribute Data...</span>'}
+                    overlayNoRowsTemplate={isLoading ? ' ' : '<span>No Data Available</span>'}
                 />
-                <div className="stub-notice">
-                    <p>Note: GetLayerAttributes({layerName}) called. Data will be fetched from server in the next step.</p>
-                </div>
             </div>
         </div>
     );

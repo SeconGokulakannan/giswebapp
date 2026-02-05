@@ -2925,24 +2925,38 @@ input:checked:hover+.toggle-slider::before {
 .sequence-indicator:hover {
   transform: scale(1.1);
 }
+
 /* ===== ATTRIBUTE TABLE CARD ===== */
 .attribute-table-card {
   position: absolute;
-  bottom: 80px;
-  left: 50%;
+  bottom: 182px;
+  left: 25%;
   transform: translateX(-50%);
-  width: 90%;
-  max-width: 1000px;
-  background: rgba(var(--color-bg-primary-rgb), 0.95);
-  backdrop-filter: blur(20px) saturate(180%);
+  width: 47%;
+  height: 400px;
+  /* Fixed height for AG Grid to fill */
+  background: rgba(var(--color-bg-primary-rgb), 0.98);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-2xl);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUpMinimal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpMinimal {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 @keyframes slideUp {
@@ -2950,6 +2964,7 @@ input:checked:hover+.toggle-slider::before {
     opacity: 0;
     transform: translate(-50%, 40px);
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, 0);
@@ -2957,34 +2972,42 @@ input:checked:hover+.toggle-slider::before {
 }
 
 .attribute-table-header {
-  padding: 12px 20px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(var(--color-bg-primary-rgb), 0.5);
+  background: var(--color-bg-secondary);
 }
 
 .attribute-table-header .header-title {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  gap: 8px;
+  font-weight: 400;
+  font-size: 11px;
+  color: #000;
+  /* Solid black for light mode */
+  letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .attribute-table-header .header-title {
+  color: #fff;
+  /* Solid white for dark mode */
 }
 
 .attribute-table-header .close-btn {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  background: transparent;
+  border: none;
   cursor: pointer;
   transition: all 0.2s;
-  color: var(--color-text-secondary);
+  color: #000;
+  opacity: 0.6;
 }
 
 .attribute-table-header .close-btn:hover {
@@ -2994,33 +3017,44 @@ input:checked:hover+.toggle-slider::before {
 }
 
 .attribute-table-content {
-  padding: 16px;
+  padding: 0;
   flex: 1;
-  max-height: 400px;
-  overflow: auto;
+  max-height: 350px;
+  min-height: 200px;
 }
 
-.stub-notice {
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: rgba(var(--color-primary-rgb), 0.1);
-  border-radius: 6px;
-  border-left: 3px solid var(--color-primary);
+/* AG Grid Minimal Customization */
+.ag-theme-quartz {
+  --ag-font-size: 10px;
+  --ag-font-family: 'Inter', sans-serif;
+  --ag-header-height: 26px;
+  --ag-row-height: 24px;
+  --ag-grid-size: 4px;
+  --ag-list-item-height: 24px;
+
+  /* Solid colors for light mode */
+  --ag-foreground-color: #000;
+  --ag-header-foreground-color: #000;
+  --ag-data-color: #000;
+  --ag-border-color: rgba(0, 0, 0, 0.08);
+  font-weight: 300;
 }
 
-.stub-notice p {
-  font-size: 11px;
-  color: var(--color-primary);
-  margin: 0;
+[data-theme="dark"] .attribute-table-card {
+  background: rgba(10, 15, 25, 0.98);
 }
 
-/* AG Grid Dark Theme overrides */
-[data-theme=" dark\] .attribute-table-card {
- background: rgba(15, 23, 42, 0.98);
+[data-theme="dark"] .ag-theme-quartz {
+  --ag-foreground-color: #fff;
+  --ag-header-foreground-color: #fff;
+  --ag-data-color: #fff;
+  --ag-background-color: transparent;
+  --ag-header-background-color: rgba(255, 255, 255, 0.03);
+  --ag-row-hover-color: rgba(255, 255, 255, 0.02);
+  --ag-border-color: rgba(255, 255, 255, 0.08);
+  font-weight: 300;
 }
 
-[data-theme=\dark\] .ag-theme-quartz {
- --ag-background-color: transparent;
- --ag-header-background-color: rgba(255, 255, 255, 0.05);
- --ag-row-hover-color: rgba(255, 255, 255, 0.03);
+[data-theme="dark"] .attribute-table-header .close-btn {
+  color: #fff;
 }

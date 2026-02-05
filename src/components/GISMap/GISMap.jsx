@@ -33,15 +33,16 @@ import MapStatusBar from '../subComponents/MapStatusBar';
 
 // Utils
 import {
-  style,
-  modifyStyle,
   styleFunction,
+  highlightStyleFunction,
   formatLength,
   formatArea,
 } from '../../utils/mapUtils';
 
 import {
   searchLocation,
+  getLayerAttributes,
+  getFeaturesForAttributeTable,
   getGeoServerLayers,
   getWMSSourceParams,
   getLayerBBox,
@@ -60,6 +61,8 @@ function GISMap() {
   const drawInteractionRef = useRef(null);
   const vectorSourceRef = useRef(null);
   const vectorLayerRef = useRef(null);
+  const selectionSourceRef = useRef(null);
+  const selectionLayerRef = useRef(null);
   const graticuleRef = useRef(null);
 
   const [coordinates, setCoordinates] = useState({ lon: 0, lat: 0 });
@@ -112,6 +115,8 @@ function GISMap() {
   const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
   const [selectedAttributeLayerId, setSelectedAttributeLayerId] = useState(null);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
+  const [attributeTableData, setAttributeTableData] = useState([]);
+  const [isAttributeTableLoading, setIsAttributeTableLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const featureInfoOverlayRef = useRef(null);
   const popupElementRef = useRef(null);
@@ -451,11 +456,16 @@ function GISMap() {
   useEffect(() => {
     const animate = () => {
       try {
-        animationOffsetRef.current = (animationOffsetRef.current + 0.8) % 30;
+        animationOffsetRef.current = (animationOffsetRef.current + 0.6) % 40;
 
         // Trigger map redraw without React re-render
         if (vectorLayerRef.current) {
           vectorLayerRef.current.changed();
+        }
+
+        // Trigger selection highlight redraw
+        if (selectionLayerRef.current) {
+          selectionLayerRef.current.changed();
         }
 
         // Also animate interactions if active and supported
@@ -536,6 +546,16 @@ function GISMap() {
     });
     vectorLayerRef.current = vectorLayer;
 
+    // ELITE: Selection Layer for Highlights
+    const selectionSource = new VectorSource();
+    selectionSourceRef.current = selectionSource;
+    const selectionLayer = new VectorLayer({
+      source: selectionSource,
+      style: (feature) => highlightStyleFunction(feature, animationOffsetRef.current),
+      zIndex: 2000 // Always on top
+    });
+    selectionLayerRef.current = selectionLayer;
+
     const osmLayer = new TileLayer({
       source: new OSM(),
       visible: true,
@@ -598,7 +618,10 @@ function GISMap() {
 
     const map = new Map({
       target: mapRef.current,
-      layers: [osmLayer, satelliteLayer, terrainLayer, darkLayer, lightLayer, streetLayer, graticule, vectorLayer],
+      layers: [
+        osmLayer, satelliteLayer, terrainLayer, darkLayer, lightLayer, streetLayer,
+        graticule, vectorLayer, selectionLayer
+      ],
       view: new View({
         center: savedView ? savedView.center : fromLonLat([0, 20]),
         zoom: savedView ? savedView.zoom : 2,
@@ -630,6 +653,7 @@ function GISMap() {
         // Hide previous card immediately
         setFeatureInfoResult(null);
         setFeatureInfoCoordinate(null);
+        if (selectionSourceRef.current) selectionSourceRef.current.clear();
 
         // Simple Approach: Always position the click point at an optimal Y location
         // The card appears ABOVE the click, so we want the click point to be in 
@@ -696,6 +720,18 @@ function GISMap() {
         const results = await Promise.all(fetchPromises);
         const validResults = results.filter(r => r && r.features && r.features.length > 0);
 
+        // Add features to selection layer for highlighting
+        if (selectionSourceRef.current && validResults.length > 0) {
+          const format = new GeoJSON();
+          validResults.forEach(res => {
+            const features = format.readFeatures({
+              type: 'FeatureCollection',
+              features: res.features
+            });
+            selectionSourceRef.current.addFeatures(features);
+          });
+        }
+
         // Show card after animation completes (400ms) + small buffer
         setTimeout(() => {
           setFeatureInfoCoordinate(clickCoord);
@@ -729,6 +765,7 @@ function GISMap() {
 
         setFeatureInfoResult(null);
         setFeatureInfoCoordinate(null);
+        if (selectionSourceRef.current) selectionSourceRef.current.clear();
 
         if (visibleLayers.length === 0) return;
 
@@ -753,8 +790,26 @@ function GISMap() {
         }));
 
         const validResults = results.filter(r => r && r.features && r.features.length > 0);
+
+        // Add features to selection layer for highlighting
+        if (selectionSourceRef.current && validResults.length > 0) {
+          const format = new GeoJSON();
+          validResults.forEach(res => {
+            const features = format.readFeatures({
+              type: 'FeatureCollection',
+              features: res.features
+            });
+            selectionSourceRef.current.addFeatures(features);
+          });
+        }
+
         setFeatureInfoResult(validResults);
         setFeatureInfoCoordinate(center);
+
+        // Auto-switch to click mode after drag selection is done
+        if (validResults.length > 0) {
+          setInfoSelectionMode('click');
+        }
       }
     });
 
@@ -794,6 +849,24 @@ function GISMap() {
 
     return () => map.setTarget(undefined);
   }, []); // Fixed: No measurementUnits dependency
+
+  // Handle Attribute Table data fetching
+  useEffect(() => {
+    if (showAttributeTable && selectedAttributeLayerId) {
+      const fetchAttrData = async () => {
+        setIsAttributeTableLoading(true);
+        const layer = geoServerLayers.find(l => l.id === selectedAttributeLayerId);
+        if (layer) {
+          const data = await getFeaturesForAttributeTable(layer.id, layer.fullName);
+          setAttributeTableData(data);
+        }
+        setIsAttributeTableLoading(false);
+      };
+      fetchAttrData();
+    } else {
+      setAttributeTableData([]);
+    }
+  }, [showAttributeTable, selectedAttributeLayerId, geoServerLayers]);
 
   // Feature Info Card - Update position only on moveend (debounced)
   useEffect(() => {
@@ -1430,6 +1503,7 @@ function GISMap() {
                 onClose={() => {
                   setFeatureInfoResult(null);
                   setFeatureInfoCoordinate(null);
+                  if (selectionSourceRef.current) selectionSourceRef.current.clear();
                 }}
                 style={{
                   position: 'absolute',
@@ -1451,7 +1525,8 @@ function GISMap() {
                 setSelectedAttributeLayerId(null);
               }}
               layerName={geoServerLayers.find(l => l.id === selectedAttributeLayerId)?.name || 'Unknown Layer'}
-              data={[]} // Future: will be fetched data
+              data={attributeTableData}
+              isLoading={isAttributeTableLoading}
             />
           )}
         </div>
