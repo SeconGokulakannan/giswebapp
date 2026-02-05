@@ -3,10 +3,6 @@ import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { X, Table } from 'lucide-react';
 
-// AG Grid Styles
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-quartz.css';
-
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -30,8 +26,6 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, data, isLoading }) => 
                 sortable: true,
                 filter: true,
                 resizable: true,
-                flex: 1,
-                minWidth: 100
             }));
 
             // Map all features to row data
@@ -53,7 +47,7 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, data, isLoading }) => 
                     <X size={14} strokeWidth={1.5} />
                 </button>
             </div>
-            <div className="attribute-table-content ag-theme-quartz">
+            <div className="attribute-table-content ag-theme-alpine">
                 <AgGridReact
                     rowData={rowData}
                     columnDefs={columnDefs}
@@ -64,6 +58,18 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, data, isLoading }) => 
                     pagination={true}
                     paginationPageSize={10}
                     suppressMovableColumns={false}
+                    defaultColDef={{
+                        sortable: true,
+                        filter: true,
+                        resizable: true,
+                        cellStyle: { textAlign: 'center' }
+                    }}
+                    autoSizeStrategy={{
+                        type: 'fitCellContents'
+                    }}
+                    onFirstDataRendered={(params) => {
+                        params.api.autoSizeAllColumns();
+                    }}
                     overlayLoadingTemplate={'<span class="ag-overlay-loading-center">Fetching Attribute Data...</span>'}
                     overlayNoRowsTemplate={isLoading ? ' ' : '<span>No Data Available</span>'}
                 />
