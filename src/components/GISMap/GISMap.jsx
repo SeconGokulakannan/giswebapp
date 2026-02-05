@@ -33,6 +33,8 @@ import MapStatusBar from '../subComponents/MapStatusBar';
 import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 import AttributeTableCard from '../subComponents/AttributeTableCard';
 import QueryBuilderCard from '../subComponents/QueryBuilderCard';
+import SwipeControl from '../subComponents/SwipeControl';
+import { getRenderPixel } from 'ol/render';
 
 
 // Utils
@@ -170,6 +172,70 @@ function GISMap() {
       viewport.style.cursor = '';
     }
   }, [activeLayerTool, infoSelectionMode, isLocked, mapReady]);
+  // ELITE: Swipe Tool State
+  const [swipeLayerId, setSwipeLayerId] = useState(null);
+  const [swipePosition, setSwipePosition] = useState(50); // Percentage
+  const swipeLayerRef = useRef(null);
+
+  // ELITE: Toggle Swipe Mode
+  const handleToggleSwipe = (layerId) => {
+    if (swipeLayerId === layerId) {
+      // Turn off
+      setSwipeLayerId(null);
+      swipeLayerRef.current = null;
+      mapInstanceRef.current.render(); // Re-render to clear clip
+    } else {
+      // Turn on for this layer
+      setSwipeLayerId(layerId);
+      // We need to find the OL layer object
+      const olLayer = operationalLayersRef.current[layerId];
+      if (olLayer) {
+        swipeLayerRef.current = olLayer;
+        // Ensure it's visible
+        if (!olLayer.getVisible()) {
+          handleToggleGeoLayer(layerId);
+        }
+        mapInstanceRef.current.render();
+      }
+    }
+  };
+
+  // ELITE: Swipe Logic (Clipping)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const layer = swipeLayerRef.current;
+    if (!layer || !swipeLayerId) return;
+
+    const handlePreRender = (event) => {
+      const ctx = event.context;
+      const width = ctx.canvas.width * (swipePosition / 100);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, width, ctx.canvas.height);
+      ctx.clip();
+    };
+
+    const handlePostRender = (event) => {
+      const ctx = event.context;
+      ctx.restore();
+    };
+
+    // Attach listeners to the SPECIFIC layer
+    layer.on('prerender', handlePreRender);
+    layer.on('postrender', handlePostRender);
+
+    map.render();
+
+    return () => {
+      layer.un('prerender', handlePreRender);
+      layer.un('postrender', handlePostRender);
+      map.render();
+    };
+  }, [swipeLayerId, swipePosition]);
+
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;
 
@@ -1529,6 +1595,8 @@ function GISMap() {
             setShowQueryBuilder={setShowQueryBuilder}
             setQueryingLayer={setQueryingLayer}
             queryingLayer={queryingLayer}
+            handleToggleSwipe={handleToggleSwipe}
+            swipeLayerId={swipeLayerId}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
@@ -1675,6 +1743,13 @@ function GISMap() {
             layer={queryingLayer}
             handleApplyLayerFilter={handleApplyLayerFilter}
           />
+
+          {swipeLayerId && (
+            <SwipeControl
+              position={swipePosition}
+              onPositionChange={setSwipePosition}
+            />
+          )}
         </div>
 
         {/* Measurement Badge - Hidden per user request */}

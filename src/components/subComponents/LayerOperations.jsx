@@ -21,7 +21,7 @@ const LayerOperations = ({
     selectedAttributeLayerId, setSelectedAttributeLayerId,
     showAttributeTable, setShowAttributeTable, GetLayerAttributes,
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
-    queryingLayer
+    queryingLayer, handleToggleSwipe, swipeLayerId
 }) => {
 
     const tools = [
@@ -36,7 +36,8 @@ const LayerOperations = ({
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
         { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
         { icon: LayoutGrid, label: 'Attribute Table', id: 'attribute' },
-        { icon: LayersPlus, label: 'Layer Management', id: 'layermanagement' }
+        { icon: LayersPlus, label: 'Layer Management', id: 'layermanagement' },
+        { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' }
     ];
 
     const [editingStyleLayer, setEditingStyleLayer] = useState(null);
@@ -627,6 +628,17 @@ const LayerOperations = ({
                     </div>
                 );
             }
+
+            case 'swipe':
+                return (
+                    <button
+                        className={`icon-toggle ${swipeLayerId === layer.id ? 'active' : ''}`}
+                        onClick={() => handleToggleSwipe(layer.id)}
+                        title={swipeLayerId === layer.id ? "Turn off Swipe" : "Swipe Layer"}
+                    >
+                        <GripVertical size={18} />
+                    </button>
+                );
 
             case 'attribute': {
                 const isSelected = selectedAttributeLayerId === layer.id;
