@@ -40,6 +40,7 @@ import { getRenderPixel } from 'ol/render';
 import {
   styleFunction,
   highlightStyleFunction,
+  modifyStyle,
   formatLength,
   formatArea,
 } from '../../utils/mapUtils';

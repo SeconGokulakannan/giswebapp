@@ -6,7 +6,7 @@ import {
     Eye, Settings2, List, Info, MapPinned, Zap, Square, Play,
     Palette, Repeat, Table, Plus, RefreshCw, DatabaseZap, Goal, X,
     LayersPlus, FileChartPie, Pencil, CircleDot, Save, Loader2, Upload,
-    MousePointer2, BoxSelect, GripVertical,
+    MousePointer2, BoxSelect, GripVertical, MousePointerClick,
     Brush,
     LayoutGrid
 } from 'lucide-react';
@@ -30,14 +30,13 @@ const LayerOperations = ({
         { icon: Settings2, label: 'Layer Density', id: 'density' },
         { icon: List, label: ' Legend', id: 'legend' },
         { icon: Info, label: 'Feature Info', id: 'info' },
-        { icon: MapPinned, label: 'Zoom To Layer', id: 'zoom' },
-        { icon: Zap, label: 'Highlight Layer', id: 'highlight' },
+        { icon: MousePointerClick, label: 'Layer Action', id: 'action' },
         { icon: Palette, label: 'Layer Styles', id: 'styles' },
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
         { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' },
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
-        { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
         { icon: LayoutGrid, label: 'Attribute Table', id: 'attribute' },
+        { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
     ];
 
     const [editingStyleLayer, setEditingStyleLayer] = useState(null);
@@ -569,16 +568,48 @@ const LayerOperations = ({
                         />
                     </div>
                 );
-            case 'zoom':
+            case 'action': {
+                const isHighlighting = isHighlightAnimating && activeHighlightLayerId === layer.id;
+                const isZoomed = activeZoomLayerId === layer.id;
+
                 return (
-                    <button
-                        className="icon-toggle"
-                        onClick={() => handleZoomToLayer(layer.id)}
-                        title="Zoom to Layer"
-                    >
-                        <Goal size={18} />
-                    </button>
+                    <div className="layer-action-buttons" onClick={(e) => e.stopPropagation()}>
+                        <Tooltip.Root>
+                            <Tooltip.Trigger asChild>
+                                <button
+                                    className={`action-btn ${isZoomed ? 'active' : ''}`}
+                                    onClick={() => handleZoomToLayer(layer.id)}
+                                >
+                                    <Goal size={16} />
+                                </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                                <Tooltip.Content className="TooltipContent" side="top" sideOffset={5}>
+                                    Zoom to Layer
+                                    <Tooltip.Arrow className="TooltipArrow" />
+                                </Tooltip.Content>
+                            </Tooltip.Portal>
+                        </Tooltip.Root>
+
+                        <Tooltip.Root>
+                            <Tooltip.Trigger asChild>
+                                <button
+                                    className={`action-btn ${isHighlighting ? 'active animating' : ''}`}
+                                    onClick={() => handleHighlightLayer(layer.id)}
+                                >
+                                    {isHighlighting ? <Square size={14} fill="currentColor" /> : <Play size={16} />}
+                                </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                                <Tooltip.Content className="TooltipContent" side="top" sideOffset={5}>
+                                    {isHighlighting ? 'Stop Highlight' : 'Highlight Layer'}
+                                    <Tooltip.Arrow className="TooltipArrow" />
+                                </Tooltip.Content>
+                            </Tooltip.Portal>
+                        </Tooltip.Root>
+                    </div>
                 );
+            }
             case 'legend':
                 return (
                     <div className="layer-legend-preview" style={{ marginLeft: 'auto' }}>
@@ -600,21 +631,7 @@ const LayerOperations = ({
                         <Brush size={18} />
                     </button>
                 );
-            case 'highlight': {
-                const isCurrentAnimating = isHighlightAnimating && activeHighlightLayerId === layer.id;
-                return (
-                    <button
-                        className={`icon-toggle ${isCurrentAnimating ? 'active animating' : ''}`}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleHighlightLayer(layer.id);
-                        }}
-                        title={isCurrentAnimating ? "Stop Animation" : "Highlight Layer"}
-                    >
-                        {isCurrentAnimating ? <Square size={16} fill="currentColor" /> : <Play size={18} />}
-                    </button>
-                );
-            }
+
 
             case 'reorder': {
                 const availableSequences = [...geoServerLayers].map(l => l.sequence).sort((a, b) => a - b);
@@ -912,7 +929,7 @@ const LayerOperations = ({
                     {(() => {
                         const sourceLayers = activeLayerTool === 'reorder' ? localLayers : geoServerLayers;
 
-                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles' || activeLayerTool === 'attribute' || activeLayerTool === 'swipe')
+                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'styles' || activeLayerTool === 'attribute' || activeLayerTool === 'swipe')
                             ? sourceLayers.filter(l => l.visible)
                             : sourceLayers;
 
@@ -943,24 +960,21 @@ const LayerOperations = ({
                                         ${draggedLayerId === layer.id ? 'dragging-active' : ''}
                                     `}
                                     onClick={() => {
-                                        if (activeLayerTool === 'zoom') {
-                                            handleZoomToLayer(layer.id);
-                                        } else if (activeLayerTool === 'highlight') {
-                                            handleHighlightLayer(layer.id);
+                                        if (activeLayerTool === 'action') {
+                                            // Optional: Pick a default action or just let individual buttons handle it
+                                            // For now, doing nothing on row click for 'action' tool to avoid ambiguity
                                         } else if (activeLayerTool === 'styles') {
                                             handleLoadStyle(layer);
                                         }
                                     }}
                                     style={{
-                                        cursor: (activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles') ? 'pointer' : 'default',
+                                        cursor: (activeLayerTool === 'styles') ? 'pointer' : 'default',
                                         borderLeft: (
-                                            (activeLayerTool === 'zoom' && activeZoomLayerId === layer.id) ||
-                                            (activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id) ||
+                                            (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id)) ||
                                             (activeLayerTool === 'styles' && editingStyleLayer === layer.id)
                                         ) ? '3px solid var(--color-primary)' : 'none',
                                         backgroundColor: (
-                                            (activeLayerTool === 'zoom' && activeZoomLayerId === layer.id) ||
-                                            (activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id) ||
+                                            (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id)) ||
                                             (activeLayerTool === 'styles' && editingStyleLayer === layer.id)
                                         ) ? 'rgba(var(--color-primary-rgb), 0.12)' : 'transparent'
                                     }}

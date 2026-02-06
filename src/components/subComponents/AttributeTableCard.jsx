@@ -336,19 +336,23 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                 {!isMinimized && (
                     <div className="attribute-table-actions">
                         {/* New Add Button */}
-                        <div style={{ position: 'relative' }}>
+                        <div className="actions-group" style={{ position: 'relative' }}>
                             <button
-                                className="action-btn"
+                                className="action-btn btn-add"
                                 onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
                                 title="Add new attribute"
-                                style={{ marginRight: '8px' }}
                             >
                                 <Plus size={12} strokeWidth={1.5} />
                                 <span>Add</span>
                             </button>
                             {isAddMenuOpen && (
                                 <div className="elite-dropdown-menu">
-                                    <div className="elite-dropdown-header">Select Drawing</div>
+                                    <div className="elite-dropdown-header">
+                                        <span>Select Drawing</span>
+                                        <button className="dropdown-close-btn" onClick={() => setIsAddMenuOpen(false)}>
+                                            <X size={14} />
+                                        </button>
+                                    </div>
                                     {drawings && drawings.length > 0 ? (
                                         drawings.map(d => (
                                             <button
@@ -367,8 +371,8 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                             )}
                         </div>
 
-                        <div className="edit-switch-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '12px' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--color-primary)' }}>EDIT</span>
+                        <div className="edit-switch-container">
+                            <span style={{ fontSize: '11px', fontWeight: 600 }}>Edit</span>
                             <label className="toggle-switch" style={{ transform: 'scale(0.7)' }}>
                                 <input
                                     type="checkbox"
@@ -380,47 +384,54 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                         </div>
 
                         {hasChanges && (
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button
-                                    className="action-btn"
-                                    onClick={handleClearAll}
-                                    style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
-                                    title="Discard all pending changes"
-                                >
-                                    <Eraser size={12} strokeWidth={1.5} />
-                                    <span>Discard</span>
-                                </button>
-                                <button
-                                    className="action-btn save-btn"
-                                    onClick={handleSave}
-                                    style={{ backgroundColor: 'var(--color-success)', color: 'white', borderColor: 'var(--color-success)' }}
-                                    title="Save all pending changes"
-                                >
-                                    <Play size={12} strokeWidth={1.5} fill="currentColor" style={{ transform: 'rotate(90deg)' }} />
-                                    <span>Save</span>
-                                </button>
-                            </div>
+                            <>
+                                <div className="actions-group">
+                                    <button
+                                        className="action-btn btn-discard"
+                                        onClick={handleClearAll}
+                                        title="Discard all pending changes"
+                                    >
+                                        <Eraser size={12} strokeWidth={1.5} />
+                                        <span>Discard</span>
+                                    </button>
+                                </div>
+                                <div className="actions-group">
+                                    <button
+                                        className="action-btn btn-save"
+                                        onClick={handleSave}
+                                        title="Save all pending changes"
+                                    >
+                                        <Play size={12} strokeWidth={1.5} fill="currentColor" style={{ transform: 'rotate(90deg)' }} />
+                                        <span>Save</span>
+                                    </button>
+                                </div>
+                            </>
                         )}
 
-                        <button
-                            className="action-btn"
-                            onClick={handleDelete}
-                            disabled={!hasSelection}
-                            title="Delete selected features"
-                        >
-                            <Trash2 size={12} strokeWidth={1.5} />
-                            <span>Delete</span>
-                        </button>
-                        <button
-                            className={`action-btn ${isHighlighting ? 'highlight-btn active' : 'highlight-btn'}`}
-                            onClick={handleHighlight}
-                            disabled={!hasSelection && !isHighlighting}
-                            title={isHighlighting ? "Stop highlighting" : "Highlight selected features on map"}
-                        >
-                            {isHighlighting ? <Pause size={12} strokeWidth={1.5} /> : <Play size={12} strokeWidth={1.5} />}
+                        <div className="actions-group">
+                            <button
+                                className="action-btn btn-delete"
+                                onClick={handleDelete}
+                                disabled={!hasSelection}
+                                title="Delete selected features"
+                            >
+                                <Trash2 size={12} strokeWidth={1.5} />
+                                <span>Delete</span>
+                            </button>
+                        </div>
 
-                            <span>{isHighlighting ? 'Stop' : 'Highlight'}</span>
-                        </button>
+                        <div className="actions-group">
+                            <button
+                                className={`action-btn btn-highlight ${isHighlighting ? 'active' : ''}`}
+                                onClick={handleHighlight}
+                                disabled={!hasSelection && !isHighlighting}
+                                title={isHighlighting ? "Stop highlighting" : "Highlight selected features on map"}
+                            >
+                                {isHighlighting ? <Pause size={12} strokeWidth={1.5} /> : <Play size={12} strokeWidth={1.5} />}
+
+                                <span>{isHighlighting ? 'Stop' : 'Highlight'}</span>
+                            </button>
+                        </div>
                     </div>
                 )}
                 <button

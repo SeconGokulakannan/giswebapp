@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copyright } from 'lucide-react';
+import { Copyright, RulerDimensionLine } from 'lucide-react';
 const MapStatusBar = ({ coordinates, zoom, scale }) => {
     return (
         <div className="status-bar">
@@ -12,7 +12,7 @@ const MapStatusBar = ({ coordinates, zoom, scale }) => {
                     Long - {coordinates?.lon?.toFixed?.(6) || '0.000000'} ° E
                 </span>
                 <span className="status-link">Zoom - {zoom}</span>
-                <span className="status-link">Scale - {scale}</span>
+                <span className="status-link"><RulerDimensionLine size={16} style={{ verticalAlign: 'top' }} />&nbsp;&nbsp;{scale}</span>
             </div>
         </div>
     );

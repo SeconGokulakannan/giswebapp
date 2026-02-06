@@ -2929,7 +2929,7 @@ input:checked:hover+.toggle-slider::before {
 /* ===== ATTRIBUTE TABLE CARD ===== */
 .attribute-table-card {
   position: absolute;
-  bottom: 5%;
+  bottom: 1%;
   left: 28%;
   transform: translateX(-50%);
   width: 55%;
@@ -2970,113 +2970,198 @@ input:checked:hover+.toggle-slider::before {
 }
 
 .attribute-table-header {
-  padding: 6px 12px;
+  padding: 8px 16px;
+  height: 44px;
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: var(--color-bg-secondary);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 10;
 }
 
 .attribute-table-header .header-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 400;
-  font-size: 11px;
-  color: #000;
-  /* Solid black for light mode */
-  letter-spacing: 0.02em;
-}
-
-[data-theme="dark"] .attribute-table-header .header-title {
-  color: #fff;
-  /* Solid white for dark mode */
+  gap: 10px;
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--color-text-primary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.8;
 }
 
 .attribute-table-actions {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
   margin-left: auto;
   margin-right: 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+  border-radius: 20px;
+  overflow: visible;
+  /* Essential for dropdowns to show */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  height: 32px;
+  position: relative;
+}
+
+.actions-group,
+.edit-switch-container {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-right: 1px solid rgba(var(--color-primary-rgb), 0.15);
+  height: 100%;
+  transition: all 0.2s;
+}
+
+/* Maintain pill shape at ends since parent overflow is visible */
+.attribute-table-actions>div:first-child {
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+}
+
+.attribute-table-actions>div:last-child {
+  border-right: none;
+  border-top-right-radius: 20px;
+  border-bottom-right-radius: 20px;
+}
+
+.actions-group:hover,
+.edit-switch-container:hover {
+  background: rgba(var(--color-primary-rgb), 0.06);
 }
 
 .attribute-table-actions .action-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 8px;
+  padding: 0;
   background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--color-text-primary);
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  height: 100%;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  width: 100px;
 }
 
 .attribute-table-actions .action-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  border-color: var(--color-primary);
+  opacity: 0.8;
+}
+
+.attribute-table-actions .action-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.attribute-table-actions .action-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+/* Specialized Button Styles */
+.attribute-table-actions .action-btn.btn-add {
   color: var(--color-primary);
 }
 
-.attribute-table-actions .action-btn.highlight-btn:hover:not(:disabled) {
-  border-color: #10b981;
+.attribute-table-actions .action-btn.btn-save {
   color: #10b981;
+}
+
+.attribute-table-actions .action-btn.btn-save:disabled {
+  color: #10b981;
+}
+
+.attribute-table-actions .action-btn.btn-discard {
+  color: #ef4444;
+}
+
+.attribute-table-actions .action-btn.btn-discard:hover:not(:disabled) {
+  background: #ef4444;
+  color: white;
+}
+
+.attribute-table-actions .action-btn.btn-delete {
+  color: var(--color-text-muted);
+}
+
+.attribute-table-actions .action-btn.btn-delete:hover:not(:disabled) {
+  background: #ef4444;
+  color: white;
+}
+
+.attribute-table-actions .action-btn.btn-highlight {
+  color: var(--color-primary);
+}
+
+.attribute-table-actions .action-btn.btn-highlight.active {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 0 12px rgba(var(--color-primary-rgb), 0.4);
 }
 
 .attribute-table-actions .action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+  filter: grayscale(1);
 }
 
 .attribute-table-actions .action-btn svg {
-  flex-shrink: 0;
+  opacity: 0.9;
 }
 
 .attribute-table-header .close-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
+  border-radius: 6px;
   border: none;
   cursor: pointer;
-  transition: all 0.2s;
-  color: #000;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--color-text-primary);
   opacity: 0.6;
 }
 
 .attribute-table-header .close-btn:hover {
-  background: var(--color-danger);
+  background: #ef4444;
   color: white;
-  border-color: var(--color-danger);
+  opacity: 1;
+  transform: scale(1.05);
 }
 
 .attribute-table-header .minimize-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
+  border-radius: 6px;
   border: none;
   cursor: pointer;
-  transition: all 0.2s;
-  color: #000;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--color-text-primary);
   opacity: 0.6;
   margin-right: 4px;
 }
 
 .attribute-table-header .minimize-btn:hover {
-  background: var(--color-primary);
-  color: white;
+  background: rgba(var(--color-primary-rgb), 0.1);
+  color: var(--color-primary);
   opacity: 1;
-  border-radius: 3px;
+  transform: scale(1.05);
 }
 
 [data-theme="dark"] .attribute-table-header .minimize-btn,
@@ -3441,6 +3526,27 @@ input:checked:hover+.toggle-slider::before {
   border-bottom: 1px solid var(--color-border);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dropdown-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.dropdown-close-btn:hover {
+  background: var(--color-bg-hover);
+  color: #ef4444;
 }
 
 .elite-dropdown-item {
@@ -3519,4 +3625,56 @@ input:checked:hover+.toggle-slider::before {
 [data-theme="dark"] .status-bar-content {
   background: rgba(24, 24, 27, 0.8);
   color: #ffffff;
+}
+
+/* Layer Action Buttons */
+.layer-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.action-btn:hover {
+  background: rgba(var(--color-primary-rgb), 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.action-btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.action-btn.animating {
+  animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--color-primary-rgb), 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 6px rgba(var(--color-primary-rgb), 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--color-primary-rgb), 0);
+  }
 }
