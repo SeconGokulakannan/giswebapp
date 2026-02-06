@@ -151,16 +151,16 @@ const MapPanel = ({
             <div className="panel-header">
                 <div className="panel-header-text">
                     <h3>
-                        {activePanel === 'basemaps' && 'Base Maps'}
                         {activePanel === 'layers' && 'GIS Layers'}
+                        {activePanel === 'layermanagement' && 'Layer Management'}
                         {activePanel === 'tools' && 'Drawing Tools'}
                         {activePanel === 'utility_tools' && 'Tools'}
                         {activePanel === 'location' && 'Go to Location'}
                         {activePanel === 'print' && 'Export Map'}
                     </h3>
                     <p>
-                        {activePanel === 'basemaps' && 'Choose your map background'}
                         {activePanel === 'layers' && 'Manage data layers'}
+                        {activePanel === 'layermanagement' && 'Manage and swipe layers'}
                         {activePanel === 'tools' && 'Create features on the map'}
                         {activePanel === 'utility_tools' && 'Measure and Analyze Map Data'}
                         {activePanel === 'location' && 'Enter precise coordinates'}
@@ -254,7 +254,7 @@ const MapPanel = ({
                     </div>
                 )}
 
-                {activePanel === 'layers' && (
+                {(activePanel === 'layers' || activePanel === 'layermanagement') && (
                     <LayerOperations
                         isDrawingVisible={isDrawingVisible}
                         setIsDrawingVisible={setIsDrawingVisible}

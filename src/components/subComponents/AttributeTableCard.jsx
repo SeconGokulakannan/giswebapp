@@ -214,10 +214,19 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
         }));
         setIsAddMenuOpen(false);
         toast.success(`Added new row for ${drawing.name}. Please enter attributes.`);
+    };
 
-        // Ensure Edit Mode is on so they can type? 
-        // Or we allow editing new rows regardless of global Toggle.
-        // My logic allows editing new rows regardless: editable: (params) => isEditMode || isNew
+    const handleClearAll = () => {
+        if (Object.keys(pendingChanges).length > 0 || Object.keys(newRows).length > 0) {
+            if (window.confirm("Are you sure you want to discard all unsaved changes and new rows?")) {
+                setPendingChanges({});
+                setNewRows({});
+                if (gridApi) {
+                    gridApi.refreshCells({ force: true });
+                }
+                toast.success("Changes discarded");
+            }
+        }
     };
 
     // Clear selection and highlighting when switching mode
@@ -371,15 +380,26 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                         </div>
 
                         {hasChanges && (
-                            <button
-                                className="action-btn save-btn"
-                                onClick={handleSave}
-                                style={{ backgroundColor: 'var(--color-success)', color: 'white', borderColor: 'var(--color-success)' }}
-                                title="Save all pending changes"
-                            >
-                                <Play size={12} strokeWidth={1.5} fill="currentColor" style={{ transform: 'rotate(90deg)' }} />
-                                <span>Save</span>
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    className="action-btn"
+                                    onClick={handleClearAll}
+                                    style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
+                                    title="Discard all pending changes"
+                                >
+                                    <Eraser size={12} strokeWidth={1.5} />
+                                    <span>Discard</span>
+                                </button>
+                                <button
+                                    className="action-btn save-btn"
+                                    onClick={handleSave}
+                                    style={{ backgroundColor: 'var(--color-success)', color: 'white', borderColor: 'var(--color-success)' }}
+                                    title="Save all pending changes"
+                                >
+                                    <Play size={12} strokeWidth={1.5} fill="currentColor" style={{ transform: 'rotate(90deg)' }} />
+                                    <span>Save</span>
+                                </button>
+                            </div>
                         )}
 
                         <button
@@ -414,54 +434,56 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     <X size={14} strokeWidth={1.5} />
                 </button>
             </div>
-            {!isMinimized && (
-                <div className="attribute-table-content ag-theme-alpine">
-                    <AgGridReact
-                        rowData={rowData}
-                        columnDefs={columnDefs}
-                        animateRows={true}
-                        headerHeight={26}
-                        rowHeight={24}
-                        loading={isLoading}
-                        pagination={true}
-                        paginationPageSize={10}
-                        paginationPageSizeSelector={[10, 20, 50, 100]}
-                        suppressMovableColumns={false}
-                        rowSelection="multiple"
-                        suppressRowClickSelection={true}
-                        stopEditingWhenCellsLoseFocus={true}
-                        suppressScrollOnNewData={true}
-                        onSelectionChanged={onSelectionChanged}
-                        onCellValueChanged={onCellValueChanged}
-                        onGridReady={onGridReady}
-                        getRowId={(params) => params.data.id || `row-${params.node.rowIndex}`}
-                        getRowClass={(params) => {
-                            if (pendingChanges[params.data.id]) {
-                                return 'row-dirty';
-                            }
-                            return '';
-                        }}
-                        defaultColDef={{
-                            sortable: true,
-                            filter: true,
-                            resizable: true,
-                            floatingFilter: true,
-                            cellStyle: { textAlign: 'center' }
-                        }}
-                        autoSizeStrategy={{
-                            type: 'fitCellContents'
-                        }}
-                        onFirstDataRendered={(params) => {
-                            params.api.autoSizeAllColumns();
-                        }}
-                        overlayLoadingTemplate={'<span class="ag-overlay-loading-center">Fetching Attribute Data...</span>'}
-                        overlayNoRowsTemplate={isLoading ? ' ' : '<span>No Data Available</span>'}
-                    />
-                </div>
-            )}
+            {
+                !isMinimized && (
+                    <div className="attribute-table-content ag-theme-alpine">
+                        <AgGridReact
+                            rowData={rowData}
+                            columnDefs={columnDefs}
+                            animateRows={true}
+                            headerHeight={26}
+                            rowHeight={24}
+                            loading={isLoading}
+                            pagination={true}
+                            paginationPageSize={10}
+                            paginationPageSizeSelector={[10, 20, 50, 100]}
+                            suppressMovableColumns={false}
+                            rowSelection="multiple"
+                            suppressRowClickSelection={true}
+                            stopEditingWhenCellsLoseFocus={true}
+                            suppressScrollOnNewData={true}
+                            onSelectionChanged={onSelectionChanged}
+                            onCellValueChanged={onCellValueChanged}
+                            onGridReady={onGridReady}
+                            getRowId={(params) => params.data.id || `row-${params.node.rowIndex}`}
+                            getRowClass={(params) => {
+                                if (pendingChanges[params.data.id]) {
+                                    return 'row-dirty';
+                                }
+                                return '';
+                            }}
+                            defaultColDef={{
+                                sortable: true,
+                                filter: true,
+                                resizable: true,
+                                floatingFilter: true,
+                                cellStyle: { textAlign: 'center' }
+                            }}
+                            autoSizeStrategy={{
+                                type: 'fitCellContents'
+                            }}
+                            onFirstDataRendered={(params) => {
+                                params.api.autoSizeAllColumns();
+                            }}
+                            overlayLoadingTemplate={'<span class="ag-overlay-loading-center">Fetching Attribute Data...</span>'}
+                            overlayNoRowsTemplate={isLoading ? ' ' : '<span>No Data Available</span>'}
+                        />
+                    </div>
+                )
+            }
 
 
-        </div>
+        </div >
     );
 };
 

@@ -1,31 +1,20 @@
 import React from 'react';
-
+import { Copyright } from 'lucide-react';
 const MapStatusBar = ({ coordinates, zoom, scale }) => {
     return (
-        <footer className="status-bar">
+        <div className="status-bar">
             <div className="status-bar-content">
-                <div className="status-group">
-                    <div className="status-item">
-                        <span className="status-label">LON:</span>
-                        <span className="status-value">{coordinates?.lon?.toFixed?.(6) || '0.000000'}</span>
-                    </div>
-                    <div className="status-item">
-                        <span className="status-label">LAT:</span>
-                        <span className="status-value">{coordinates?.lat?.toFixed?.(6) || '0.000000'}</span>
-                    </div>
-                </div>
-                <div className="status-group">
-                    <div className="status-item">
-                        <span className="status-label">ZOOM:</span>
-                        <span className="status-value">{zoom.toFixed(1)}</span>
-                    </div>
-                    <div className="status-item">
-                        <span className="status-label">SCALE:</span>
-                        <span className="status-value">{scale}</span>
-                    </div>
-                </div>
+                <span className="status-link"><Copyright size={12} style={{ verticalAlign: 'middle' }} /> 2026 SECON Private Limited</span>
+                <span className="status-link">
+                    Lat - {coordinates?.lat?.toFixed?.(6) || '0.000000'} ° N
+                </span>
+                <span className="status-link">
+                    Long - {coordinates?.lon?.toFixed?.(6) || '0.000000'} ° E
+                </span>
+                <span className="status-link">Zoom - {zoom}</span>
+                <span className="status-link">Scale - {scale}</span>
             </div>
-        </footer>
+        </div>
     );
 };
 

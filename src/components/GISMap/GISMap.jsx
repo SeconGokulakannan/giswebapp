@@ -1849,6 +1849,7 @@ function GISMap() {
           />
 
           {/* Swipe Control moved to LayerOperations panel */}
+          <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
         </div>
 
         {/* Measurement Badge - Hidden per user request */}
@@ -1859,7 +1860,6 @@ function GISMap() {
           </div>
         )} */}
 
-        <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
       </div>
     </Tooltip.Provider>
   );
