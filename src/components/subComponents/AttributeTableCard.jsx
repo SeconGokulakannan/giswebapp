@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { X, Table, Edit, Trash2, MapPin, Grid2x2, ChevronsUpDownIcon, Play, Pause } from 'lucide-react';
+import { X, Table, Edit, Trash2, MapPin, Grid2x2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures }) => {
+const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute }) => {
     const [selectedRows, setSelectedRows] = useState([]);
     const [gridApi, setGridApi] = useState(null);
     const [isHighlighting, setIsHighlighting] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [pendingChanges, setPendingChanges] = useState({}); // { rowId: { colId: newValue } }
+
+    // Add Feature State (Inline)
+    const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+    const [newRows, setNewRows] = useState({}); // { rowId: { drawingId, ...data } }
 
     if (!isOpen) return null;
 
@@ -31,103 +36,176 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
         if (newValue === oldValue) return;
 
 
-        setPendingChanges(prev => {
-            const newChanges = {
+        // Check if it's a new row or existing row update
+        if (rowId.toString().startsWith('new-')) {
+            setNewRows(prev => ({
                 ...prev,
                 [rowId]: {
-                    ...(prev[rowId] || {}),
+                    ...prev[rowId],
                     [colId]: newValue
                 }
-            };
-            return newChanges;
-        });
+            }));
+        } else {
+            setPendingChanges(prev => {
+                const newChanges = {
+                    ...prev,
+                    [rowId]: {
+                        ...(prev[rowId] || {}),
+                        [colId]: newValue
+                    }
+                };
+                return newChanges;
+            });
+        }
     }, []);
 
     // Use features properties for columns and rows
     const { columnDefs, rowData } = React.useMemo(() => {
-
-
         let cols = [];
         let rows = [];
 
-        if (data && data.length > 0) {
-            const firstWithProps = data.find(f => f.properties && Object.keys(f.properties).length > 0);
+        // 1. Determine Columns (from existing data or fallback if empty but have new rows?)
+        // If data is empty, we might need a default schema or wait for data.
+        // Assuming data exists for now.
+        const referenceData = (data && data.length > 0) ? data[0] : null;
 
-            if (firstWithProps) {
-                const firstFeatureProps = firstWithProps.properties;
+        if (referenceData || (Object.keys(newRows).length > 0)) {
+            // If no data but we have new rows, we might need a way to get columns. 
+            // For now, rely on referenceData. 
+            // If data is empty, we can't easily guess columns without DescribeFeatureType (server side).
+            // Fallback: If no data, we can't render columns easily unless we track schema separately.
 
-                cols = [
-                    {
-                        headerName: '',
-                        checkboxSelection: (params) => !isEditMode,
-                        headerCheckboxSelection: !isEditMode,
-                        width: 50,
-                        pinned: 'left',
-                        lockPosition: true,
-                        suppressMovable: true,
-                        filter: false,
-                        resizable: true,
-                        suppressMenu: true,
+            const firstFeatureProps = referenceData ? referenceData.properties : (Object.values(newRows)[0] || {});
+
+            cols = [
+                {
+                    headerName: '',
+                    checkboxSelection: (params) => !isEditMode,
+                    headerCheckboxSelection: !isEditMode,
+                    width: 50,
+                    pinned: 'left',
+                    lockPosition: true,
+                    suppressMovable: true,
+                    filter: false,
+                    resizable: true,
+                    suppressMenu: true,
+                },
+                ...Object.keys(firstFeatureProps).map(key => ({
+                    headerName: key,
+                    field: key,
+                    sortable: true,
+                    filter: true,
+                    resizable: true,
+                    // Editable if Edit Mode OR if it's a new row
+                    editable: (params) => isEditMode || (params.data.id && String(params.data.id).startsWith('new-')),
+                    // Ensure value setter updates correctly
+                    valueSetter: (params) => {
+                        const isNew = String(params.data.id).startsWith('new-');
+                        if (!isEditMode && !isNew) return false;
+                        params.data[params.colDef.field] = params.newValue;
+                        return true;
                     },
-                    ...Object.keys(firstFeatureProps).map(key => ({
-                        headerName: key,
-                        field: key,
-                        sortable: true,
-                        filter: true,
-                        resizable: true,
-                        editable: () => isEditMode,
-                        valueSetter: (params) => {
-                            if (!isEditMode) return false;
-                            params.data[params.colDef.field] = params.newValue;
-                            return true;
-                        },
-                        cellClass: (params) => {
-                            const rowId = params.data.id;
-                            if (pendingChanges[rowId] && pendingChanges[rowId].hasOwnProperty(params.colDef.field)) {
-                                return 'cell-dirty';
-                            }
-                            return '';
+                    cellClass: (params) => {
+                        const rowId = params.data.id;
+                        if (rowId && String(rowId).startsWith('new-')) return 'cell-dirty'; // Mark all new row cells as dirty/editable visual
+                        if (pendingChanges[rowId] && pendingChanges[rowId].hasOwnProperty(params.colDef.field)) {
+                            return 'cell-dirty';
                         }
-                    }))
-                ];
-
-                rows = data.map((feature, idx) => {
-                    const rowId = getFeatureId(feature) || `fallback-${idx}`;
-                    // Important: Spread properties FIRST, then set stable id/metadata
-                    const row = {
-                        ...feature.properties,
-                        id: rowId,
-                        _feature: feature
-                    };
-
-                    // Apply pending changes
-                    if (pendingChanges[rowId]) {
-                        Object.assign(row, pendingChanges[rowId]);
+                        return '';
                     }
+                }))
+            ];
 
-                    return row;
+            // 2. Build Row Data (Existing + New)
+
+            // Existing Features
+            rows = data ? data.map((feature, idx) => {
+                const rowId = getFeatureId(feature) || `fallback-${idx}`;
+                const row = {
+                    ...feature.properties,
+                    id: rowId,
+                    _feature: feature
+                };
+                if (pendingChanges[rowId]) {
+                    Object.assign(row, pendingChanges[rowId]);
+                }
+                return row;
+            }) : [];
+
+            // Append New Rows
+            Object.keys(newRows).forEach(newId => {
+                const newRowData = newRows[newId];
+                rows.unshift({ // Add to top
+                    ...newRowData, // contains properties
+                    id: newId,
+                    _isNew: true
                 });
-            }
+            });
         }
         return { columnDefs: cols, rowData: rows };
-    }, [data, isEditMode, pendingChanges]);
+    }, [data, isEditMode, pendingChanges, newRows]);
 
     const handleSave = async () => {
+        // 1. Handle New Rows (Inserts)
+        const newRowIds = Object.keys(newRows);
+        if (newRowIds.length > 0) {
+            let insertSuccessCount = 0;
+            for (const id of newRowIds) {
+                const row = newRows[id];
+                const drawingId = row.drawingId;
+                const attributes = { ...row };
+                delete attributes.drawingId; // Clean up internal keys if any other exist
+
+                // Call server add
+                if (onSaveNewAttribute) {
+                    const success = await onSaveNewAttribute(layerFullName, attributes, drawingId);
+                    if (success) insertSuccessCount++;
+                }
+            }
+
+            if (insertSuccessCount > 0) {
+                toast.success(`Saved ${insertSuccessCount} new feature(s).`);
+                setNewRows({}); // Clear new rows on success
+            }
+        }
+
+        // 2. Handle Updates
         if (Object.keys(pendingChanges).length > 0 && onUpdateFeatures) {
             const count = Object.keys(pendingChanges).length;
-            if (window.confirm(`Are you sure you want to save changes for ${count} row(s)?`)) {
+            // Only confirm if we didn't just add rows, or just always confirm updates
+            if (window.confirm(`Are you sure you want to save changes for ${count} existing row(s)?`)) {
                 const success = await onUpdateFeatures(layerFullName, pendingChanges);
                 if (success) {
                     setPendingChanges({});
-                    // Explicitly refresh after clearing to be absolutely sure
-                    if (gridApi) {
-                        setTimeout(() => {
-                            gridApi.refreshCells({ force: true });
-                        }, 100);
-                    }
                 }
             }
         }
+
+        // Refresh grid
+        if (gridApi) {
+            setTimeout(() => {
+                gridApi.refreshCells({ force: true });
+            }, 100);
+        }
+    };
+
+    const handleAddFeature = (drawing) => {
+        // Create a new blank row
+        const newId = `new-${Date.now()}`;
+        // Initialize with drawingId
+        setNewRows(prev => ({
+            ...prev,
+            [newId]: {
+                drawingId: drawing.id,
+                // Initialize other columns as empty strings or nulls based on columnDefs if available
+            }
+        }));
+        setIsAddMenuOpen(false);
+        toast.success(`Added new row for ${drawing.name}. Please enter attributes.`);
+
+        // Ensure Edit Mode is on so they can type? 
+        // Or we allow editing new rows regardless of global Toggle.
+        // My logic allows editing new rows regardless: editable: (params) => isEditMode || isNew
     };
 
     // Clear selection and highlighting when switching mode
@@ -212,7 +290,7 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
     };
 
     const hasSelection = selectedRows.length > 0;
-    const hasChanges = Object.keys(pendingChanges).length > 0;
+    const hasChanges = Object.keys(pendingChanges).length > 0 || Object.keys(newRows).length > 0;
 
     return (
         <div className={`attribute-table-card ${isMinimized ? 'minimized' : ''}`}>
@@ -223,6 +301,37 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                 </div>
                 {!isMinimized && (
                     <div className="attribute-table-actions">
+                        {/* New Add Button */}
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                className="action-btn"
+                                onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                                title="Add new attribute"
+                                style={{ marginRight: '8px' }}
+                            >
+                                <Plus size={12} strokeWidth={1.5} />
+                                <span>Add</span>
+                            </button>
+                            {isAddMenuOpen && (
+                                <div className="elite-dropdown-menu">
+                                    <div className="elite-dropdown-header">Select Drawing</div>
+                                    {drawings && drawings.length > 0 ? (
+                                        drawings.map(d => (
+                                            <button
+                                                key={d.id}
+                                                className="elite-dropdown-item"
+                                                onClick={() => handleAddFeature(d)}
+                                            >
+                                                {d.name} ({d.type})
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="elite-dropdown-empty">No drawings found</div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="edit-switch-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '12px' }}>
                             <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--color-primary)' }}>EDIT</span>
                             <label className="toggle-switch" style={{ transform: 'scale(0.7)' }}>
@@ -324,6 +433,8 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     />
                 </div>
             )}
+
+
         </div>
     );
 };

@@ -367,6 +367,99 @@ xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.
     }
 };
 
+export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature) => {
+    try {
+        if (!geometryFeature) {
+            console.error("No geometry feature provided for creation");
+            return false;
+        }
+
+        const geometry = geometryFeature.getGeometry();
+        // Assume default geometry name if not found in properties (GeoServer defaults: 'geom', 'the_geom')
+        // We will try 'geom' as a safe default for now, or check if properties has a hint.
+        // A more robust way would be checking DescribeFeatureType, but for now we proceed with standard WFS convention.
+        const geometryName = 'geom';
+
+        // Convert OpenLayers Geometry to GML3 fragment
+        // This is a simplified GML construction. For complex cases, consider using ol/format/GML.
+        const coords = geometry.getCoordinates();
+        let gmlGeometry = '';
+        const type = geometry.getType();
+
+        if (type === 'Point') {
+            gmlGeometry = `<gml:Point srsName="EPSG:3857"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
+        } else if (type === 'LineString') {
+            gmlGeometry = `<gml:LineString srsName="EPSG:3857"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
+        } else if (type === 'Polygon') {
+            // Polygons in GML are rings. First ring is exterior.
+            const exterior = coords[0].map(c => c.join(' ')).join(' ');
+            gmlGeometry = `<gml:Polygon srsName="EPSG:3857"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+        } else if (type === 'MultiPolygon') {
+            // Simplified MultiPolygon support
+            // ...implementation can be expanded if needed...
+            console.warn("MultiPolygon auto-creation pending implementation, attempting simplistic fallback");
+        }
+
+        if (!gmlGeometry) {
+            console.error(`Unsupported geometry type for auto-creation: ${type}`);
+            return false;
+        }
+
+        // Construct Properties XML
+        let propertyXml = '';
+        for (const [key, value] of Object.entries(properties)) {
+            // Skip internal/empty values
+            if (!key || key === 'id' || key.startsWith('_') || value === null || value === undefined) continue;
+            propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
+        }
+
+        // Add Geometry Property
+        // Note: We use 'geom' or 'the_geom'. Many postgis layers use 'geom'. Shapefiles often use 'the_geom'.
+        // We inject both usually or try to be smart? WFS-T ignores extra properties often, but let's try 'geom' first.
+        // If the user's schema is different, this might fail without DescribeFeatureType check involved key step.
+        // Let's add it under the assumed name.
+        propertyXml += `<wfs:Property><wfs:Name>${geometryName}</wfs:Name><wfs:Value>${gmlGeometry}</wfs:Value></wfs:Property>`;
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:gml="http://www.opengis.net/gml"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Insert>
+            <${fullLayerName}>
+                ${propertyXml}
+            </${fullLayerName}>
+        </wfs:Insert>
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'text/xml'
+            },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>')) {
+                return true;
+            } else if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Insert Exception:', resultText);
+                return false;
+            }
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error(`Failed to create feature via WFS-T (${fullLayerName}):`, error);
+        return false;
+    }
+};
+
 export const updateFeature = async (fullLayerName, featureId, properties) => {
     try {
         if (!featureId) {

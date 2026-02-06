@@ -113,7 +113,7 @@ const MapPanel = ({
     setShowAttributeTable,
     GetLayerAttributes,
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer, queryingLayer,
-    handleToggleSwipe, swipeLayerId
+    handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds, swipePosition, setSwipePosition
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -285,7 +285,10 @@ const MapPanel = ({
                         setQueryingLayer={setQueryingLayer}
                         queryingLayer={queryingLayer}
                         handleToggleSwipe={handleToggleSwipe}
-                        swipeLayerId={swipeLayerId}
+                        handleToggleSwipeAll={handleToggleSwipeAll}
+                        swipeLayerIds={swipeLayerIds}
+                        swipePosition={swipePosition}
+                        setSwipePosition={setSwipePosition}
                     />
                 )}
 

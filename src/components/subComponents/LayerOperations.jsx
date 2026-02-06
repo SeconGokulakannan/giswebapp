@@ -21,7 +21,8 @@ const LayerOperations = ({
     selectedAttributeLayerId, setSelectedAttributeLayerId,
     showAttributeTable, setShowAttributeTable, GetLayerAttributes,
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
-    queryingLayer, handleToggleSwipe, swipeLayerId
+    queryingLayer, handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds,
+    swipePosition, setSwipePosition
 }) => {
 
     const tools = [
@@ -629,16 +630,19 @@ const LayerOperations = ({
                 );
             }
 
-            case 'swipe':
+            case 'swipe': {
+                const isSwipeSelected = swipeLayerIds?.includes(layer.id);
                 return (
-                    <button
-                        className={`icon-toggle ${swipeLayerId === layer.id ? 'active' : ''}`}
-                        onClick={() => handleToggleSwipe(layer.id)}
-                        title={swipeLayerId === layer.id ? "Turn off Swipe" : "Swipe Layer"}
-                    >
-                        <GripVertical size={18} />
-                    </button>
+                    <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                        <input
+                            type="checkbox"
+                            checked={isSwipeSelected}
+                            onChange={() => handleToggleSwipe(layer.id)}
+                        />
+                        <span className="toggle-slider"></span>
+                    </label>
                 );
+            }
 
             case 'attribute': {
                 const isSelected = selectedAttributeLayerId === layer.id;
@@ -747,6 +751,37 @@ const LayerOperations = ({
             </div>
 
             <div className="layer-list-content">
+                {/* Horizontal Swipe Slider - Shows at top when swipe tool is active */}
+                {activeLayerTool === 'swipe' && swipeLayerIds?.length > 0 && (
+                    <div className="swipe-slider-container" style={{
+                        padding: '12px',
+                        marginBottom: '8px',
+                        background: 'rgba(var(--color-primary-rgb), 0.08)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(var(--color-primary-rgb), 0.15)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Swipe Position
+                            </span>
+                            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-primary)' }}>
+                                {Math.round(swipePosition)}%
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={swipePosition}
+                            onChange={(e) => setSwipePosition(parseFloat(e.target.value))}
+                            className="layer-opacity-slider"
+                            style={{ width: '100%', margin: 0 }}
+                            title="Drag to adjust swipe position"
+                        />
+                    </div>
+                )}
+
                 {(activeLayerTool === 'visibility') && (
                     <>
                         <div className="layer-section-header">Operational Overlays</div>
@@ -859,20 +894,33 @@ const LayerOperations = ({
                             </label>
                         </div>
                     )}
+                    {activeLayerTool === 'swipe' && geoServerLayers.filter(l => l.visible).length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 500 }}>ALL</span>
+                            <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={swipeLayerIds?.length === geoServerLayers.filter(l => l.visible).length && swipeLayerIds?.length > 0}
+                                    onChange={(e) => handleToggleSwipeAll(e.target.checked)}
+                                />
+                                <span className="toggle-slider"></span>
+                            </label>
+                        </div>
+                    )}
                 </div>
 
                 <div className="layer-list-group scrollable">
                     {(() => {
                         const sourceLayers = activeLayerTool === 'reorder' ? localLayers : geoServerLayers;
 
-                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles' || activeLayerTool === 'attribute')
+                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'zoom' || activeLayerTool === 'highlight' || activeLayerTool === 'styles' || activeLayerTool === 'attribute' || activeLayerTool === 'swipe')
                             ? sourceLayers.filter(l => l.visible)
                             : sourceLayers;
 
                         if (displayedLayers.length === 0) {
                             return (
                                 <div className="empty-layers-msg">
-                                    {(activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'styles')
+                                    {(activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'styles' || activeLayerTool === 'swipe')
                                         ? "No visible layers."
                                         : "No server layers connected."}
                                 </div>

@@ -33,7 +33,6 @@ import MapStatusBar from '../subComponents/MapStatusBar';
 import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 import AttributeTableCard from '../subComponents/AttributeTableCard';
 import QueryBuilderCard from '../subComponents/QueryBuilderCard';
-import SwipeControl from '../subComponents/SwipeControl';
 import { getRenderPixel } from 'ol/render';
 
 
@@ -56,7 +55,8 @@ import {
   updateLayerStyle,
   saveSequence,
   deleteFeature,
-  updateFeature
+  updateFeature,
+  SaveNewAttribute
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 
@@ -133,6 +133,7 @@ function GISMap() {
   const geoServerLayersRef = useRef(geoServerLayers);
   const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
   const isHighlightAnimatingRef = useRef(isHighlightAnimating);
+  const [availableDrawings, setAvailableDrawings] = useState([]); // ELITE: For adding attributes
 
   // Query Builder State
   const [showQueryBuilder, setShowQueryBuilder] = useState(false);
@@ -172,41 +173,75 @@ function GISMap() {
       viewport.style.cursor = '';
     }
   }, [activeLayerTool, infoSelectionMode, isLocked, mapReady]);
-  // ELITE: Swipe Tool State
-  const [swipeLayerId, setSwipeLayerId] = useState(null);
+  // ELITE: Swipe Tool State - Multi-layer support
+  const [swipeLayerIds, setSwipeLayerIds] = useState([]); // Array of layer IDs
   const [swipePosition, setSwipePosition] = useState(50); // Percentage
-  const swipeLayerRef = useRef(null);
+  const swipeLayersRef = useRef(new Map()); // Map of layerId -> olLayer
 
-  // ELITE: Toggle Swipe Mode
+  // ELITE: Toggle Swipe Mode - Multi-layer support
   const handleToggleSwipe = (layerId) => {
-    if (swipeLayerId === layerId) {
-      // Turn off
-      setSwipeLayerId(null);
-      swipeLayerRef.current = null;
-      mapInstanceRef.current.render(); // Re-render to clear clip
-    } else {
-      // Turn on for this layer
-      setSwipeLayerId(layerId);
-      // We need to find the OL layer object
-      const olLayer = operationalLayersRef.current[layerId];
-      if (olLayer) {
-        swipeLayerRef.current = olLayer;
-        // Ensure it's visible
-        if (!olLayer.getVisible()) {
+    setSwipeLayerIds(prev => {
+      if (!Array.isArray(prev)) return [layerId]; // Safety fallback
+
+      if (prev.includes(layerId)) {
+        return prev.filter(id => id !== layerId);
+      } else {
+        // Auto-enable visibility if needed
+        const olLayer = operationalLayersRef.current[layerId];
+        if (olLayer && !olLayer.getVisible()) {
           handleToggleGeoLayer(layerId);
         }
-        mapInstanceRef.current.render();
+        return [...prev, layerId];
       }
+    });
+  };
+
+  // ELITE: Toggle All Visible Layers for Swipe
+  const handleToggleSwipeAll = (turnOn) => {
+    const visibleLayers = geoServerLayers.filter(l => l.visible);
+    if (turnOn) {
+      setSwipeLayerIds(visibleLayers.map(l => l.id));
+    } else {
+      setSwipeLayerIds([]);
     }
   };
 
-  // ELITE: Swipe Logic (Clipping)
+  // ELITE: Swipe Logic (Clipping) - Multi-layer support
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    const layer = swipeLayerRef.current;
-    if (!layer || !swipeLayerId) return;
+    // Safety check for ids
+    const activeIds = Array.isArray(swipeLayerIds) ? swipeLayerIds : [];
+
+    // Always rebuild the LIST of layers from source of truth (IDs)
+    // using an Array is safer than Map for iteration in some environments
+    const layersToClip = [];
+    activeIds.forEach(id => {
+      const olLayer = operationalLayersRef.current[id];
+      if (olLayer) {
+        layersToClip.push(olLayer);
+      }
+    });
+
+    // Update global ref for external access (e.g. debugging) - keep as Map for consistency elsewhere if needed, 
+    // or better yet, just store the array to match the local usage.
+    // For now, let's keep the ref as a Map to avoid breaking other potential usages, 
+    // but populate it from our safe array.
+    const newMap = new Map();
+    layersToClip.forEach(layer => {
+      // We need the ID to set it in the map, but we only have the layer here.
+      // Actually, let's just update the ref to be a Map for compatibility with existing code that might expect it,
+      // but we won't use the ref validation logic anymore.
+      const id = Object.keys(operationalLayersRef.current).find(key => operationalLayersRef.current[key] === layer);
+      if (id) newMap.set(id, layer);
+    });
+    swipeLayersRef.current = newMap;
+
+    if (layersToClip.length === 0) {
+      map.render();
+      return;
+    }
 
     const handlePreRender = (event) => {
       const ctx = event.context;
@@ -223,18 +258,23 @@ function GISMap() {
       ctx.restore();
     };
 
-    // Attach listeners to the SPECIFIC layer
-    layer.on('prerender', handlePreRender);
-    layer.on('postrender', handlePostRender);
+    // Attach listeners to active swipe layers
+    layersToClip.forEach((layer) => {
+      layer.on('prerender', handlePreRender);
+      layer.on('postrender', handlePostRender);
+    });
 
     map.render();
 
+    // Cleanup: Remove listeners from the SAME layers we attached to
     return () => {
-      layer.un('prerender', handlePreRender);
-      layer.un('postrender', handlePostRender);
+      layersToClip.forEach((layer) => {
+        layer.un('prerender', handlePreRender);
+        layer.un('postrender', handlePostRender);
+      });
       map.render();
     };
-  }, [swipeLayerId, swipePosition]);
+  }, [swipeLayerIds, swipePosition]);
 
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;
@@ -497,6 +537,47 @@ function GISMap() {
     }
   };
 
+  // ELITE: Save New Attribute (WFS-T Insert)
+  const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId) => {
+    // specific feature from ID
+    if (!vectorSourceRef.current) return false;
+    const feature = vectorSourceRef.current.getFeatureById(geometryFeatureId);
+
+    // If not found by ID (maybe it's a temp ID or different logic), try finding by property
+    const targetFeature = feature || vectorSourceRef.current.getFeatures().find(f => {
+      const id = f.getId() || (f.getProperties() && f.getProperties().id);
+      return String(id) === String(geometryFeatureId);
+    });
+
+    if (!targetFeature) {
+      toast.error("Selected drawing not found on map");
+      return false;
+    }
+
+    const success = await SaveNewAttribute(fullLayerName, attributes, targetFeature);
+
+    if (success) {
+      toast.success("Feature created successfully!");
+      // Refresh layer data
+      const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+      if (activeLayer) {
+        // update attribute table data
+        const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+        setAttributeTableData(data);
+
+        // refresh map layer
+        const olLayer = operationalLayersRef.current[activeLayer.id];
+        if (olLayer) {
+          olLayer.getSource().updateParams({ '_t': Date.now() });
+        }
+      }
+      return true;
+    } else {
+      toast.error("Failed to create feature. Check console.");
+      return false;
+    }
+  };
+
   const GetLayerAttributesStub = (layerId) => {
     console.log(`Getting attributes for layer: ${layerId}`);
     // This is used by AttributeTableCard, but for Query Builder in LayerOperations 
@@ -544,6 +625,24 @@ function GISMap() {
     const measurements = features.some(f => f.get('isMeasurement'));
     setHasDrawings(drawings);
     setHasMeasurements(measurements);
+
+    // ELITE: Update available drawings list for Attribute Table
+    const validDrawings = features
+      .filter(f => !f.get('isMeasurement'))
+      .map(f => {
+        // Ensure it has an ID
+        let id = f.getId();
+        if (!id) {
+          id = `drawing-${Math.random().toString(36).substr(2, 9)}`;
+          f.setId(id);
+        }
+        return {
+          id: id,
+          type: f.getGeometry().getType(),
+          name: f.get('name') || `Drawing (${f.getGeometry().getType()})`
+        };
+      });
+    setAvailableDrawings(validDrawings);
   };
 
 
@@ -1596,7 +1695,11 @@ function GISMap() {
             setQueryingLayer={setQueryingLayer}
             queryingLayer={queryingLayer}
             handleToggleSwipe={handleToggleSwipe}
-            swipeLayerId={swipeLayerId}
+            handleToggleSwipeAll={handleToggleSwipeAll}
+            swipeLayerIds={swipeLayerIds}
+
+            swipePosition={swipePosition}
+            setSwipePosition={setSwipePosition}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
@@ -1683,7 +1786,7 @@ function GISMap() {
                 if (selectionSourceRef.current) {
                   selectionSourceRef.current.clear();
                 }
-                toast.info('Highlights cleared');
+                toast('Highlights cleared', { icon: 'ℹ️' });
               }}
               onDeleteFeature={async (fullLayerName, feature) => {
                 const success = await deleteFeature(fullLayerName, feature);
@@ -1731,6 +1834,8 @@ function GISMap() {
               }}
               isMinimized={isAttributeTableMinimized}
               onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
+              drawings={availableDrawings}
+              onSaveNewAttribute={handleSaveNewAttribute}
             />
           )}
 
@@ -1744,12 +1849,7 @@ function GISMap() {
             handleApplyLayerFilter={handleApplyLayerFilter}
           />
 
-          {swipeLayerId && (
-            <SwipeControl
-              position={swipePosition}
-              onPositionChange={setSwipePosition}
-            />
-          )}
+          {/* Swipe Control moved to LayerOperations panel */}
         </div>
 
         {/* Measurement Badge - Hidden per user request */}
