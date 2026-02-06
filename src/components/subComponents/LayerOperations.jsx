@@ -128,8 +128,8 @@ const LayerOperations = ({
     };
 
     const HATCH_PATTERNS = {
-        'None': '',
-        'Horizontal': 'shape://horizline',
+        'Solid': '',
+        'Outline': 'outline',
         'Vertical': 'shape://vertline',
         'Diagonal': 'shape://slash',
         'Back Slash': 'shape://backslash',
@@ -414,7 +414,10 @@ const LayerOperations = ({
         const polyFillRegex = /(<PolygonSymbolizer[\s\S]*?)<Fill>([\s\S]*?)<\/Fill>/i;
         const polyFillMatch = newSld.match(polyFillRegex);
 
-        if (props.hatchPattern && props.hatchPattern !== '') {
+        // 'outline' is special: renders as solid fill structure but with 0 opacity
+        const isGraphicPattern = props.hatchPattern && props.hatchPattern !== '' && props.hatchPattern !== 'outline';
+
+        if (isGraphicPattern) {
             // Create proper GraphicFill with Size for spacing control
             const graphicFill = `<Fill>
               <GraphicFill>
@@ -441,6 +444,11 @@ const LayerOperations = ({
               <CssParameter name="fill-opacity">${props.fillOpacity || 1}</CssParameter>
             </Fill>`;
             newSld = newSld.replace(polyFillRegex, `$1${solidFill}`);
+        }
+
+        // Force opacity to 0 for Outline
+        if (props.hatchPattern === 'outline') {
+            props.fillOpacity = 0.0;
         }
 
         ensureParent('Fill', 'PolygonSymbolizer');
