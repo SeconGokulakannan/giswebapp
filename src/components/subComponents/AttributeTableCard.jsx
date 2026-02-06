@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { X, Table, Edit, Trash2, MapPin, Grid2x2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser } from 'lucide-react';
+import { X, Table, Edit, Trash2, MapPin, Grid2x2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser, Square, Activity, Circle, HelpCircle, LayoutGrid } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 // Register AG Grid modules
@@ -190,6 +190,18 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
     };
 
     const handleAddFeature = (drawing) => {
+        // Reset Modes to Default
+        setIsEditMode(false);
+        if (isHighlighting) {
+            setIsHighlighting(false);
+            if (onClearHighlights) {
+                try { onClearHighlights(); } catch (e) { console.error(e); }
+            }
+        }
+        if (gridApi) {
+            gridApi.deselectAll();
+        }
+
         // Create a new blank row
         const newId = `new-${Date.now()}`;
         // Initialize with drawingId
@@ -292,11 +304,24 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
     const hasSelection = selectedRows.length > 0;
     const hasChanges = Object.keys(pendingChanges).length > 0 || Object.keys(newRows).length > 0;
 
+    const getShapeIcon = (type) => {
+        if (!type) return <HelpCircle size={14} style={{ marginRight: '8px' }} />;
+        const lowerType = type.toLowerCase();
+        if (lowerType.includes('polygon') || lowerType.includes('rectangle') || lowerType.includes('box')) {
+            return <Square size={14} style={{ marginRight: '8px' }} />;
+        } else if (lowerType.includes('line')) {
+            return <Activity size={14} style={{ marginRight: '8px' }} />;
+        } else if (lowerType.includes('point') || lowerType.includes('circle')) {
+            return <Circle size={14} style={{ marginRight: '8px' }} />;
+        }
+        return <HelpCircle size={14} style={{ marginRight: '8px' }} />;
+    };
+
     return (
         <div className={`attribute-table-card ${isMinimized ? 'minimized' : ''}`}>
             <div className="attribute-table-header">
                 <div className="header-title">
-                    <Table size={14} strokeWidth={1.5} />
+                    <LayoutGrid size={14} strokeWidth={1.5} />
                     <span>ATTRIBUTE TABLE: {layerName.toUpperCase()}</span>
                 </div>
                 {!isMinimized && (
@@ -322,7 +347,8 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                                                 className="elite-dropdown-item"
                                                 onClick={() => handleAddFeature(d)}
                                             >
-                                                {d.name} ({d.type})
+                                                {getShapeIcon(d.type)}
+                                                {d.name}
                                             </button>
                                         ))
                                     ) : (

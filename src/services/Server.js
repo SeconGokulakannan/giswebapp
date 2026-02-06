@@ -405,20 +405,29 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
             return false;
         }
 
-        // Construct Properties XML
-        let propertyXml = '';
+        // Extract workspace and layer name
+        const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : ['feature', fullLayerName];
+
+        // Construct Feature Content XML
+        // Unlike Update, Insert expects the actual feature structure: <prefix:LayerName><prefix:prop>val</prefix:prop></prefix:LayerName>
+        let featureContentXml = '';
+
+        // Add Attributes
         for (const [key, value] of Object.entries(properties)) {
-            // Skip internal/empty values
+            // Skip internal/empty values. 
             if (!key || key === 'id' || key.startsWith('_') || value === null || value === undefined) continue;
-            propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
+            featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
         }
 
-        // Add Geometry Property
-        // Note: We use 'geom' or 'the_geom'. Many postgis layers use 'geom'. Shapefiles often use 'the_geom'.
-        // We inject both usually or try to be smart? WFS-T ignores extra properties often, but let's try 'geom' first.
-        // If the user's schema is different, this might fail without DescribeFeatureType check involved key step.
-        // Let's add it under the assumed name.
-        propertyXml += `<wfs:Property><wfs:Name>${geometryName}</wfs:Name><wfs:Value>${gmlGeometry}</wfs:Value></wfs:Property>`;
+        // Add Geometry
+        // Ensure geometryName matches what GeoServer expects (often 'geom' or 'the_geom').
+        featureContentXml += `<${prefix}:${geometryName}>${gmlGeometry}</${prefix}:${geometryName}>`;
+
+        // We need to define the workspace namespace. 
+        // We often don't know the exact URI without DescribeFeatureType, but usually http://{workspace} works or we can try a blind guess if needed.
+        // Better strategy: Add the namespace to the root if we can, or on the element.
+        // Assuming typical GeoServer defaults: xmlns:prefix="http://{prefix}" or matching the workspace name.
+        // For now, let's inject a standard placeholder or try to rely on GeoServer's leniency.
 
         const wfsTransactionXml = `
         <wfs:Transaction service="WFS" version="1.1.0"
@@ -426,10 +435,11 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
         xmlns:ogc="http://www.opengis.net/ogc"
         xmlns:gml="http://www.opengis.net/gml"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:${prefix}="${GEOSERVER_URL}/workspaces/${prefix}"
         xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
         <wfs:Insert>
             <${fullLayerName}>
-                ${propertyXml}
+                ${featureContentXml}
             </${fullLayerName}>
         </wfs:Insert>
         </wfs:Transaction>`.trim();

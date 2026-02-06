@@ -34,11 +34,10 @@ const LayerOperations = ({
         { icon: Zap, label: 'Highlight Layer', id: 'highlight' },
         { icon: Palette, label: 'Layer Styles', id: 'styles' },
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
+        { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' },
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
         { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
         { icon: LayoutGrid, label: 'Attribute Table', id: 'attribute' },
-        { icon: LayersPlus, label: 'Layer Management', id: 'layermanagement' },
-        { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' }
     ];
 
     const [editingStyleLayer, setEditingStyleLayer] = useState(null);

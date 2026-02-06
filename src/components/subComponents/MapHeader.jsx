@@ -8,7 +8,11 @@ import {
     Wrench,
     Printer,
     Bookmark,
-    PanelRight
+    PanelRight,
+    LayersPlusIcon,
+    Earth,
+    ChevronsLeftRightEllipsis,
+    DraftingCompass
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -111,19 +115,19 @@ const MapHeader = ({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
-                                        className={`toolbar-button ${activePanel === 'swipetool' ? 'active' : ''}`}
+                                        className={`toolbar-button ${activePanel === 'layermanagement' ? 'active' : ''}`}
                                         onClick={() => {
-                                            setActivePanel(activePanel === 'swipetool' ? null : 'swipetool');
+                                            setActivePanel(activePanel === 'layermanagement' ? null : 'layermanagement');
                                             setIsPanelMinimized(false);
                                         }}
-                                        aria-label="Swipe Layers"
+                                        aria-label="Layer Management"
                                     >
-                                        <PanelRight size={20} />
+                                        <ChevronsLeftRightEllipsis size={20} />
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Swipe Layers
+                                        Layer Management
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -161,7 +165,7 @@ const MapHeader = ({
                                         }}
                                         aria-label="Tools"
                                     >
-                                        <Wrench size={20} />
+                                        <DraftingCompass size={20} />
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>

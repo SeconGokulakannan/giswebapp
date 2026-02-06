@@ -1786,7 +1786,6 @@ function GISMap() {
                 if (selectionSourceRef.current) {
                   selectionSourceRef.current.clear();
                 }
-                toast('Highlights cleared', { icon: 'ℹ️' });
               }}
               onDeleteFeature={async (fullLayerName, feature) => {
                 const success = await deleteFeature(fullLayerName, feature);
