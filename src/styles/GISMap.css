@@ -3039,23 +3039,24 @@ input:checked:hover+.toggle-slider::before {
 .attribute-table-actions .action-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 0;
+  padding: 0 16px;
   background: transparent;
   border: none;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-primary);
   cursor: pointer;
   height: 100%;
   white-space: nowrap;
   flex-shrink: 0;
   transition: all 0.2s;
-  width: 100px;
+  letter-spacing: 0.01em;
+  width: auto;
 }
 
 .attribute-table-actions .action-btn:hover:not(:disabled) {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .attribute-table-actions .action-btn:active:not(:disabled) {
@@ -3069,44 +3070,66 @@ input:checked:hover+.toggle-slider::before {
 }
 
 /* Specialized Button Styles */
-.attribute-table-actions .action-btn.btn-add {
-  color: var(--color-primary);
+/* Vibrant Unique Button Colors */
+.attribute-table-actions .btn-add {
+  color: #3b82f6;
+  /* Blue */
 }
 
-.attribute-table-actions .action-btn.btn-save {
+.attribute-table-actions .actions-group:has(.btn-add):hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.edit-switch-container {
+  color: #6366f1;
+  /* Indigo */
+}
+
+.edit-switch-container span {
+  color: inherit;
+}
+
+.attribute-table-actions .btn-discard {
+  color: #f59e0b;
+  /* Amber */
+}
+
+.attribute-table-actions .actions-group:has(.btn-discard):hover {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.attribute-table-actions .btn-save {
   color: #10b981;
+  /* Emerald */
 }
 
-.attribute-table-actions .action-btn.btn-save:disabled {
-  color: #10b981;
+.attribute-table-actions .actions-group:has(.btn-save):hover {
+  background: rgba(16, 185, 129, 0.08);
 }
 
-.attribute-table-actions .action-btn.btn-discard {
+.attribute-table-actions .btn-delete {
   color: #ef4444;
+  /* Red */
 }
 
-.attribute-table-actions .action-btn.btn-discard:hover:not(:disabled) {
-  background: #ef4444;
-  color: white;
+.attribute-table-actions .actions-group:has(.btn-delete):hover {
+  background: rgba(239, 68, 68, 0.08);
 }
 
-.attribute-table-actions .action-btn.btn-delete {
-  color: var(--color-text-muted);
+.attribute-table-actions .btn-highlight {
+  color: #06b6d4;
+  /* Cyan */
 }
 
-.attribute-table-actions .action-btn.btn-delete:hover:not(:disabled) {
-  background: #ef4444;
-  color: white;
+.attribute-table-actions .actions-group:has(.btn-highlight):hover {
+  background: rgba(6, 182, 212, 0.08);
 }
 
-.attribute-table-actions .action-btn.btn-highlight {
-  color: var(--color-primary);
-}
-
-.attribute-table-actions .action-btn.btn-highlight.active {
-  background: var(--color-primary);
-  color: white;
-  box-shadow: 0 0 12px rgba(var(--color-primary-rgb), 0.4);
+/* Standardized Disabled State */
+.attribute-table-actions .action-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  filter: grayscale(1);
 }
 
 .attribute-table-actions .action-btn:disabled {
@@ -3158,8 +3181,8 @@ input:checked:hover+.toggle-slider::before {
 }
 
 .attribute-table-header .minimize-btn:hover {
-  background: rgba(var(--color-primary-rgb), 0.1);
-  color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb), 0.1) !important;
+  color: var(--color-primary) !important;
   opacity: 1;
   transform: scale(1.05);
 }

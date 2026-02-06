@@ -354,3 +354,86 @@ export const modifyStyle = new Style({
         fill: new Fill({ color: COLORS.accent }),
     }),
 });
+
+/**
+ * Generates an SLD XML string for dynamic attribute analysis.
+ * @param {string} layerName Full layer name (workspace:name)
+ * @param {string} property Attribute name to filter on
+ * @param {Array} mappings List of {value, color} objects
+ * @returns {string} SLD XML
+ */
+export const generateAnalysisSLD = (layerName, property, mappings) => {
+    const rules = mappings.map(m => `
+        <Rule>
+            <Name>${m.value}</Name>
+            <ogc:Filter>
+                <ogc:PropertyIsEqualTo>
+                    <ogc:PropertyName>${property}</ogc:PropertyName>
+                    <ogc:Literal>${m.value}</ogc:Literal>
+                </ogc:PropertyIsEqualTo>
+            </ogc:Filter>
+            <PolygonSymbolizer>
+                <Fill>
+                    <CssParameter name="fill">${m.color}</CssParameter>
+                    <CssParameter name="fill-opacity">0.7</CssParameter>
+                </Fill>
+                <Stroke>
+                    <CssParameter name="stroke">#ffffff</CssParameter>
+                    <CssParameter name="stroke-width">1</CssParameter>
+                </Stroke>
+            </PolygonSymbolizer>
+            <LineSymbolizer>
+                <Stroke>
+                    <CssParameter name="stroke">${m.color}</CssParameter>
+                    <CssParameter name="stroke-width">3</CssParameter>
+                </Stroke>
+            </LineSymbolizer>
+            <PointSymbolizer>
+                <Graphic>
+                    <Mark>
+                        <WellKnownName>circle</WellKnownName>
+                        <Fill>
+                            <CssParameter name="fill">${m.color}</CssParameter>
+                        </Fill>
+                        <Stroke>
+                            <CssParameter name="stroke">#ffffff</CssParameter>
+                            <CssParameter name="stroke-width">1</CssParameter>
+                        </Stroke>
+                    </Mark>
+                    <Size>12</Size>
+                </Graphic>
+            </PointSymbolizer>
+        </Rule>
+    `).join('');
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0" 
+    xsi:schemaLocation="http://www.opengis.net/styled-layer-descriptor http://schemas.opengis.net/sld/1.0.0/StyledLayerDescriptor.xsd" 
+    xmlns="http://www.opengis.net/sld" 
+    xmlns:ogc="http://www.opengis.net/ogc" 
+    xmlns:xlink="http://www.w3.org/1999/xlink" 
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <NamedLayer>
+        <Name>${layerName}</Name>
+        <UserStyle>
+            <FeatureTypeStyle>
+                ${rules}
+                <Rule>
+                    <ElseFilter/>
+                    <PolygonSymbolizer>
+                        <Fill>
+                            <CssParameter name="fill">#cccccc</CssParameter>
+                            <CssParameter name="fill-opacity">0.2</CssParameter>
+                        </Fill>
+                        <Stroke>
+                            <CssParameter name="stroke">#999999</CssParameter>
+                            <CssParameter name="stroke-width">0.5</CssParameter>
+                        </Stroke>
+                    </PolygonSymbolizer>
+                </Rule>
+            </FeatureTypeStyle>
+        </UserStyle>
+    </NamedLayer>
+</StyledLayerDescriptor>`;
+};
+

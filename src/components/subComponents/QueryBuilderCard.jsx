@@ -92,7 +92,7 @@ const QueryBuilderCard = ({
             bottom: '20px',
             left: '20px',
             zIndex: 1000,
-            width: '380px',
+            width: '320px',
             background: 'rgba(var(--color-bg-primary-rgb), 0.90)',
             backdropFilter: 'blur(16px)',
             borderRadius: '16px',
@@ -121,8 +121,8 @@ const QueryBuilderCard = ({
                         <DatabaseZap size={14} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.02em', color: 'var(--color-text-primary)' }}>QUERY BUILDER</div>
-                        <div style={{ fontSize: '9px', opacity: 0.7, textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>{layer.name}</div>
+                        <div style={{ fontSize: '14px', fontWeight: '700', letterSpacing: '0.02em', color: 'var(--color-text-primary)' }}>QUERY BUILDER</div>
+                        <div style={{ fontSize: '11px', opacity: 0.7, textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>{layer.name}</div>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
@@ -197,18 +197,18 @@ const QueryBuilderCard = ({
 
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                                         <div>
-                                            <label style={{ fontSize: '9px', color: 'var(--color-text-muted)', display: 'block', marginBottom: '3px', textTransform: 'uppercase', fontWeight: '500' }}>Field</label>
+                                            <label style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'block', marginBottom: '3px', textTransform: 'uppercase', fontWeight: '500' }}>Field</label>
                                             <select
                                                 value={cond.field}
                                                 onChange={(e) => updateCondition(index, { field: e.target.value })}
                                                 style={{
                                                     width: '100%',
-                                                    height: '28px',
+                                                    height: '32px',
                                                     background: 'rgba(var(--color-bg-primary-rgb), 0.2)',
                                                     border: '1px solid var(--color-border)',
                                                     borderRadius: '6px',
                                                     color: 'var(--color-text-primary)',
-                                                    fontSize: '10px',
+                                                    fontSize: '12px',
                                                     padding: '0 6px',
                                                     outline: 'none'
                                                 }}
@@ -219,18 +219,18 @@ const QueryBuilderCard = ({
                                             </select>
                                         </div>
                                         <div>
-                                            <label style={{ fontSize: '9px', color: 'var(--color-text-muted)', display: 'block', marginBottom: '3px', textTransform: 'uppercase', fontWeight: '500' }}>Operator</label>
+                                            <label style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'block', marginBottom: '3px', textTransform: 'uppercase', fontWeight: '500' }}>Operator</label>
                                             <select
                                                 value={cond.operator}
                                                 onChange={(e) => updateCondition(index, { operator: e.target.value })}
                                                 style={{
                                                     width: '100%',
-                                                    height: '28px',
+                                                    height: '32px',
                                                     background: 'rgba(var(--color-bg-primary-rgb), 0.2)',
                                                     border: '1px solid var(--color-border)',
                                                     borderRadius: '6px',
                                                     color: 'var(--color-text-primary)',
-                                                    fontSize: '10px',
+                                                    fontSize: '12px',
                                                     padding: '0 6px',
                                                     outline: 'none'
                                                 }}
@@ -242,7 +242,7 @@ const QueryBuilderCard = ({
                                         </div>
                                     </div>
                                     <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--color-text-muted)', display: 'block', marginBottom: '3px', textTransform: 'uppercase', fontWeight: '500' }}>Value</label>
+                                        <label style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'block', marginBottom: '3px', textTransform: 'uppercase', fontWeight: '500' }}>Value</label>
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <input
                                                 type="text"
@@ -251,12 +251,12 @@ const QueryBuilderCard = ({
                                                 placeholder="Enter value..."
                                                 style={{
                                                     flex: 1,
-                                                    height: '28px',
+                                                    height: '32px',
                                                     background: 'rgba(var(--color-bg-primary-rgb), 0.2)',
                                                     border: '1px solid var(--color-border)',
                                                     borderRadius: '6px',
                                                     color: 'var(--color-text-primary)',
-                                                    fontSize: '10px',
+                                                    fontSize: '12px',
                                                     padding: '0 10px',
                                                     outline: 'none'
                                                 }}
@@ -295,7 +295,7 @@ const QueryBuilderCard = ({
                                     border: '1px dashed var(--color-primary)',
                                     borderRadius: '8px',
                                     color: 'var(--color-primary)',
-                                    fontSize: '10px',
+                                    fontSize: '12px',
                                     fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -317,7 +317,7 @@ const QueryBuilderCard = ({
                                         border: '1px solid var(--color-border)',
                                         borderRadius: '8px',
                                         color: 'var(--color-text-secondary)',
-                                        fontSize: '11px',
+                                        fontSize: '12px',
                                         fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -337,7 +337,7 @@ const QueryBuilderCard = ({
                                         border: 'none',
                                         borderRadius: '8px',
                                         color: '#fff',
-                                        fontSize: '11px',
+                                        fontSize: '12px',
                                         fontWeight: '700',
                                         boxShadow: 'var(--shadow-md)',
                                         cursor: 'pointer'
@@ -357,10 +357,10 @@ const QueryBuilderCard = ({
                             borderRadius: '8px',
                             border: '1px solid var(--color-primary)'
                         }}>
-                            <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--color-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <DatabaseZap size={10} /> ACTIVE FILTER
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--color-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <DatabaseZap size={12} /> ACTIVE FILTER
                             </div>
-                            <div style={{ fontSize: '9px', fontFamily: 'monospace', opacity: 0.8, wordBreak: 'break-all', background: 'rgba(0,0,0,0.1)', padding: '6px', borderRadius: '4px', color: 'var(--color-text-primary)' }}>
+                            <div style={{ fontSize: '11px', fontFamily: 'monospace', opacity: 0.8, wordBreak: 'break-all', background: 'rgba(0,0,0,0.1)', padding: '6px', borderRadius: '4px', color: 'var(--color-text-primary)' }}>
                                 {layer.cqlFilter}
                             </div>
                         </div>

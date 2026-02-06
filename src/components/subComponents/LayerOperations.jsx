@@ -22,7 +22,7 @@ const LayerOperations = ({
     showAttributeTable, setShowAttributeTable, GetLayerAttributes,
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
     queryingLayer, handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds,
-    swipePosition, setSwipePosition
+    swipePosition, setSwipePosition, analysisLayerIds, handleToggleAnalysisLayer
 }) => {
 
     const tools = [
@@ -167,13 +167,18 @@ const LayerOperations = ({
             wellKnownName: 'circle',
             externalGraphicUrl: '',
             hatchPattern: '', // e.g., 'shape://horizline', 'shape://vertline', 'shape://slash', 'shape://backslash', 'shape://dot', 'shape://plus', 'shape://times'
+
             fontSize: 12,
             fontColor: '#000000',
             fontFamily: 'Arial',
             fontWeight: 'normal',
             fontStyle: 'normal',
-            haloRadius: 0,
-            haloColor: '#ffffff'
+            haloRadius: 1, // Default to 1 if not present, but UI removed
+            haloColor: '#ffffff',
+            staticLabel: true,
+            minZoom: 14, // Default min zoom
+            preventDuplicates: true, // VendorOption group
+            labelRepeat: 0 // VendorOption repeat
         };
         const availableProps = {
             fill: false, fillOpacity: false, stroke: false, strokeWidth: false,
@@ -264,6 +269,42 @@ const LayerOperations = ({
         props.haloColor = extract('fill', props.haloColor); // Simplified
         props.labelAttribute = extractLabelProp();
 
+        // Parse GeneratedLabelRule for Scale
+        const labelRuleRegex = /<Rule>[\s\S]*?<Title>GeneratedLabelRule<\/Title>([\s\S]*?)<\/Rule>/i;
+        const labelRuleMatch = sldBody.match(labelRuleRegex);
+        if (labelRuleMatch) {
+            const ruleBody = labelRuleMatch[1];
+            const maxScaleRegex = /<MaxScaleDenominator>([\d.]+)<\/MaxScaleDenominator>/i;
+            const maxScaleMatch = ruleBody.match(maxScaleRegex);
+            if (maxScaleMatch) {
+                const scale = parseFloat(maxScaleMatch[1]);
+                // Approximate conversion: Scale = 559082264 / (2 ^ Zoom)
+                // Zoom = log2(559082264 / Scale)
+                if (scale > 0) {
+                    const zoom = Math.log2(559082264 / scale);
+                    props.minZoom = Math.round(zoom);
+                    props.staticLabel = false;
+                }
+            } else {
+                props.staticLabel = true;
+            }
+        } else {
+            // Check for previous standard TextSymbolizer without specific rule
+            // Assuming static if checks pass and no GeneratedLabelRule found
+            props.staticLabel = true;
+        }
+
+        // Parse VendorOptions for Duplicates and Repeat
+        const groupOptionRegex = /<VendorOption name="group">([^<]+)<\/VendorOption>/i;
+        const repeatOptionRegex = /<VendorOption name="repeat">([^<]+)<\/VendorOption>/i;
+
+        const groupMatch = sldBody.match(groupOptionRegex);
+        props.preventDuplicates = groupMatch ? (groupMatch[1] === 'yes') : false;
+
+        const repeatMatch = sldBody.match(repeatOptionRegex);
+        props.labelRepeat = repeatMatch ? parseInt(repeatMatch[1]) : 0;
+
+
         const hasPoint = sldBody.includes('PointSymbolizer');
         const hasLine = sldBody.includes('LineSymbolizer');
         const hasPolygon = sldBody.includes('PolygonSymbolizer');
@@ -312,19 +353,23 @@ const LayerOperations = ({
 
         const replace = (name, value, parentTagName) => {
             if (value === undefined || value === null) return;
-            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
+            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
             if (newSld.match(regex)) {
                 newSld = newSld.replace(regex, `$1${value}$2`);
             } else if (parentTagName && value !== '') {
-                const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
-                const match = newSld.match(parentRegex);
-                if (match) {
-                    const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-                    const prefixMatch = match[1].match(/<([\w-]*:)/);
-                    const prefix = prefixMatch ? prefixMatch[1] : '';
-                    const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
-                    newSld = newSld.replace(parentRegex, `$1$2${newParam}$3`);
-                }
+                const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'gi');
+                let inserted = false;
+                newSld = newSld.replace(parentRegex, (match, p1, p2, p3) => {
+                    if (!inserted) {
+                        inserted = true;
+                        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+                        const prefixMatch = p1.match(/<([\w-]*:)/);
+                        const prefix = prefixMatch ? prefixMatch[1] : '';
+                        const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
+                        return `${p1}${p2}${newParam}${p3}`;
+                    }
+                    return match;
+                });
             }
         };
 
@@ -364,18 +409,38 @@ const LayerOperations = ({
             }
         }
 
-        // Handle Hatch Patterns
-        const fillRegex = /<Fill>([\s\S]*?)<\/Fill>/i;
-        const fillMatch = newSld.match(fillRegex);
+        // Handle Hatch Patterns for Polygons
+        // Target specifically PolygonSymbolizer Fill to avoid affecting Mark Fill or TextSymbolizer Fill
+        const polyFillRegex = /(<PolygonSymbolizer[\s\S]*?)<Fill>([\s\S]*?)<\/Fill>/i;
+        const polyFillMatch = newSld.match(polyFillRegex);
 
-        if (props.hatchPattern) {
-            if (fillMatch) {
-                const graphicFill = `<GraphicFill><Graphic><Mark><WellKnownName>${props.hatchPattern}</WellKnownName><Stroke><SvgParameter name="stroke">${props.stroke || '#000000'}</SvgParameter></Stroke></Mark></Graphic></GraphicFill>`;
-                newSld = newSld.replace(fillRegex, `<Fill>${graphicFill}</Fill>`);
+        if (props.hatchPattern && props.hatchPattern !== '') {
+            // Create proper GraphicFill with Size for spacing control
+            const graphicFill = `<Fill>
+              <GraphicFill>
+                <Graphic>
+                  <Mark>
+                    <WellKnownName>${props.hatchPattern}</WellKnownName>
+                    <Stroke>
+                      <CssParameter name="stroke">${props.stroke || '#000000'}</CssParameter>
+                      <CssParameter name="stroke-width">1</CssParameter>
+                    </Stroke>
+                  </Mark>
+                  <Size>8</Size>
+                </Graphic>
+              </GraphicFill>
+            </Fill>`;
+
+            if (polyFillMatch) {
+                newSld = newSld.replace(polyFillRegex, `$1${graphicFill}`);
             }
-        } else if (fillMatch && fillMatch[1].includes('GraphicFill')) {
-            // Remove GraphicFill if pattern is cleared
-            newSld = newSld.replace(fillRegex, `<Fill></Fill>`);
+        } else if (polyFillMatch && polyFillMatch[2].includes('GraphicFill')) {
+            // Remove GraphicFill if pattern is cleared, restore solid fill
+            const solidFill = `<Fill>
+              <CssParameter name="fill">${props.fill || '#cccccc'}</CssParameter>
+              <CssParameter name="fill-opacity">${props.fillOpacity || 1}</CssParameter>
+            </Fill>`;
+            newSld = newSld.replace(polyFillRegex, `$1${solidFill}`);
         }
 
         ensureParent('Fill', 'PolygonSymbolizer');
@@ -388,23 +453,65 @@ const LayerOperations = ({
         ensureParent('Fill', 'TextSymbolizer');
 
         // Handle Label Attribute (TextSymbolizer Life cycle)
+        // REMOVE any existing TextSymbolizer (Global cleanup)
+        newSld = newSld.replace(/<(?:[\w-]*:)?TextSymbolizer>[\s\S]*?<\/(?:[\w-]*:)?TextSymbolizer>/gi, '');
+
+        // REMOVE any existing GeneratedLabelRule
+        newSld = newSld.replace(/<Rule>[\s\S]*?<Title>GeneratedLabelRule<\/Title>[\s\S]*?<\/Rule>/gi, '');
+
+        // Add New Label Rule if Attribute Selected
         if (props.labelAttribute) {
-            const textSymRegex = /<(?:[\w-]*:)?TextSymbolizer>[\s\S]*?<\/(?:[\w-]*:)?TextSymbolizer>/i;
-            if (!newSld.match(textSymRegex)) {
-                // Create Basic TextSymbolizer
-                const newSym = `\n            <TextSymbolizer>\n                <Label>\n                    <PropertyName>${props.labelAttribute}</PropertyName>\n                </Label>\n                <Font>\n                    <CssParameter name="font-family">Arial</CssParameter>\n                    <CssParameter name="font-size">12</CssParameter>\n                    <CssParameter name="font-style">normal</CssParameter>\n                    <CssParameter name="font-weight">normal</CssParameter>\n                </Font>\n                <LabelPlacement>\n                    <PointPlacement>\n                        <AnchorPoint>\n                            <AnchorPointX>0.5</AnchorPointX>\n                            <AnchorPointY>0.5</AnchorPointY>\n                        </AnchorPoint>\n                    </PointPlacement>\n                </LabelPlacement>\n                <Halo>\n                    <Radius>1</Radius>\n                    <Fill>\n                        <CssParameter name="fill">#FFFFFF</CssParameter>\n                    </Fill>\n                </Halo>\n                <Fill>\n                   <CssParameter name="fill">#000000</CssParameter>\n                </Fill>\n            </TextSymbolizer>`;
-                const ruleClose = /<\/Rule>/i;
-                if (newSld.match(ruleClose)) {
-                    newSld = newSld.replace(ruleClose, `${newSym}</Rule>`);
-                }
-            } else {
-                ensureParent('Label', 'TextSymbolizer');
-                ensureParent('PropertyName', 'Label');
-                replaceTag('PropertyName', props.labelAttribute, 'Label');
+            let scaleFilter = '';
+            if (!props.staticLabel) {
+                // Convert Zoom to Scale
+                // Scale = 559082264 / (2 ^ Zoom)
+                // Use MaxScaleDenominator (Show when scale is LESS than this, i.e. Zoom is MORE than this)
+                const scale = 559082264 / Math.pow(2, props.minZoom);
+                scaleFilter = `\n            <MaxScaleDenominator>${scale}</MaxScaleDenominator>`;
             }
-        } else {
-            // Remove TextSymbolizer if no label attribute, handling namespaces
-            newSld = newSld.replace(/<(?:[\w-]*:)?TextSymbolizer>[\s\S]*?<\/(?:[\w-]*:)?TextSymbolizer>/i, '');
+
+            const newLabelRule = `
+        <Rule>
+            <Title>GeneratedLabelRule</Title>${scaleFilter}
+            <TextSymbolizer>
+                <Label>
+                    <PropertyName>${props.labelAttribute}</PropertyName>
+                </Label>
+                <Font>
+                    <CssParameter name="font-family">${props.fontFamily || 'Arial'}</CssParameter>
+                    <CssParameter name="font-size">${props.fontSize || 12}</CssParameter>
+                    <CssParameter name="font-style">${props.fontStyle || 'normal'}</CssParameter>
+                    <CssParameter name="font-weight">${props.fontWeight || 'normal'}</CssParameter>
+                </Font>
+                <LabelPlacement>
+                    <PointPlacement>
+                        <AnchorPoint>
+                            <AnchorPointX>0.5</AnchorPointX>
+                            <AnchorPointY>0.5</AnchorPointY>
+                        </AnchorPoint>
+                    </PointPlacement>
+                </LabelPlacement>
+                <Halo>
+                    <Radius>1</Radius>
+                    <Fill>
+                        <CssParameter name="fill">#FFFFFF</CssParameter>
+                    </Fill>
+                </Halo>
+                <Fill>
+                   <CssParameter name="fill">#000000</CssParameter>
+                </Fill>
+                </Fill>
+                <VendorOption name="group">yes</VendorOption>
+                <VendorOption name="spaceAround">10</VendorOption>
+                <VendorOption name="conflictResolution">true</VendorOption>
+                <VendorOption name="goodnessOfFit">0</VendorOption>
+                <VendorOption name="maxDisplacement">40</VendorOption>
+                <VendorOption name="autoWrap">100</VendorOption>
+            </TextSymbolizer>
+        </Rule>`;
+
+            // Insert before closing FeatureTypeStyle
+            newSld = newSld.replace(/(<\/FeatureTypeStyle>)/i, `${newLabelRule}$1`);
         }
 
         replace('fill', props.fill, 'Fill');
@@ -449,13 +556,84 @@ const LayerOperations = ({
 
         setEditingStyleLayer(layer.id);
         const data = await getLayerStyle(layer.fullName);
-        if (data) {
+        let styleDataToUse = data;
+
+        if (!styleDataToUse) {
+            // Create default SLD if none exists
+            const defaultSld = `<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0" 
+    xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd" 
+    xmlns="http://www.opengis.net/sld" 
+    xmlns:ogc="http://www.opengis.net/ogc" 
+    xmlns:xlink="http://www.w3.org/1999/xlink" 
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <NamedLayer>
+    <Name>${layer.name}</Name>
+    <UserStyle>
+      <Title>Default Style</Title>
+      <FeatureTypeStyle>
+        <Rule>
+          <Title>Default Rule</Title>
+          <PointSymbolizer>
+            <Graphic>
+              <Mark>
+                <WellKnownName>circle</WellKnownName>
+                <Fill>
+                  <CssParameter name="fill">#cccccc</CssParameter>
+                </Fill>
+                <Stroke>
+                  <CssParameter name="stroke">#333333</CssParameter>
+                  <CssParameter name="stroke-width">1</CssParameter>
+                </Stroke>
+              </Mark>
+              <Size>10</Size>
+            </Graphic>
+          </PointSymbolizer>
+          <LineSymbolizer>
+            <Stroke>
+              <CssParameter name="stroke">#333333</CssParameter>
+              <CssParameter name="stroke-width">1</CssParameter>
+            </Stroke>
+          </LineSymbolizer>
+          <PolygonSymbolizer>
+            <Fill>
+              <CssParameter name="fill">#cccccc</CssParameter>
+              <CssParameter name="fill-opacity">1.0</CssParameter>
+            </Fill>
+            <Stroke>
+              <CssParameter name="stroke">#333333</CssParameter>
+              <CssParameter name="stroke-width">1</CssParameter>
+            </Stroke>
+          </PolygonSymbolizer>
+        </Rule>
+      </FeatureTypeStyle>
+    </UserStyle>
+  </NamedLayer>
+</StyledLayerDescriptor>`;
+
+            styleDataToUse = {
+                styleName: 'default_style',
+                sldBody: defaultSld
+            };
+
+            // Save default SLD to GeoServer so it persists across reloads
+            const saveSuccess = await handleUpdateLayerStyle(layer.id, layer.fullName, defaultSld);
+            if (saveSuccess) {
+                // Re-fetch to get the server-assigned style name
+                const savedData = await getLayerStyle(layer.fullName);
+                if (savedData) {
+                    styleDataToUse = savedData;
+                }
+            }
+        }
+
+        if (styleDataToUse) {
             // Fetch attributes
             const attrs = await getLayerAttributes(layer.fullName);
             setLayerAttributes(attrs || []);
 
-            const { props, availableProps } = parseSLD(data.sldBody);
-            setStyleData({ ...data, properties: props, availableProps });
+            const { props, availableProps } = parseSLD(styleDataToUse.sldBody);
+            setStyleData({ ...styleDataToUse, properties: props, availableProps });
         }
     };
 
@@ -512,12 +690,6 @@ const LayerOperations = ({
             if (!prev) return prev;
             const nextProps = { ...prev.properties, [key]: value };
 
-            if (autoSave) {
-                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                saveTimeoutRef.current = setTimeout(() => {
-                    handleSaveStyle(nextProps);
-                }, 800); // 800ms debounce
-            }
 
             return {
                 ...prev,
@@ -729,6 +901,20 @@ const LayerOperations = ({
                             <span className="toggle-slider" style={{ backgroundColor: layer.id === queryingLayer?.id ? 'var(--color-primary)' : '' }}></span>
                         </label>
                     </div>
+                );
+            }
+
+            case 'analysis': {
+                const isSelected = analysisLayerIds?.includes(layer.id);
+                return (
+                    <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleAnalysisLayer(layer.id)}
+                        />
+                        <span className="toggle-slider"></span>
+                    </label>
                 );
             }
 
@@ -1015,112 +1201,15 @@ const LayerOperations = ({
                                         </div>
 
                                         <div className="style-editor-body">
-                                            {/* Tabs Header */}
-                                            <div className="style-tabs">
-                                                <button
-                                                    className={`style-tab-btn ${activeStyleTab === 'symbology' ? 'active' : ''}`}
-                                                    onClick={(e) => { e.stopPropagation(); setActiveStyleTab('symbology'); }}
-                                                >
-                                                    <Palette size={14} /> Symbology
-                                                </button>
-                                                <button
-                                                    className={`style-tab-btn ${activeStyleTab === 'labels' ? 'active' : ''}`}
-                                                    onClick={(e) => { e.stopPropagation(); setActiveStyleTab('labels'); }}
-                                                >
-                                                    <List size={14} /> Labels
-                                                </button>
-                                            </div>
-
                                             <div className="style-tab-content modern-ref">
-                                                {activeStyleTab === 'symbology' ? (
-                                                    <div className="tab-pane ref-layout">
-                                                        {/* PREVIEW HEADER */}
-                                                        <div className="ref-row preview-header">
-                                                            <span className="ref-label">Style Preview</span>
-                                                            <div className="ref-preview-swatches">
-                                                                {[1, 2, 3].map(i => (
-                                                                    <div key={i} className="ref-preview-dot" style={{ backgroundColor: styleData.properties.fill }} />
-                                                                ))}
-                                                            </div>
-                                                        </div>
 
-                                                        {/* PRESET GRID */}
-                                                        <div className="ref-row">
-                                                            <span className="ref-label">Quick Presets</span>
-                                                            <div className="ref-preset-container">
-                                                                <div className="ref-preset-grid">
-                                                                    {PRESET_COLORS.map(color => (
-                                                                        <div
-                                                                            key={color}
-                                                                            className="ref-preset-item"
-                                                                            style={{ backgroundColor: color }}
-                                                                            onClick={async () => {
-                                                                                const updatedProps = { ...styleData.properties, fill: color, stroke: color };
-                                                                                const updatedSld = applyStyleChanges(styleData.sldBody, updatedProps);
-                                                                                const layer = geoServerLayers.find(l => l.id === editingStyleLayer);
-                                                                                if (layer) {
-                                                                                    setIsSavingStyle(true);
-                                                                                    const success = await handleUpdateLayerStyle(editingStyleLayer, layer.fullName, updatedSld);
-                                                                                    if (success) {
-                                                                                        setStyleData({ ...styleData, properties: updatedProps, sldBody: updatedSld });
-                                                                                    }
-                                                                                    setIsSavingStyle(false);
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        </div>
+                                                {/* SYMBOLOGY SECTION */}
+                                                <div className="tab-pane ref-layout" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '16px', marginBottom: '16px' }}>
 
-                                                        {/* MARKER SELECTOR (POINT ONLY) */}
-                                                        {styleData.availableProps.wellknownname && (
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Marker Shape</span>
-                                                                <div className="ref-select-wrapper">
-                                                                    <select
-                                                                        value={styleData.properties.wellKnownName}
-                                                                        onChange={(e) => updateStyleProp('wellKnownName', e.target.value)}
-                                                                    >
-                                                                        {MARKER_SHAPES.map(s => <option key={s} value={s}>{s}</option>)}
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* SVG ICON (POINT ONLY) */}
-                                                        {styleData.availableProps.externalGraphicUrl && (
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Dynamic Symbology</span>
-                                                                <div className="ref-input-group" style={{ flexDirection: 'column', gap: '8px' }}>
-                                                                    <div className="ref-flex-row">
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="Icon URL or filename"
-                                                                            className="ref-text-input"
-                                                                            value={styleData.properties.externalGraphicUrl}
-                                                                            onChange={(e) => updateStyleProp('externalGraphicUrl', e.target.value)}
-                                                                        />
-                                                                        <label className="style-save-btn" style={{ cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 0 }}>
-                                                                            <Upload size={14} /> Upload
-                                                                            <input
-                                                                                type="file"
-                                                                                accept=".svg,.png,.jpg,.jpeg,.gif"
-                                                                                style={{ display: 'none' }}
-                                                                                onChange={handleFileUpload}
-                                                                            />
-                                                                        </label>
-                                                                    </div>
-                                                                    <div style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
-                                                                        Supports SVG, PNG based on server capability.
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* HATCH PATTERN (POLYGON ONLY) */}
+                                                    {/* ROW 1: Fill Pattern + Fill Color */}
+                                                    <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
                                                         {styleData.availableProps.hatchPattern && (
-                                                            <div className="ref-row">
+                                                            <div style={{ flex: 1 }}>
                                                                 <span className="ref-label">Fill Pattern</span>
                                                                 <div className="ref-select-wrapper">
                                                                     <select
@@ -1134,216 +1223,216 @@ const LayerOperations = ({
                                                                 </div>
                                                             </div>
                                                         )}
-
-                                                        <div className="ref-color-grid">
-                                                            {/* FILL COLOR FIELD */}
-                                                            {styleData.availableProps.fill && (
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Fill Color</span>
-                                                                    <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fill }}>
-                                                                        <input
-                                                                            type="color"
-                                                                            value={styleData.properties.fill || '#cccccc'}
-                                                                            onChange={(e) => updateStyleProp('fill', e.target.value)}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* STROKE COLOR FIELD */}
-                                                            {styleData.availableProps.stroke && (
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Stroke Color</span>
-                                                                    <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.stroke }}>
-                                                                        <input
-                                                                            type="color"
-                                                                            value={styleData.properties.stroke || '#333333'}
-                                                                            onChange={(e) => updateStyleProp('stroke', e.target.value)}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* STYLE FIELD */}
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Line Style</span>
-                                                                <div className="ref-select-wrapper">
-                                                                    <select
-                                                                        value={getDashName(styleData.properties.strokeDasharray)}
-                                                                        onChange={(e) => updateStyleProp('strokeDasharray', DASH_STYLES[e.target.value])}
-                                                                    >
-                                                                        {Object.keys(DASH_STYLES).map(name => (
-                                                                            <option key={name} value={name}>{name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* LINE JOINS (LINE/POLYGON) */}
-                                                        {(styleData.availableProps.strokeLinecap || styleData.availableProps.strokeLinejoin) && (
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Line Join & Cap</span>
-                                                                <div className="ref-flex-row">
-                                                                    <select
-                                                                        className="ref-mini-select"
-                                                                        value={styleData.properties.strokeLinejoin}
-                                                                        onChange={(e) => updateStyleProp('strokeLinejoin', e.target.value)}
-                                                                    >
-                                                                        <option value="miter">Miter (Join)</option>
-                                                                        <option value="round">Round (Join)</option>
-                                                                        <option value="bevel">Bevel (Join)</option>
-                                                                    </select>
-                                                                    <select
-                                                                        className="ref-mini-select"
-                                                                        value={styleData.properties.strokeLinecap}
-                                                                        onChange={(e) => updateStyleProp('strokeLinecap', e.target.value)}
-                                                                    >
-                                                                        <option value="butt">Butt (Cap)</option>
-                                                                        <option value="round">Round (Cap)</option>
-                                                                        <option value="square">Square (Cap)</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* TRANSPARENCY FIELD */}
-                                                        <div className="ref-row">
-                                                            <span className="ref-label">Fill Opacity ({Math.round((styleData.properties.fillOpacity || 1) * 100)}%)</span>
-                                                            <div className="ref-input-group">
-                                                                <input
-                                                                    type="range" min="0" max="1" step="0.1"
-                                                                    className="layer-opacity-slider"
-                                                                    value={styleData.properties.fillOpacity || 1}
-                                                                    onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* STROKE WIDTH FIELD */}
-                                                        {styleData.availableProps.strokeWidth && (
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Stroke Width ({styleData.properties.strokeWidth || 1}px)</span>
-                                                                <div className="ref-input-group">
+                                                        {styleData.availableProps.fill && (
+                                                            <div style={{ flex: 1 }}>
+                                                                <span className="ref-label">Fill Color</span>
+                                                                <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fill }}>
                                                                     <input
-                                                                        type="range" min="0.5" max="20" step="0.5"
-                                                                        className="layer-opacity-slider"
-                                                                        value={styleData.properties.strokeWidth || 1}
-                                                                        onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* MARKER SIZE FIELD (POINT ONLY) */}
-                                                        {styleData.availableProps.size && (
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Marker Size ({styleData.properties.size || 10}px)</span>
-                                                                <div className="ref-input-group">
-                                                                    <input
-                                                                        type="range" min="4" max="100" step="1"
-                                                                        className="layer-opacity-slider"
-                                                                        value={styleData.properties.size || 10}
-                                                                        onChange={(e) => updateStyleProp('size', parseFloat(e.target.value))}
+                                                                        type="color"
+                                                                        value={styleData.properties.fill || '#cccccc'}
+                                                                        onChange={(e) => updateStyleProp('fill', e.target.value)}
                                                                     />
                                                                 </div>
                                                             </div>
                                                         )}
                                                     </div>
-                                                ) : (
-                                                    <div className="tab-pane ref-layout">
-                                                        <div className="symbology-header">
-                                                            <Info size={13} /> Labeling Settings
-                                                        </div>
 
-                                                        {/* LABEL ATTRIBUTE */}
-                                                        <div className="ref-row">
-                                                            <span className="ref-label">Label Field</span>
+                                                    {/* ROW 2: Fill Opacity */}
+                                                    <div className="ref-row">
+                                                        <span className="ref-label">Fill Opacity ({Math.round((styleData.properties.fillOpacity || 1) * 100)}%)</span>
+                                                        <div className="ref-input-group">
+                                                            <input
+                                                                type="range" min="0" max="1" step="0.1"
+                                                                className="layer-opacity-slider"
+                                                                value={styleData.properties.fillOpacity || 1}
+                                                                onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* ROW 3: Stroke Pattern + Stroke Color */}
+                                                    <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <span className="ref-label">Stroke Pattern</span>
                                                             <div className="ref-select-wrapper">
                                                                 <select
-                                                                    value={styleData.properties.labelAttribute || ''}
-                                                                    onChange={(e) => updateStyleProp('labelAttribute', e.target.value)}
+                                                                    value={getDashName(styleData.properties.strokeDasharray)}
+                                                                    onChange={(e) => updateStyleProp('strokeDasharray', DASH_STYLES[e.target.value])}
                                                                 >
-                                                                    <option value="">None (No Label)</option>
-                                                                    {layerAttributes.map(attr => (
-                                                                        <option key={attr} value={attr}>{attr}</option>
+                                                                    {Object.keys(DASH_STYLES).map(name => (
+                                                                        <option key={name} value={name}>{name}</option>
                                                                     ))}
                                                                 </select>
                                                             </div>
                                                         </div>
-
-                                                        {(styleData.properties.labelAttribute) && (
-                                                            <div className="ref-layout">
-                                                                {/* FONT FAMILY */}
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Font Family</span>
-                                                                    <div className="ref-select-wrapper">
-                                                                        <select
-                                                                            value={styleData.properties.fontFamily || 'Arial'}
-                                                                            onChange={(e) => updateStyleProp('fontFamily', e.target.value)}
-                                                                        >
-                                                                            {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
-                                                                        </select>
-                                                                    </div>
+                                                        {styleData.availableProps.stroke && (
+                                                            <div style={{ flex: 1 }}>
+                                                                <span className="ref-label">Stroke Color</span>
+                                                                <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.stroke }}>
+                                                                    <input
+                                                                        type="color"
+                                                                        value={styleData.properties.stroke || '#333333'}
+                                                                        onChange={(e) => updateStyleProp('stroke', e.target.value)}
+                                                                    />
                                                                 </div>
-
-                                                                {/* FONT SIZE */}
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Font Size ({styleData.properties.fontSize || 12}pt)</span>
-                                                                    <div className="ref-input-group">
-                                                                        <input
-                                                                            type="range" min="6" max="72" step="1"
-                                                                            className="layer-opacity-slider"
-                                                                            value={styleData.properties.fontSize || 12}
-                                                                            onChange={(e) => updateStyleProp('fontSize', parseFloat(e.target.value))}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* FONT WEIGHT/STYLE */}
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Text Style</span>
-                                                                    <div className="ref-flex-row">
-                                                                        <select
-                                                                            className="ref-mini-select"
-                                                                            value={styleData.properties.fontWeight || 'normal'}
-                                                                            onChange={(e) => updateStyleProp('fontWeight', e.target.value)}
-                                                                        >
-                                                                            <option value="normal">Normal</option>
-                                                                            <option value="bold">Bold</option>
-                                                                        </select>
-                                                                        <select
-                                                                            className="ref-mini-select"
-                                                                            value={styleData.properties.fontStyle || 'normal'}
-                                                                            onChange={(e) => updateStyleProp('fontStyle', e.target.value)}
-                                                                        >
-                                                                            <option value="normal">Regular</option>
-                                                                            <option value="italic">Italic</option>
-                                                                        </select>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* HALO RADIUS */}
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Halo Intensity ({styleData.properties.haloRadius || 0}px)</span>
-                                                                    <div className="ref-input-group">
-                                                                        <input
-                                                                            type="range" min="0" max="10" step="0.5"
-                                                                            className="layer-opacity-slider"
-                                                                            value={styleData.properties.haloRadius || 0}
-                                                                            onChange={(e) => updateStyleProp('haloRadius', parseFloat(e.target.value))}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {!styleData.properties.labelAttribute && (
-                                                            <div className="no-props-hint">
-                                                                Select a field to enable labeling.
                                                             </div>
                                                         )}
                                                     </div>
-                                                )}
+
+                                                    {/* ROW 4: Stroke Width */}
+                                                    {styleData.availableProps.strokeWidth && (
+                                                        <div className="ref-row">
+                                                            <span className="ref-label">Stroke Width ({styleData.properties.strokeWidth || 1}px)</span>
+                                                            <div className="ref-input-group">
+                                                                <input
+                                                                    type="range" min="0.5" max="20" step="0.5"
+                                                                    className="layer-opacity-slider"
+                                                                    value={styleData.properties.strokeWidth || 1}
+                                                                    onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* SVG ICON / DYNAMIC SYMBOLOGY (POINT ONLY) - At End */}
+                                                    {styleData.availableProps.externalGraphicUrl && (
+                                                        <div className="ref-row">
+                                                            <span className="ref-label">Dynamic Symbology</span>
+                                                            <div className="ref-input-group" style={{ flexDirection: 'column', gap: '8px' }}>
+                                                                <div className="ref-flex-row">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Icon URL or filename"
+                                                                        className="ref-text-input"
+                                                                        value={styleData.properties.externalGraphicUrl}
+                                                                        onChange={(e) => updateStyleProp('externalGraphicUrl', e.target.value)}
+                                                                    />
+                                                                    <label className="style-save-btn" style={{ cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 0 }}>
+                                                                        <Upload size={14} /> Upload
+                                                                        <input
+                                                                            type="file"
+                                                                            accept=".svg,.png,.jpg,.jpeg,.gif"
+                                                                            style={{ display: 'none' }}
+                                                                            onChange={handleFileUpload}
+                                                                        />
+                                                                    </label>
+                                                                </div>
+                                                                <div style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
+                                                                    Supports SVG, PNG based on server capability.
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* LABELS SECTION */}
+                                                <div className="tab-pane ref-layout">
+                                                    <div className="symbology-header" style={{ marginTop: '0', marginBottom: '12px' }}>
+                                                        <Info size={13} /> Labeling Settings
+                                                    </div>
+
+                                                    {/* LABEL ATTRIBUTE */}
+                                                    <div className="ref-row">
+                                                        <span className="ref-label">Label Field</span>
+                                                        <div className="ref-select-wrapper">
+                                                            <select
+                                                                value={styleData.properties.labelAttribute || ''}
+                                                                onChange={(e) => updateStyleProp('labelAttribute', e.target.value)}
+                                                            >
+                                                                <option value="">None (No Label)</option>
+                                                                {layerAttributes.map(attr => (
+                                                                    <option key={attr} value={attr}>{attr}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    {(styleData.properties.labelAttribute) && (
+                                                        <div className="ref-layout">
+                                                            {/* FONT FAMILY */}
+                                                            <div className="ref-row">
+                                                                <span className="ref-label">Font Family</span>
+                                                                <div className="ref-select-wrapper">
+                                                                    <select
+                                                                        value={styleData.properties.fontFamily || 'Arial'}
+                                                                        onChange={(e) => updateStyleProp('fontFamily', e.target.value)}
+                                                                    >
+                                                                        {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* FONT SIZE */}
+                                                            <div className="ref-row">
+                                                                <span className="ref-label">Font Size ({styleData.properties.fontSize || 12}pt)</span>
+                                                                <div className="ref-input-group">
+                                                                    <input
+                                                                        type="range" min="6" max="72" step="1"
+                                                                        className="layer-opacity-slider"
+                                                                        value={styleData.properties.fontSize || 12}
+                                                                        onChange={(e) => updateStyleProp('fontSize', parseFloat(e.target.value))}
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* FONT WEIGHT/STYLE */}
+                                                            <div className="ref-row">
+                                                                <span className="ref-label">Text Style</span>
+                                                                <div className="ref-flex-row">
+                                                                    <select
+                                                                        className="ref-mini-select"
+                                                                        value={styleData.properties.fontWeight || 'normal'}
+                                                                        onChange={(e) => updateStyleProp('fontWeight', e.target.value)}
+                                                                    >
+                                                                        <option value="normal">Normal</option>
+                                                                        <option value="bold">Bold</option>
+                                                                    </select>
+                                                                    <select
+                                                                        className="ref-mini-select"
+                                                                        value={styleData.properties.fontStyle || 'normal'}
+                                                                        onChange={(e) => updateStyleProp('fontStyle', e.target.value)}
+                                                                    >
+                                                                        <option value="normal">Regular</option>
+                                                                        <option value="italic">Italic</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* STATIC LABEL TOGGLE */}
+                                                            <div className="ref-row">
+                                                                <span className="ref-label">Static Label</span>
+                                                                <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={styleData.properties.staticLabel}
+                                                                        onChange={(e) => updateStyleProp('staticLabel', e.target.checked)}
+                                                                    />
+                                                                    <span className="toggle-slider"></span>
+                                                                </label>
+                                                            </div>
+
+                                                            {/* MIN ZOOM LEVEL */}
+                                                            {!styleData.properties.staticLabel && (
+                                                                <div className="ref-row">
+                                                                    <span className="ref-label">Show at Zoom Level &gt; {styleData.properties.minZoom || 14}</span>
+                                                                    <div className="ref-input-group">
+                                                                        <input
+                                                                            type="range" min="0" max="22" step="1"
+                                                                            className="layer-opacity-slider"
+                                                                            value={styleData.properties.minZoom || 14}
+                                                                            onChange={(e) => updateStyleProp('minZoom', parseInt(e.target.value))}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {!styleData.properties.labelAttribute && (
+                                                        <div className="no-props-hint">
+                                                            Select a field to enable labeling.
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1355,7 +1444,7 @@ const LayerOperations = ({
                     })()}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

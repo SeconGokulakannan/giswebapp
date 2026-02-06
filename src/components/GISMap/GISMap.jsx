@@ -33,8 +33,8 @@ import MapStatusBar from '../subComponents/MapStatusBar';
 import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 import AttributeTableCard from '../subComponents/AttributeTableCard';
 import QueryBuilderCard from '../subComponents/QueryBuilderCard';
+import AnalysisCard from '../subComponents/AnalysisCard';
 import { getRenderPixel } from 'ol/render';
-
 
 // Utils
 import {
@@ -43,6 +43,7 @@ import {
   modifyStyle,
   formatLength,
   formatArea,
+  generateAnalysisSLD
 } from '../../utils/mapUtils';
 
 import {
@@ -140,6 +141,12 @@ function GISMap() {
   const [showQueryBuilder, setShowQueryBuilder] = useState(false);
   const [queryingLayer, setQueryingLayer] = useState(null);
 
+  // Analysis State
+  const [analysisConfig, setAnalysisConfig] = useState(null);
+  const [isAnalysisPlaying, setIsAnalysisPlaying] = useState(false);
+  const [analysisFrameIndex, setAnalysisFrameIndex] = useState(0);
+  const [analysisLayerIds, setAnalysisLayerIds] = useState([]);
+
   useEffect(() => {
     activeLayerToolRef.current = activeLayerTool;
     infoSelectionModeRef.current = infoSelectionMode;
@@ -205,6 +212,16 @@ function GISMap() {
     } else {
       setSwipeLayerIds([]);
     }
+  };
+
+  const handleToggleAnalysisLayer = (layerId) => {
+    setAnalysisLayerIds(prev => {
+      if (prev.includes(layerId)) {
+        return prev.filter(id => id !== layerId);
+      } else {
+        return [...prev, layerId];
+      }
+    });
   };
 
   // ELITE: Swipe Logic (Clipping) - Multi-layer support
@@ -578,6 +595,84 @@ function GISMap() {
       return false;
     }
   };
+
+  const handleRunAnalysis = async (config) => {
+    const { layerId, property, mappings, isPeriodic, dateProperty, startDate, endDate } = config;
+    const layer = geoServerLayers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    toast.loading("Applying analysis style...", { id: 'analysis-toast' });
+
+    // ELITE: Check for matched records before applying
+    try {
+      const filterValues = mappings
+        .map(m => m.value)
+        .filter(v => v !== '')
+        .map(v => `'${v.replace(/'/g, "''")}'`)
+        .join(',');
+
+      let cqlFilter = `${property} IN (${filterValues})`;
+      if (isPeriodic && dateProperty && startDate && endDate) {
+        cqlFilter += ` AND ${dateProperty} BETWEEN '${startDate}' AND '${endDate}'`;
+      }
+
+      const checkUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&cql_filter=${encodeURIComponent(cqlFilter)}&resultType=hits`;
+      const checkRes = await fetch(checkUrl, { headers: { 'Authorization': AUTH_HEADER } });
+      const checkText = await checkRes.text();
+      const match = checkText.match(/numberOfMatched="(\d+)"/);
+
+      if (match && parseInt(match[1]) === 0) {
+        toast.error("No Features Matched to Show analysis", { id: 'analysis-toast' });
+        return;
+      }
+    } catch (err) {
+      console.warn("Match check failed, proceeding with styling anyway:", err);
+    }
+
+    // 1. Generate SLD
+    const sldBody = generateAnalysisSLD(layer.fullName, property, mappings);
+
+    // 2. Apply to GeoServer
+    const success = await handleUpdateLayerStyle(layer.id, layer.fullName, sldBody);
+
+    if (success) {
+      toast.success("Analysis style applied successfully!", { id: 'analysis-toast' });
+
+      // 3. Handle Periodic Analysis (Filter)
+      if (isPeriodic && dateProperty && startDate && endDate) {
+        setAnalysisConfig(config);
+        setAnalysisFrameIndex(0);
+        const filter = `${dateProperty} = '${startDate}'`; // Start with first date
+        handleApplyLayerFilter(layerId, filter);
+      } else {
+        setAnalysisConfig(null);
+        setIsAnalysisPlaying(false);
+      }
+    } else {
+      toast.error("Failed to apply analysis style.", { id: 'analysis-toast' });
+    }
+  };
+
+  // Analysis Playback Loop
+  useEffect(() => {
+    let interval;
+    if (isAnalysisPlaying && analysisConfig?.filteredDates?.length > 0) {
+      interval = setInterval(() => {
+        setAnalysisFrameIndex(prev => (prev + 1) % analysisConfig.filteredDates.length);
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [isAnalysisPlaying, analysisConfig]);
+
+  // Sync Analysis Frame with Map Filter
+  useEffect(() => {
+    if (analysisConfig && analysisConfig.filteredDates && analysisConfig.filteredDates[analysisFrameIndex]) {
+      const { layerId, dateProperty, filteredDates } = analysisConfig;
+      const date = filteredDates[analysisFrameIndex];
+      const filter = `${dateProperty} = '${date}'`;
+      handleApplyLayerFilter(layerId, filter);
+    }
+  }, [analysisFrameIndex, analysisConfig]);
 
   const GetLayerAttributesStub = (layerId) => {
     console.log(`Getting attributes for layer: ${layerId}`);
@@ -1701,6 +1796,8 @@ function GISMap() {
 
             swipePosition={swipePosition}
             setSwipePosition={setSwipePosition}
+            analysisLayerIds={analysisLayerIds}
+            handleToggleAnalysisLayer={handleToggleAnalysisLayer}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
@@ -1838,6 +1935,19 @@ function GISMap() {
               onSaveNewAttribute={handleSaveNewAttribute}
             />
           )}
+
+          <AnalysisCard
+            isOpen={activeLayerTool === 'analysis' && analysisLayerIds.length > 0}
+            onClose={() => setActiveLayerTool(null)}
+            visibleLayers={geoServerLayers.filter(l => analysisLayerIds.includes(l.id))}
+            onRunAnalysis={handleRunAnalysis}
+            onUpdateStyle={handleUpdateLayerStyle}
+            isPlaying={isAnalysisPlaying}
+            currentFrameIndex={analysisFrameIndex}
+            onPlaybackToggle={() => setIsAnalysisPlaying(!isAnalysisPlaying)}
+            onFrameChange={(index) => setAnalysisFrameIndex(index)}
+          />
+
 
           <QueryBuilderCard
             isOpen={showQueryBuilder}
