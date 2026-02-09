@@ -140,6 +140,7 @@ function GISMap() {
   // Query Builder State
   const [showQueryBuilder, setShowQueryBuilder] = useState(false);
   const [queryingLayer, setQueryingLayer] = useState(null);
+  const [selectedQueryLayerIds, setSelectedQueryLayerIds] = useState([]);
 
   // Analysis State
   const [analysisConfig, setAnalysisConfig] = useState(null);
@@ -1841,6 +1842,8 @@ function GISMap() {
             handleAddBookmark={handleAddBookmark}
             handleDeleteBookmark={handleDeleteBookmark}
             handleNavigateToBookmark={handleNavigateToBookmark}
+            selectedQueryLayerIds={selectedQueryLayerIds}
+            setSelectedQueryLayerIds={setSelectedQueryLayerIds}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
@@ -1998,8 +2001,11 @@ function GISMap() {
               setShowQueryBuilder(false);
               setQueryingLayer(null);
             }}
-            layer={queryingLayer}
+            activeLayer={queryingLayer}
+            availableLayers={geoServerLayers}
             handleApplyLayerFilter={handleApplyLayerFilter}
+            selectedLayerIds={selectedQueryLayerIds}
+            setSelectedLayerIds={setSelectedQueryLayerIds}
           />
 
           {/* Swipe Control moved to LayerOperations panel */}

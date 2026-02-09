@@ -118,7 +118,8 @@ const MapPanel = ({
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer, queryingLayer,
     handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds, swipePosition, setSwipePosition,
     analysisLayerIds, handleToggleAnalysisLayer,
-    bookmarks, handleAddBookmark, handleDeleteBookmark, handleNavigateToBookmark
+    bookmarks, handleAddBookmark, handleDeleteBookmark, handleNavigateToBookmark,
+    selectedQueryLayerIds, setSelectedQueryLayerIds
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -298,6 +299,8 @@ const MapPanel = ({
                         setSwipePosition={setSwipePosition}
                         analysisLayerIds={analysisLayerIds}
                         handleToggleAnalysisLayer={handleToggleAnalysisLayer}
+                        selectedQueryLayerIds={selectedQueryLayerIds}
+                        setSelectedQueryLayerIds={setSelectedQueryLayerIds}
                     />
                 )}
 

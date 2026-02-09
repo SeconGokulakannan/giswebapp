@@ -23,7 +23,8 @@ const LayerOperations = ({
     showAttributeTable, setShowAttributeTable, GetLayerAttributes,
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
     queryingLayer, handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds,
-    swipePosition, setSwipePosition, analysisLayerIds, handleToggleAnalysisLayer
+    swipePosition, setSwipePosition, analysisLayerIds, handleToggleAnalysisLayer,
+    selectedQueryLayerIds, setSelectedQueryLayerIds
 }) => {
 
     const tools = [
@@ -116,10 +117,23 @@ const LayerOperations = ({
     };
 
 
-    const PRESET_COLORS = [
-        '#3366cc', '#cc0000', '#669933', '#3399cc', '#cc6600', '#993399', '#3399ff', '#ff3333', '#99cc66',
-        '#6699ff', '#ff6666', '#aaddff', '#ffaaaa', '#99ff99', '#ffff66', '#ffcc00', '#ff9933', '#663300'
-    ];
+    const toggleSelectAllQuery = () => {
+        if (selectedQueryLayerIds.length === geoServerLayers.length) {
+            setSelectedQueryLayerIds([]);
+        } else {
+            setSelectedQueryLayerIds(geoServerLayers.map(l => l.id));
+        }
+    };
+
+    const toggleLayerQuery = (layerId) => {
+        setSelectedQueryLayerIds(prev => {
+            if (prev.includes(layerId)) {
+                return prev.filter(id => id !== layerId);
+            } else {
+                return [...prev, layerId];
+            }
+        });
+    };
 
     const DASH_STYLES = {
         'Solid': null,
@@ -886,6 +900,7 @@ const LayerOperations = ({
             }
 
             case 'querybuilder': {
+                const isSelected = selectedQueryLayerIds.includes(layer.id);
                 const hasFilter = !!layer.cqlFilter;
 
                 return (
@@ -900,8 +915,8 @@ const LayerOperations = ({
                                 title="Clear Filter"
                                 style={{
                                     border: 'none',
-                                    background: 'rgba(239, 68, 68, 0.1)',
-                                    color: '#ef4444',
+                                    background: 'rgba(var(--color-danger-rgb), 0.1)',
+                                    color: 'var(--color-danger)',
                                     padding: '4px',
                                     borderRadius: '4px',
                                     display: 'flex',
@@ -915,19 +930,16 @@ const LayerOperations = ({
                         <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
                             <input
                                 type="checkbox"
-                                checked={layer.id === queryingLayer?.id}
-                                onChange={async (e) => {
-                                    const checked = e.target.checked;
-                                    if (checked) {
+                                checked={isSelected}
+                                onChange={(e) => {
+                                    toggleLayerQuery(layer.id);
+                                    if (e.target.checked && !queryingLayer) {
                                         setQueryingLayer(layer);
                                         setShowQueryBuilder(true);
-                                    } else {
-                                        setQueryingLayer(null);
-                                        setShowQueryBuilder(false);
                                     }
                                 }}
                             />
-                            <span className="toggle-slider" style={{ backgroundColor: layer.id === queryingLayer?.id ? 'var(--color-primary)' : '' }}></span>
+                            <span className="toggle-slider"></span>
                         </label>
                     </div>
                 );
@@ -1035,9 +1047,27 @@ const LayerOperations = ({
                     </>
                 )}
 
-                <div className="layer-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="layer-section-header" style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: activeLayerTool === 'querybuilder' ? '12px 0 8px' : '8px 0'
+                }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                        <span>GeoServer Layers</span>
+                        <span style={{ fontSize: '11px', fontWeight: 700, opacity: 0.8 }}>GEOSERVER LAYERS</span>
+                        {activeLayerTool === 'querybuilder' && (
+                            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', marginRight: '4px' }}>
+                                <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>ALL</span>
+                                <label className="toggle-switch" style={{ transform: 'scale(0.7)' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={geoServerLayers.length > 0 && selectedQueryLayerIds.length === geoServerLayers.length}
+                                        onChange={toggleSelectAllQuery}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+                        )}
                         {activeLayerTool === 'info' && (
                             <div className="selection-mode-toggle" style={{
                                 display: 'flex',
