@@ -150,6 +150,8 @@ function GISMap() {
   const [analysisFrameIndex, setAnalysisFrameIndex] = useState(0);
   const [analysisLayerIds, setAnalysisLayerIds] = useState([]);
   const [analysisSLDMap, setAnalysisSLDMap] = useState({}); // layerId -> sldBody
+  const analysisVectorLayersRef = useRef({}); // layerId -> olVectorLayer
+  const analysisWMSVisibilitiesRef = useRef({}); // layerId -> originalVisibility (for restore)
   const [bookmarks, setBookmarks] = useState(() => {
     const saved = localStorage.getItem('gis_bookmarks');
     return saved ? JSON.parse(saved) : [];
@@ -400,109 +402,28 @@ function GISMap() {
 
     geoServerLayers.forEach(layer => {
       const existingLayer = operationalLayersRef.current[layer.id];
-      const hasAnalysisSLD = !!analysisSLDMap[layer.id];
 
       if (layer.visible) {
-        // Check if we need to recreate the layer (switching between TileWMS and ImageWMS)
-        const existingIsImage = existingLayer && existingLayer.getSource && existingLayer.getSource() instanceof ImageWMS;
-        const needsRecreate = existingLayer && (hasAnalysisSLD !== existingIsImage);
-
-        if (needsRecreate) {
-          // Remove old layer before recreating with different source type
-          mapInstanceRef.current.removeLayer(existingLayer);
-          delete operationalLayersRef.current[layer.id];
-        }
-
-        if (!existingLayer || needsRecreate) {
-          // Create and add layer - use ImageWMS for analysis (handles large SLD), TileWMS otherwise
+        if (!existingLayer) {
+          // Create and add layer
           const sourceParams = getWMSSourceParams(layer.fullName);
           if (layer.cqlFilter) {
             sourceParams.params['CQL_FILTER'] = layer.cqlFilter;
           }
 
-          let wmsLayer;
-          if (hasAnalysisSLD) {
-            // Use ImageWMS with POST for analysis - handles large SLD bodies
-            // Custom loader uses POST to avoid URL length limits
-            const sldBody = analysisSLDMap[layer.id];
-            const baseUrl = sourceParams.url;
-
-            const imageSource = new ImageWMS({
-              url: baseUrl,
-              params: {
-                'LAYERS': layer.fullName,
-                'STYLES': '',
-                'FORMAT': 'image/png',
-                'TRANSPARENT': true,
-                ...(layer.cqlFilter ? { 'CQL_FILTER': layer.cqlFilter } : {})
-              },
-              serverType: 'geoserver',
-              crossOrigin: 'anonymous',
-              ratio: 1,
-              // Custom loader that uses POST for large SLD bodies
-              imageLoadFunction: (image, src) => {
-                // Parse existing URL params - handle relative URLs
-                const url = new URL(src, window.location.origin);
-                const params = new URLSearchParams();
-
-                // Copy existing params
-                url.searchParams.forEach((value, key) => {
-                  params.append(key, value);
-                });
-
-                // Add SLD_BODY to POST body
-                params.append('SLD_BODY', sldBody);
-
-                // Make POST request to absolute URL
-                const requestUrl = url.origin + url.pathname;
-                fetch(requestUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                  },
-                  body: params.toString()
-                })
-                  .then(response => {
-                    if (!response.ok) throw new Error(`WMS request failed: ${response.status}`);
-                    return response.blob();
-                  })
-                  .then(blob => {
-                    const objectUrl = URL.createObjectURL(blob);
-                    image.getImage().src = objectUrl;
-                    // Clean up object URL after image loads
-                    image.getImage().onload = () => URL.revokeObjectURL(objectUrl);
-                  })
-                  .catch(err => {
-                    console.error('WMS POST request failed:', err);
-                    // Fallback: try GET anyway (might work for smaller SLDs)
-                    image.getImage().src = src + '&SLD_BODY=' + encodeURIComponent(sldBody);
-                  });
-              }
-            });
-
-            wmsLayer = new ImageLayer({
-              source: imageSource,
-              zIndex: 1000 - (layer.sequence || 999),
-              opacity: layer.opacity,
-              properties: { id: layer.id }
-            });
-          } else {
-            // Use TileWMS for normal display (better performance for large areas)
-            wmsLayer = new TileLayer({
-              source: new TileWMS({
-                ...sourceParams,
-                params: sourceParams.params
-              }),
-              zIndex: 1000 - (layer.sequence || 999),
-              opacity: layer.opacity,
-              properties: { id: layer.id }
-            });
-          }
-
+          const wmsLayer = new TileLayer({
+            source: new TileWMS({
+              ...sourceParams,
+              params: sourceParams.params
+            }),
+            zIndex: 1000 - (layer.sequence || 999),
+            opacity: layer.opacity,
+            properties: { id: layer.id }
+          });
           mapInstanceRef.current.addLayer(wmsLayer);
           operationalLayersRef.current[layer.id] = wmsLayer;
         } else {
-          // Update existing layer properties
+          // Update existing properties if needed (e.g. opacity, sequence/zIndex, cqlFilter)
           existingLayer.setOpacity(layer.opacity);
           existingLayer.setZIndex(1000 - (layer.sequence || 999));
 
@@ -514,11 +435,6 @@ function GISMap() {
             newParams['CQL_FILTER'] = layer.cqlFilter;
           }
 
-          if (hasAnalysisSLD) {
-            newParams['SLD_BODY'] = analysisSLDMap[layer.id];
-            newParams['STYLES'] = '';
-          }
-
           source.updateParams(newParams);
         }
       } else if (!layer.visible && existingLayer) {
@@ -528,14 +444,14 @@ function GISMap() {
       }
     });
 
-    // Handle deletions if state array shrinks (not expected here but good practice)
+    // Handle deletions if state array shrinks
     Object.keys(operationalLayersRef.current).forEach(id => {
       if (!geoServerLayers.find(l => l.id === id)) {
         mapInstanceRef.current.removeLayer(operationalLayersRef.current[id]);
         delete operationalLayersRef.current[id];
       }
     });
-  }, [geoServerLayers, analysisSLDMap]);
+  }, [geoServerLayers]);
 
   const handleToggleGeoLayer = (layerId) => {
     setGeoServerLayers(prev => prev.map(l =>
@@ -708,109 +624,147 @@ function GISMap() {
   const handleRunAnalysis = async (config) => {
     const { layerId, property, mappings, isPeriodic, dateProperty, startDate, endDate } = config;
     const layer = geoServerLayers.find(l => l.id === layerId);
-    if (!layer) return;
+    if (!layer || !mapInstanceRef.current) return;
 
-    toast.loading("Applying analysis style...", { id: 'analysis-toast' });
+    toast.loading("Fetching data for analysis...", { id: 'analysis-toast' });
 
-    // ELITE: Check for matched records before applying
     try {
-      // Build CQL filter conditions based on operators
-      const filterConditions = mappings
-        .filter(m => m.value !== '')
-        .map(m => {
-          const escapedValue = m.value.replace(/'/g, "''");
-          const op = m.operator || '=';
+      // 1. Fetch data via WFS (GeoJSON)
+      // If periodic, we might want to fetch all or filter by date range
+      let wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&outputFormat=application/json&srsName=EPSG:3857`;
 
+      if (isPeriodic && dateProperty && startDate && endDate) {
+        const cql = `${dateProperty} BETWEEN '${startDate}' AND '${endDate}'`;
+        wfsUrl += `&cql_filter=${encodeURIComponent(cql)}`;
+      }
+
+      const response = await fetch(wfsUrl, { headers: { 'Authorization': AUTH_HEADER } });
+      if (!response.ok) throw new Error("Failed to fetch features from GeoServer");
+
+      const geojson = await response.json();
+      if (!geojson.features || geojson.features.length === 0) {
+        toast.error("No features found for analysis", { id: 'analysis-toast' });
+        return;
+      }
+
+      // 2. Hide existing WMS Layer
+      analysisWMSVisibilitiesRef.current[layerId] = layer.visible;
+      setGeoServerLayers(prev => prev.map(l =>
+        l.id === layerId ? { ...l, visible: false } : l
+      ));
+
+      // 3. Create Vector Layer for Analysis
+      const vectorSource = new VectorSource({
+        features: new GeoJSON().readFeatures(geojson)
+      });
+
+      // JS Style Function implementing mappings and operators
+      const analysisStyleFunction = (feature) => {
+        const val = feature.get(property);
+        if (val === undefined || val === null) return null;
+
+        // Find matching mapping
+        const match = mappings.find(m => {
+          if (!m.value) return false;
+          const op = m.operator || '=';
+          const mappingVal = m.value;
+
+          // Operator Logic
           switch (op) {
-            case '=':
-              return `${property} = '${escapedValue}'`;
-            case '!=':
-              return `${property} <> '${escapedValue}'`;
-            case '>':
-              return `${property} > '${escapedValue}'`;
-            case '<':
-              return `${property} < '${escapedValue}'`;
-            case '>=':
-              return `${property} >= '${escapedValue}'`;
-            case '<=':
-              return `${property} <= '${escapedValue}'`;
-            case 'LIKE':
-              return `${property} LIKE '%${escapedValue}%'`;
-            default:
-              return `${property} = '${escapedValue}'`;
+            case '=': return String(val) === String(mappingVal);
+            case '!=': return String(val) !== String(mappingVal);
+            case '>': return Number(val) > Number(mappingVal);
+            case '<': return Number(val) < Number(mappingVal);
+            case '>=': return Number(val) >= Number(mappingVal);
+            case '<=': return Number(val) <= Number(mappingVal);
+            case 'LIKE': return String(val).toLowerCase().includes(String(mappingVal).toLowerCase());
+            default: return String(val) === String(mappingVal);
           }
         });
 
-      if (filterConditions.length === 0) {
-        toast.error("Please add at least one value mapping", { id: 'analysis-toast' });
-        return;
+        if (match) {
+          const color = match.color;
+          return [
+            new Style({
+              fill: new Fill({ color: color + 'b3' }), // ~0.7 opacity
+              stroke: new Stroke({ color: '#fff', width: 1 }),
+              image: new CircleStyle({
+                radius: 6,
+                fill: new Fill({ color: color }),
+                stroke: new Stroke({ color: '#fff', width: 1 })
+              })
+            })
+          ];
+        }
+
+        // Else (default) style
+        return [
+          new Style({
+            fill: new Fill({ color: 'rgba(204, 204, 204, 0.2)' }),
+            stroke: new Stroke({ color: 'rgba(153, 153, 153, 0.5)', width: 0.5 })
+          })
+        ];
+      };
+
+      const analysisLayer = new VectorLayer({
+        source: vectorSource,
+        style: analysisStyleFunction,
+        zIndex: 1001, // Above WMS layers
+        properties: { id: `analysis-${layerId}`, isAnalysis: true }
+      });
+
+      // Cleanup existing analysis layer for this ID if it exists
+      if (analysisVectorLayersRef.current[layerId]) {
+        mapInstanceRef.current.removeLayer(analysisVectorLayersRef.current[layerId]);
       }
 
-      let cqlFilter = `(${filterConditions.join(' OR ')})`;
+      mapInstanceRef.current.addLayer(analysisLayer);
+      analysisVectorLayersRef.current[layerId] = analysisLayer;
+
+      toast.success(`Analysis applied!`, { id: 'analysis-toast' });
+
+      // Handle Periodic Playback
       if (isPeriodic && dateProperty && startDate && endDate) {
-        cqlFilter += ` AND ${dateProperty} BETWEEN '${startDate}' AND '${endDate}'`;
+        setAnalysisConfig(config);
+        setAnalysisFrameIndex(0);
+      } else {
+        setAnalysisConfig(null);
+        setIsAnalysisPlaying(false);
       }
 
-      const checkUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&cql_filter=${encodeURIComponent(cqlFilter)}&resultType=hits`;
-      const checkRes = await fetch(checkUrl, { headers: { 'Authorization': AUTH_HEADER } });
-      const checkText = await checkRes.text();
-      const match = checkText.match(/numberOfMatched="(\d+)"/);
-
-      if (match && parseInt(match[1]) === 0) {
-        toast.error("No Features Matched to Show analysis", { id: 'analysis-toast' });
-        return;
-      }
     } catch (err) {
-      console.warn("Match check failed, proceeding with styling anyway:", err);
-    }
-
-    // 1. Generate SLD (Temporary or Merged)
-    let sldBody;
-
-    // Always try to merge with existing style first to preserve other features' styles
-    const existing = await getLayerStyle(layer.fullName);
-    if (existing && existing.sldBody) {
-      sldBody = mergeAnalysisRules(existing.sldBody, property, mappings);
-    }
-
-    // Fallback if no existing style or merging fails
-    if (!sldBody) {
-      sldBody = generateAnalysisSLD(layer.fullName, property, mappings);
-    }
-
-    // 2. Apply temporarily to Map (Session)
-    // Setting state triggers useEffect to recreate layer with ImageWMS
-    setAnalysisSLDMap(prev => ({
-      ...prev,
-      [layerId]: sldBody
-    }));
-
-    toast.success("Analysis style applied!", { id: 'analysis-toast' });
-
-    // 3. Handle Periodic Analysis (Filter)
-    if (isPeriodic && dateProperty && startDate && endDate) {
-      setAnalysisConfig(config);
-      setAnalysisFrameIndex(0);
-      const filter = `${dateProperty} = '${startDate}'`; // Start with first date
-      handleApplyLayerFilter(layerId, filter);
-    } else {
-      setAnalysisConfig(null);
-      setIsAnalysisPlaying(false);
+      console.error("Analysis failed:", err);
+      toast.error(`Analysis failed: ${err.message}`, { id: 'analysis-toast' });
     }
   };
 
   const handleResetAnalysis = () => {
-    // Clear all temporary analysis styles
+    // 1. Remove all client-side analysis vector layers
+    if (mapInstanceRef.current) {
+      Object.keys(analysisVectorLayersRef.current).forEach(layerId => {
+        const vectorLayer = analysisVectorLayersRef.current[layerId];
+        if (vectorLayer) {
+          mapInstanceRef.current.removeLayer(vectorLayer);
+        }
+
+        // 2. Restore original WMS Layer visibility
+        const originalVisible = analysisWMSVisibilitiesRef.current[layerId];
+        if (originalVisible !== undefined) {
+          setGeoServerLayers(prev => prev.map(l =>
+            l.id === layerId ? { ...l, visible: originalVisible } : l
+          ));
+        }
+      });
+    }
+
+    // 3. Reset Refs and State
+    analysisVectorLayersRef.current = {};
+    analysisWMSVisibilitiesRef.current = {};
     setAnalysisSLDMap({});
     setAnalysisConfig(null);
     setIsAnalysisPlaying(false);
 
-    // Clear filters set by analysis if any
-    // Note: This clears ALL filters, which might be too aggressive if user had other filters,
-    // but usually analysis replaces/sets its own.
-    setGeoServerLayers(prev => prev.map(l => ({ ...l, cqlFilter: null })));
-
-    toast.success("Analysis reset. Temporary styles removed.");
+    toast.success("Analysis reset. Client-side layers removed.");
   };
 
   // Analysis Playback Loop
@@ -824,13 +778,65 @@ function GISMap() {
     return () => clearInterval(interval);
   }, [isAnalysisPlaying, analysisConfig]);
 
-  // Sync Analysis Frame with Map Filter
+  // Sync Analysis Frame with Map Filter/Visibility
   useEffect(() => {
     if (analysisConfig && analysisConfig.filteredDates && analysisConfig.filteredDates[analysisFrameIndex]) {
-      const { layerId, dateProperty, filteredDates } = analysisConfig;
+      const { layerId, property, mappings, dateProperty, filteredDates } = analysisConfig;
       const date = filteredDates[analysisFrameIndex];
-      const filter = `${dateProperty} = '${date}'`;
-      handleApplyLayerFilter(layerId, filter);
+
+      const vectorLayer = analysisVectorLayersRef.current[layerId];
+      if (vectorLayer) {
+        // Apply a style function that filters by date AND applies the color mapping
+        vectorLayer.setStyle((feature) => {
+          const featureDate = feature.get(dateProperty);
+
+          // Filter by date
+          if (String(featureDate) !== String(date)) {
+            return new Style({}); // Invisible
+          }
+
+          // Apply Color Mapping (same logic as handleRunAnalysis)
+          const val = feature.get(property);
+          const match = mappings.find(m => {
+            if (!m.value) return false;
+            const op = m.operator || '=';
+            const mappingVal = m.value;
+
+            switch (op) {
+              case '=': return String(val) === String(mappingVal);
+              case '!=': return String(val) !== String(mappingVal);
+              case '>': return Number(val) > Number(mappingVal);
+              case '<': return Number(val) < Number(mappingVal);
+              case '>=': return Number(val) >= Number(mappingVal);
+              case '<=': return Number(val) <= Number(mappingVal);
+              case 'LIKE': return String(val).toLowerCase().includes(String(mappingVal).toLowerCase());
+              default: return String(val) === String(mappingVal);
+            }
+          });
+
+          if (match) {
+            const color = match.color;
+            return [
+              new Style({
+                fill: new Fill({ color: color + 'b3' }),
+                stroke: new Stroke({ color: '#fff', width: 1 }),
+                image: new CircleStyle({
+                  radius: 6,
+                  fill: new Fill({ color: color }),
+                  stroke: new Stroke({ color: '#fff', width: 1 })
+                })
+              })
+            ];
+          }
+
+          return [
+            new Style({
+              fill: new Fill({ color: 'rgba(204, 204, 204, 0.2)' }),
+              stroke: new Stroke({ color: 'rgba(153, 153, 153, 0.5)', width: 0.5 })
+            })
+          ];
+        });
+      }
     }
   }, [analysisFrameIndex, analysisConfig]);
 
