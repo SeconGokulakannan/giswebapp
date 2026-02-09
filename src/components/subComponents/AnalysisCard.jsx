@@ -205,7 +205,6 @@ const AnalysisCard = ({
             setUniqueDates(dates);
         } catch (error) {
             console.error("Error fetching dates:", error);
-            // toast.error("Failed to fetch unique dates.");
         } finally {
             setIsFetchingDates(false);
         }

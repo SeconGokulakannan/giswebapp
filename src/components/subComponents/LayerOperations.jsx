@@ -8,7 +8,8 @@ import {
     LayersPlus, FileChartPie, Pencil, CircleDot, Save, Loader2, Upload,
     MousePointer2, BoxSelect, GripVertical, MousePointerClick,
     Brush,
-    LayoutGrid
+    LayoutGrid,
+    MessageSquareCode
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -31,6 +32,7 @@ const LayerOperations = ({
         { icon: List, label: ' Legend', id: 'legend' },
         { icon: Info, label: 'Feature Info', id: 'info' },
         { icon: MousePointerClick, label: 'Layer Action', id: 'action' },
+        { icon: MessageSquareCode, label: 'Feature Search', id: 'featureSearch' },
         { icon: Palette, label: 'Layer Styles', id: 'styles' },
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
         { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' },
@@ -122,9 +124,9 @@ const LayerOperations = ({
 
     const DASH_STYLES = {
         'Solid': null,
-        'Dash': '5, 5',
-        'Dot': '1, 5',
-        'Dash-Dot': '5, 5, 1, 5'
+        'Dash': '5 5',
+        'Dot': '1 5',
+        'Dash-Dot': '5 5 1 5'
     };
 
     const HATCH_PATTERNS = {
@@ -188,9 +190,20 @@ const LayerOperations = ({
             fontWeight: false, fontStyle: false, haloRadius: false, haloColor: false
         };
 
-        const extract = (name, defaultValue) => {
+        const extract = (name, defaultValue, parentContext = null) => {
+            let searchTarget = sldBody;
+            if (parentContext) {
+                const contextRegex = new RegExp(`<${parentContext}[\\s\\S]*?>([\\s\\S]*?)</${parentContext}>`, 'i');
+                const contextMatch = sldBody.match(contextRegex);
+                if (contextMatch) {
+                    searchTarget = contextMatch[1];
+                } else {
+                    return defaultValue;
+                }
+            }
+
             const regex = new RegExp(`<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>([^<]+)</(?:[\\w-]*:)?(?:Css|Svg)Parameter>`, 'i');
-            const match = sldBody.match(regex);
+            const match = searchTarget.match(regex);
             if (match) {
                 const propKey = name.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
                 availableProps[propKey] = true;
@@ -259,14 +272,14 @@ const LayerOperations = ({
         props.externalGraphicUrl = extractExternalGraphic();
         props.hatchPattern = extractHatch();
 
-        props.fontSize = parseFloat(extract('font-size', props.fontSize));
-        props.fontFamily = extract('font-family', props.fontFamily);
-        props.fontWeight = extract('font-weight', props.fontWeight);
-        props.fontStyle = extract('font-style', props.fontStyle);
+        props.fontSize = parseFloat(extract('font-size', props.fontSize, 'TextSymbolizer'));
+        props.fontFamily = extract('font-family', props.fontFamily, 'TextSymbolizer');
+        props.fontWeight = extract('font-weight', props.fontWeight, 'TextSymbolizer');
+        props.fontStyle = extract('font-style', props.fontStyle, 'TextSymbolizer');
 
-        props.fontColor = extract('fill', props.fontColor); // Simplified
+        props.fontColor = extract('fill', props.fontColor, 'TextSymbolizer'); // Now context-aware
         props.haloRadius = parseFloat(extractTag('Radius', props.haloRadius));
-        props.haloColor = extract('fill', props.haloColor); // Simplified
+        props.haloColor = extract('fill', props.haloColor, 'Halo'); // Specific to Halo
         props.labelAttribute = extractLabelProp();
 
         // Parse GeneratedLabelRule for Scale
@@ -336,6 +349,7 @@ const LayerOperations = ({
 
     const applyStyleChanges = (sldBody, props) => {
         let newSld = sldBody;
+        let pendingLabelRule = null;
 
         const ensureParent = (parentTag, containerTag) => {
             const tagRegex = new RegExp(`<${parentTag}[^>]*>`, 'i');
@@ -352,24 +366,35 @@ const LayerOperations = ({
         };
 
         const replace = (name, value, parentTagName) => {
-            if (value === undefined || value === null) return;
-            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
-            if (newSld.match(regex)) {
-                newSld = newSld.replace(regex, `$1${value}$2`);
-            } else if (parentTagName && value !== '') {
+            if (value === undefined) return;
+
+            if (parentTagName) {
                 const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'gi');
-                let inserted = false;
-                newSld = newSld.replace(parentRegex, (match, p1, p2, p3) => {
-                    if (!inserted) {
-                        inserted = true;
-                        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-                        const prefixMatch = p1.match(/<([\w-]*:)/);
-                        const prefix = prefixMatch ? prefixMatch[1] : '';
-                        const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
-                        return `${p1}${p2}${newParam}${p3}`;
+
+                newSld = newSld.replace(parentRegex, (match, startTag, content, endTag) => {
+                    const paramRegex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)([^<]*)(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
+
+                    if (value === null) {
+                        return `${startTag}${content.replace(paramRegex, '')}${endTag}`;
+                    } else {
+                        if (paramRegex.test(content)) {
+                            return `${startTag}${content.replace(paramRegex, `$1${value}$3`)}${endTag}`;
+                        } else {
+                            const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+                            const prefixMatch = startTag.match(/<([\w-]*:)/);
+                            const prefix = prefixMatch ? prefixMatch[1] : '';
+                            const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
+                            return `${startTag}${content}${newParam}${endTag}`;
+                        }
                     }
-                    return match;
                 });
+            } else {
+                const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
+                if (value === null) {
+                    if (newSld.match(regex)) newSld = newSld.replace(regex, '');
+                } else {
+                    if (newSld.match(regex)) newSld = newSld.replace(regex, `$1${value}$2`);
+                }
             }
         };
 
@@ -500,16 +525,18 @@ const LayerOperations = ({
                     </PointPlacement>
                 </LabelPlacement>
                 <Halo>
-                    <Radius>1</Radius>
+                    <Radius>${props.haloRadius || 1}</Radius>
                     <Fill>
-                        <CssParameter name="fill">#FFFFFF</CssParameter>
+                        <CssParameter name="fill">${props.haloColor || '#FFFFFF'}</CssParameter>
                     </Fill>
                 </Halo>
                 <Fill>
-                   <CssParameter name="fill">#000000</CssParameter>
+                   <CssParameter name="fill">${props.fontColor || '#000000'}</CssParameter>
                 </Fill>
-                </Fill>
-                <VendorOption name="group">yes</VendorOption>
+                <VendorOption name="group">${props.staticLabel ? 'yes' : 'no'}</VendorOption>
+                <VendorOption name="labelAllGroup">false</VendorOption>
+                <VendorOption name="partials">true</VendorOption>
+                <VendorOption name="repeat">${props.staticLabel ? '0' : (props.labelRepeat || '0')}</VendorOption>
                 <VendorOption name="spaceAround">10</VendorOption>
                 <VendorOption name="conflictResolution">true</VendorOption>
                 <VendorOption name="goodnessOfFit">0</VendorOption>
@@ -518,8 +545,12 @@ const LayerOperations = ({
             </TextSymbolizer>
         </Rule>`;
 
-            // Insert before closing FeatureTypeStyle
-            newSld = newSld.replace(/(<\/FeatureTypeStyle>)/i, `${newLabelRule}$1`);
+            // NOTE: We used to insert here, but moved it to the very end to avoid interference
+            // from broad 'Fill'/'Stroke' replacements intended for other symbolizers.
+            // newSld = newSld.replace(/(<\/FeatureTypeStyle>)/i, `${newLabelRule}$1`);
+
+            // We store it for later insertion
+            pendingLabelRule = newLabelRule;
         }
 
         replace('fill', props.fill, 'Fill');
@@ -535,22 +566,13 @@ const LayerOperations = ({
         replaceTag('Rotation', props.rotation, 'Graphic');
         replaceTag('WellKnownName', props.wellKnownName, 'Mark');
 
-        replace('font-size', props.fontSize, 'Font');
-        replace('font-family', props.fontFamily, 'Font');
-        replace('font-weight', props.fontWeight, 'Font');
-        replace('font-style', props.fontStyle, 'Font');
-        replaceTag('Radius', props.haloRadius, 'Halo');
+        // Redundant calls for labels removed as they are now embedded in the template
+        // and carefully avoided by moving the label rule insertion to the final step.
 
-        const replaceNestedFill = (parentTag, value) => {
-            if (!value) return;
-            const regex = new RegExp(`(<(?:[\\w-]*:)?${parentTag}>[\\s\\S]*?<[\\w-]*:?Fill>[\\s\\S]*?<[\\w-]*:?(?:Css|Svg)Parameter name="fill">)[^<]+(</[\\w-]*:?(?:Css|Svg)Parameter>)`, 'i');
-            if (newSld.match(regex)) {
-                newSld = newSld.replace(regex, `$1${value}$2`);
-            }
-        };
-
-        replaceNestedFill('Halo', props.haloColor);
-        replaceNestedFill('TextSymbolizer', props.fontColor);
+        // Finalize: Insert Label Rule if pending
+        if (pendingLabelRule) {
+            newSld = newSld.replace(/(<\/FeatureTypeStyle>)/i, `${pendingLabelRule}$1`);
+        }
 
         return newSld;
     };
@@ -1403,6 +1425,30 @@ const LayerOperations = ({
                                                                         <option value="normal">Regular</option>
                                                                         <option value="italic">Italic</option>
                                                                     </select>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* FONT & HALO COLOR */}
+                                                            <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <span className="ref-label">Font Color</span>
+                                                                    <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fontColor || '#000000' }}>
+                                                                        <input
+                                                                            type="color"
+                                                                            value={styleData.properties.fontColor || '#000000'}
+                                                                            onChange={(e) => updateStyleProp('fontColor', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <span className="ref-label">Halo Color</span>
+                                                                    <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.haloColor || '#FFFFFF' }}>
+                                                                        <input
+                                                                            type="color"
+                                                                            value={styleData.properties.haloColor || '#FFFFFF'}
+                                                                            onChange={(e) => updateStyleProp('haloColor', e.target.value)}
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             </div>
 
