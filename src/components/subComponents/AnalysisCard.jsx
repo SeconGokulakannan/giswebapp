@@ -50,7 +50,7 @@ const AnalysisCard = ({
 
     // Dynamic State
     const [selectedProperty, setSelectedProperty] = useState('');
-    const [mappings, setMappings] = useState([{ value: '', color: PRESET_COLORS[0] }]);
+    const [mappings, setMappings] = useState([{ value: '', color: PRESET_COLORS[0], operator: '=' }]);
 
     // Chart State
     const [chartAttribute1, setChartAttribute1] = useState('');
@@ -67,7 +67,6 @@ const AnalysisCard = ({
     const [isFetchingAttributes, setIsFetchingAttributes] = useState(false);
     const [isFetchingDates, setIsFetchingDates] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
-    const [shouldSaveToGeoServer, setShouldSaveToGeoServer] = useState(false);
 
     const activeLayer = visibleLayers.find(l => l.id === selectedLayerId);
 
@@ -219,7 +218,7 @@ const AnalysisCard = ({
     }, [isPeriodic, dateProperty]);
 
     const addMapping = () => {
-        setMappings([...mappings, { value: '', color: PRESET_COLORS[mappings.length % PRESET_COLORS.length] }]);
+        setMappings([...mappings, { value: '', color: PRESET_COLORS[mappings.length % PRESET_COLORS.length], operator: '=' }]);
     };
 
     const removeMapping = (index) => {
@@ -246,8 +245,7 @@ const AnalysisCard = ({
             dateProperty,
             startDate,
             endDate,
-            filteredDates, // Pass the sequence of dates for playback
-            shouldSaveToGeoServer
+            filteredDates // Pass the sequence of dates for playback
         });
     };
 
@@ -381,29 +379,6 @@ const AnalysisCard = ({
                         {analysisMode === 'dynamic' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.4s ease' }}>
 
-                                {/* Permanent Update Switch */}
-                                <div style={{
-                                    background: 'var(--color-bg-secondary)',
-                                    borderRadius: '16px',
-                                    border: '1px solid var(--color-border)',
-                                    padding: '16px'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <FileChartPie size={16} color="var(--color-primary)" />
-                                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Update Styles to GeoServer</label>
-                                        </div>
-                                        <label className="toggle-switch" style={{ transform: 'scale(0.8)' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={shouldSaveToGeoServer}
-                                                onChange={(e) => setShouldSaveToGeoServer(e.target.checked)}
-                                            />
-                                            <span className="toggle-slider"></span>
-                                        </label>
-                                    </div>
-                                </div>
-
                                 {/* Property Selection */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>CONDITION ATTRIBUTE</label>
@@ -427,20 +402,46 @@ const AnalysisCard = ({
                                     </select>
                                 </div>
 
-                                {/* Mappings */}
+                                {/* Mappings with Operators */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <label style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.8px' }}>VALUE MAPPINGS</label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {mappings.map((m, index) => (
                                             <div key={index} style={{
                                                 display: 'flex',
-                                                gap: '10px',
+                                                gap: '6px',
                                                 alignItems: 'center',
                                                 background: 'var(--color-bg-tertiary)',
                                                 padding: '6px',
                                                 borderRadius: '14px',
                                                 border: '1px solid var(--color-border)'
                                             }}>
+                                                {/* Operator Dropdown */}
+                                                <select
+                                                    value={m.operator || '='}
+                                                    onChange={(e) => updateMapping(index, { operator: e.target.value })}
+                                                    style={{
+                                                        width: '60px',
+                                                        padding: '8px 4px',
+                                                        borderRadius: '10px',
+                                                        border: 'none',
+                                                        background: 'var(--color-primary)',
+                                                        color: 'white',
+                                                        fontSize: '11px',
+                                                        fontWeight: '700',
+                                                        textAlign: 'center',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <option value="=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>=</option>
+                                                    <option value="!=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>≠</option>
+                                                    <option value=">" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>&gt;</option>
+                                                    <option value="<" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>&lt;</option>
+                                                    <option value=">=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>≥</option>
+                                                    <option value="<=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>≤</option>
+                                                    <option value="LIKE" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>LIKE</option>
+                                                </select>
+                                                {/* Value Input */}
                                                 <input
                                                     type="text"
                                                     value={m.value}
@@ -457,6 +458,7 @@ const AnalysisCard = ({
                                                         fontWeight: '600'
                                                     }}
                                                 />
+                                                {/* Color Picker */}
                                                 <div style={{
                                                     width: '32px',
                                                     height: '32px',
@@ -464,7 +466,8 @@ const AnalysisCard = ({
                                                     background: m.color,
                                                     position: 'relative',
                                                     overflow: 'hidden',
-                                                    border: '2px solid var(--color-border)'
+                                                    border: '2px solid var(--color-border)',
+                                                    flexShrink: 0
                                                 }}>
                                                     <input
                                                         type="color"
@@ -482,10 +485,11 @@ const AnalysisCard = ({
                                                         }}
                                                     />
                                                 </div>
+                                                {/* Remove Button */}
                                                 {mappings.length > 1 && (
                                                     <button
                                                         onClick={() => removeMapping(index)}
-                                                        style={{ background: 'rgba(var(--color-danger-rgb), 0.1)', border: 'none', color: 'var(--color-danger)', padding: '8px', borderRadius: '10px', cursor: 'pointer' }}
+                                                        style={{ background: 'rgba(var(--color-danger-rgb), 0.1)', border: 'none', color: 'var(--color-danger)', padding: '8px', borderRadius: '10px', cursor: 'pointer', flexShrink: 0 }}
                                                     >
                                                         <X size={14} />
                                                     </button>
@@ -511,7 +515,7 @@ const AnalysisCard = ({
                                                 transition: 'all 0.2s'
                                             }}
                                         >
-                                            <Plus size={14} /> ADD VALUE FIELD
+                                            <Plus size={14} /> ADD CONDITION
                                         </button>
                                     </div>
                                 </div>
@@ -589,9 +593,8 @@ const AnalysisCard = ({
                                     <button
                                         onClick={() => {
                                             setSelectedProperty('');
-                                            setMappings([{ value: '', color: PRESET_COLORS[0] }]);
+                                            setMappings([{ value: '', color: PRESET_COLORS[0], operator: '=' }]);
                                             setIsPeriodic(false);
-                                            setShouldSaveToGeoServer(false);
                                             if (onReset) onReset();
                                         }}
                                         style={{ flex: 1, padding: '12px', borderRadius: '14px', border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}

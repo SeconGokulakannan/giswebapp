@@ -631,21 +631,47 @@ function GISMap() {
   };
 
   const handleRunAnalysis = async (config) => {
-    const { layerId, property, mappings, isPeriodic, dateProperty, startDate, endDate, shouldSaveToGeoServer } = config;
+    const { layerId, property, mappings, isPeriodic, dateProperty, startDate, endDate } = config;
     const layer = geoServerLayers.find(l => l.id === layerId);
     if (!layer) return;
 
     toast.loading("Applying analysis style...", { id: 'analysis-toast' });
 
-    // ELITE: Check for matched records before applying (omitted for brevity in replace, keeping existing logic)
+    // ELITE: Check for matched records before applying
     try {
-      const filterValues = mappings
-        .map(m => m.value)
-        .filter(v => v !== '')
-        .map(v => `'${v.replace(/'/g, "''")}'`)
-        .join(',');
+      // Build CQL filter conditions based on operators
+      const filterConditions = mappings
+        .filter(m => m.value !== '')
+        .map(m => {
+          const escapedValue = m.value.replace(/'/g, "''");
+          const op = m.operator || '=';
 
-      let cqlFilter = `${property} IN (${filterValues})`;
+          switch (op) {
+            case '=':
+              return `${property} = '${escapedValue}'`;
+            case '!=':
+              return `${property} <> '${escapedValue}'`;
+            case '>':
+              return `${property} > '${escapedValue}'`;
+            case '<':
+              return `${property} < '${escapedValue}'`;
+            case '>=':
+              return `${property} >= '${escapedValue}'`;
+            case '<=':
+              return `${property} <= '${escapedValue}'`;
+            case 'LIKE':
+              return `${property} LIKE '%${escapedValue}%'`;
+            default:
+              return `${property} = '${escapedValue}'`;
+          }
+        });
+
+      if (filterConditions.length === 0) {
+        toast.error("Please add at least one value mapping", { id: 'analysis-toast' });
+        return;
+      }
+
+      let cqlFilter = `(${filterConditions.join(' OR ')})`;
       if (isPeriodic && dateProperty && startDate && endDate) {
         cqlFilter += ` AND ${dateProperty} BETWEEN '${startDate}' AND '${endDate}'`;
       }
@@ -693,19 +719,9 @@ function GISMap() {
       });
     }
 
-    // 3. Optional: Permanent Save to GeoServer
-    if (shouldSaveToGeoServer) {
-      const success = await handleUpdateLayerStyle(layer.id, layer.fullName, sldBody);
-      if (success) {
-        toast.success("Analysis applied and saved to GeoServer!", { id: 'analysis-toast' });
-      } else {
-        toast.error("Failed to save to GeoServer, applied temporarily only.", { id: 'analysis-toast' });
-      }
-    } else {
-      toast.success("Analysis style applied temporarily!", { id: 'analysis-toast' });
-    }
+    toast.success("Analysis style applied!", { id: 'analysis-toast' });
 
-    // 4. Handle Periodic Analysis (Filter)
+    // 3. Handle Periodic Analysis (Filter)
     if (isPeriodic && dateProperty && startDate && endDate) {
       setAnalysisConfig(config);
       setAnalysisFrameIndex(0);

@@ -365,16 +365,49 @@ export const modifyStyle = new Style({
 /**
  * Generates an SLD Rule fragment for a single attribute value mapping.
  * Includes necessary namespaces for standalone parsing.
+ * @param {string} property - Attribute name
+ * @param {string} value - Value to filter on
+ * @param {string} color - Color for styling
+ * @param {string} operator - Comparison operator (=, !=, >, <, >=, <=, LIKE)
  */
-export const generateSingleRule = (property, value, color) => `
-        <Rule xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc">
-            <Name>${value}</Name>
+export const generateSingleRule = (property, value, color, operator = '=') => {
+    // Map operators to OGC filter element names
+    const operatorMap = {
+        '=': 'PropertyIsEqualTo',
+        '!=': 'PropertyIsNotEqualTo',
+        '>': 'PropertyIsGreaterThan',
+        '<': 'PropertyIsLessThan',
+        '>=': 'PropertyIsGreaterThanOrEqualTo',
+        '<=': 'PropertyIsLessThanOrEqualTo',
+        'LIKE': 'PropertyIsLike'
+    };
+
+    const filterElement = operatorMap[operator] || 'PropertyIsEqualTo';
+
+    // Generate filter based on operator type
+    let filterContent;
+    if (operator === 'LIKE') {
+        // LIKE requires wildCard, singleChar, and escapeChar attributes
+        filterContent = `
             <ogc:Filter>
-                <ogc:PropertyIsEqualTo>
+                <ogc:PropertyIsLike wildCard="%" singleChar="_" escapeChar="\\">
+                    <ogc:PropertyName>${property}</ogc:PropertyName>
+                    <ogc:Literal>%${value}%</ogc:Literal>
+                </ogc:PropertyIsLike>
+            </ogc:Filter>`;
+    } else {
+        filterContent = `
+            <ogc:Filter>
+                <ogc:${filterElement}>
                     <ogc:PropertyName>${property}</ogc:PropertyName>
                     <ogc:Literal>${value}</ogc:Literal>
-                </ogc:PropertyIsEqualTo>
-            </ogc:Filter>
+                </ogc:${filterElement}>
+            </ogc:Filter>`;
+    }
+
+    return `
+        <Rule xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc">
+            <Name>${operator} ${value}</Name>${filterContent}
             <PolygonSymbolizer>
                 <Fill>
                     <CssParameter name="fill">${color}</CssParameter>
@@ -408,6 +441,7 @@ export const generateSingleRule = (property, value, color) => `
             </PointSymbolizer>
         </Rule>
 `;
+};
 
 /**
  * Merges analysis rules into an existing SLD body.
@@ -432,7 +466,7 @@ export const mergeAnalysisRules = (originalSld, property, mappings) => {
         // prepend so they have priority
         mappings.slice().reverse().forEach(m => {
             if (!m.value) return;
-            const ruleXml = generateSingleRule(property, m.value, m.color);
+            const ruleXml = generateSingleRule(property, m.value, m.color, m.operator || '=');
             const ruleDoc = parser.parseFromString(ruleXml, "text/xml");
 
             // Check for parser errors
@@ -462,11 +496,11 @@ export const mergeAnalysisRules = (originalSld, property, mappings) => {
  * Generates an SLD XML string for dynamic attribute analysis.
  * @param {string} layerName Full layer name (workspace:name)
  * @param {string} property Attribute name to filter on
- * @param {Array} mappings List of {value, color} objects
+ * @param {Array} mappings List of {value, color, operator} objects
  * @returns {string} SLD XML
  */
 export const generateAnalysisSLD = (layerName, property, mappings) => {
-    const rules = mappings.map(m => generateSingleRule(property, m.value, m.color)).join('');
+    const rules = mappings.map(m => generateSingleRule(property, m.value, m.color, m.operator || '=')).join('');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <StyledLayerDescriptor version="1.0.0" 
@@ -498,4 +532,3 @@ export const generateAnalysisSLD = (layerName, property, mappings) => {
     </NamedLayer>
 </StyledLayerDescriptor>`;
 };
-
