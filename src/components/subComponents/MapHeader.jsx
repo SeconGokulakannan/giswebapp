@@ -12,7 +12,8 @@ import {
     LayersPlusIcon,
     Earth,
     ChevronsLeftRightEllipsis,
-    DraftingCompass
+    DraftingCompass,
+    MessageSquareCode
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -200,8 +201,11 @@ const MapHeader = ({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
-                                        className="toolbar-button"
-                                        onClick={() => { }}
+                                        className={`toolbar-button ${activePanel === 'bookmarks' ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setActivePanel(activePanel === 'bookmarks' ? null : 'bookmarks');
+                                            setIsPanelMinimized(false);
+                                        }}
                                         aria-label="Bookmarks"
                                     >
                                         <Bookmark size={20} />
@@ -215,6 +219,27 @@ const MapHeader = ({
                                 </Tooltip.Portal>
                             </Tooltip.Root>
 
+
+                            {/* <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className={`toolbar-button ${activePanel === 'assistant' ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setActivePanel(activePanel === 'assistant' ? null : 'assistant');
+                                            setIsPanelMinimized(false);
+                                        }}
+                                        aria-label="AI Assistant"
+                                    >
+                                        <MessageSquareCode size={20} />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                                        AI Assistant
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root> */}
                             <div className="toolbar-divider" />
 
                             <Tooltip.Root>

@@ -43,6 +43,9 @@ import {
     RefreshCw,
     Info,
     CircleDot,
+    Bookmark,
+    ScanSearch,
+    Navigation,
 } from 'lucide-react';
 import LayerOperations from './LayerOperations';
 
@@ -114,7 +117,8 @@ const MapPanel = ({
     GetLayerAttributes,
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer, queryingLayer,
     handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds, swipePosition, setSwipePosition,
-    analysisLayerIds, handleToggleAnalysisLayer
+    analysisLayerIds, handleToggleAnalysisLayer,
+    bookmarks, handleAddBookmark, handleDeleteBookmark, handleNavigateToBookmark
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -158,6 +162,7 @@ const MapPanel = ({
                         {activePanel === 'utility_tools' && 'Tools'}
                         {activePanel === 'location' && 'Go to Location'}
                         {activePanel === 'print' && 'Export Map'}
+                        {activePanel === 'bookmarks' && 'Map Bookmarks'}
                     </h3>
                     <p>
                         {activePanel === 'layers' && 'Manage data layers'}
@@ -166,6 +171,7 @@ const MapPanel = ({
                         {activePanel === 'utility_tools' && 'Measure and Analyze Map Data'}
                         {activePanel === 'location' && 'Enter precise coordinates'}
                         {activePanel === 'print' && 'Configure Map Export settings'}
+                        {activePanel === 'bookmarks' && 'Save and navigate to favorite views'}
                     </p>
                 </div>
                 <div className="panel-header-actions">
@@ -685,6 +691,106 @@ const MapPanel = ({
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+                {activePanel === 'bookmarks' && (
+                    <div className="panel-section fade-in">
+                        <div className="panel-section-title">Add New Bookmark</div>
+                        <div className="location-tool" style={{ marginBottom: '24px' }}>
+                            <div className="input-group">
+                                <label>Bookmark Name</label>
+                                <input
+                                    type="text"
+                                    className="coordinate-input"
+                                    placeholder="e.g. Project Area A"
+                                    id="bookmark-name-input"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && e.target.value.trim()) {
+                                            handleAddBookmark(e.target.value);
+                                            e.target.value = '';
+                                        }
+                                    }}
+                                />
+                            </div>
+                            <button
+                                className="goto-btn"
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                                onClick={() => {
+                                    const input = document.getElementById('bookmark-name-input');
+                                    if (input && input.value.trim()) {
+                                        handleAddBookmark(input.value);
+                                        input.value = '';
+                                    } else {
+                                        toast.error('Please enter a name');
+                                    }
+                                }}
+                            >
+                                <Bookmark size={16} /> Save Current View
+                            </button>
+                        </div>
+
+                        <div className="panel-divider" />
+                        <div className="panel-section-title">Saved Bookmarks ({bookmarks.length})</div>
+
+                        {bookmarks.length === 0 ? (
+                            <div className="no-props-hint" style={{ marginTop: '20px' }}>
+                                No bookmarks saved yet.
+                            </div>
+                        ) : (
+                            <div className="layer-list compact-list" style={{ marginTop: '12px' }}>
+                                {[...bookmarks].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((bookmark) => (
+                                    <div key={bookmark.id} className="bookmark-item-elite">
+                                        <div className="bookmark-content">
+                                            <div className="bookmark-info">
+                                                <span className="bookmark-name">{bookmark.name}</span>
+                                                <span className="bookmark-meta">
+                                                    Zoom {Math.round(bookmark.zoom * 10) / 10} • {new Date(bookmark.timestamp).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            <div className="bookmark-actions-elite">
+                                                <Tooltip.Root>
+                                                    <Tooltip.Trigger asChild>
+                                                        <button
+                                                            className="bookmark-btn navigate"
+                                                            onClick={() => handleNavigateToBookmark(bookmark)}
+                                                        >
+                                                            <Navigation size={16} />
+                                                            <span>Go</span>
+                                                        </button>
+                                                    </Tooltip.Trigger>
+                                                    <Tooltip.Portal>
+                                                        <Tooltip.Content className="TooltipContent" sideOffset={5}>
+                                                            Navigate to View
+                                                            <Tooltip.Arrow className="TooltipArrow" />
+                                                        </Tooltip.Content>
+                                                    </Tooltip.Portal>
+                                                </Tooltip.Root>
+
+                                                <Tooltip.Root>
+                                                    <Tooltip.Trigger asChild>
+                                                        <button
+                                                            className="bookmark-btn delete"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteBookmark(bookmark.id);
+                                                            }}
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </Tooltip.Trigger>
+                                                    <Tooltip.Portal>
+                                                        <Tooltip.Content className="TooltipContent" sideOffset={5}>
+                                                            Delete Bookmark
+                                                            <Tooltip.Arrow className="TooltipArrow" />
+                                                        </Tooltip.Content>
+                                                    </Tooltip.Portal>
+                                                </Tooltip.Root>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

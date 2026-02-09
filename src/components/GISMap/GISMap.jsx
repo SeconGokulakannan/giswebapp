@@ -146,6 +146,10 @@ function GISMap() {
   const [isAnalysisPlaying, setIsAnalysisPlaying] = useState(false);
   const [analysisFrameIndex, setAnalysisFrameIndex] = useState(0);
   const [analysisLayerIds, setAnalysisLayerIds] = useState([]);
+  const [bookmarks, setBookmarks] = useState(() => {
+    const saved = localStorage.getItem('gis_bookmarks');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   useEffect(() => {
     activeLayerToolRef.current = activeLayerTool;
@@ -315,6 +319,9 @@ function GISMap() {
       center: view.getCenter(),
       zoom: view.getZoom()
     }));
+
+    // Save Bookmarks
+    localStorage.setItem('gis_bookmarks', JSON.stringify(bookmarks));
   };
 
   // Sync unit ref and trigger redraw when state changes
@@ -349,6 +356,11 @@ function GISMap() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(saveWorkspace, 1000);
   };
+
+  // ELITE: Auto-save when bookmarks change
+  useEffect(() => {
+    triggerAutoSave();
+  }, [bookmarks]);
 
   // Initialize theme from localStorage
   // ELITE: Background Layer Loader
@@ -678,6 +690,34 @@ function GISMap() {
     console.log(`Getting attributes for layer: ${layerId}`);
     // This is used by AttributeTableCard, but for Query Builder in LayerOperations 
     // we might call getLayerAttributes directly from the service or via a prop.
+  };
+
+  const handleAddBookmark = (name) => {
+    if (!mapInstanceRef.current) return;
+    const view = mapInstanceRef.current.getView();
+    const newBookmark = {
+      id: Date.now().toString(),
+      name: name,
+      center: view.getCenter(),
+      zoom: view.getZoom(),
+      timestamp: new Date().toISOString()
+    };
+    setBookmarks(prev => [...prev, newBookmark]);
+    toast.success('Bookmark added successfully');
+  };
+
+  const handleDeleteBookmark = (id) => {
+    setBookmarks(prev => prev.filter(b => b.id !== id));
+    toast.success('Bookmark deleted');
+  };
+
+  const handleNavigateToBookmark = (bookmark) => {
+    if (!mapInstanceRef.current) return;
+    mapInstanceRef.current.getView().animate({
+      center: bookmark.center,
+      zoom: bookmark.zoom,
+      duration: 1200
+    });
   };
 
   // Elite: Automatic Tool Deactivation
@@ -1793,11 +1833,14 @@ function GISMap() {
             handleToggleSwipe={handleToggleSwipe}
             handleToggleSwipeAll={handleToggleSwipeAll}
             swipeLayerIds={swipeLayerIds}
-
             swipePosition={swipePosition}
             setSwipePosition={setSwipePosition}
             analysisLayerIds={analysisLayerIds}
             handleToggleAnalysisLayer={handleToggleAnalysisLayer}
+            bookmarks={bookmarks}
+            handleAddBookmark={handleAddBookmark}
+            handleDeleteBookmark={handleDeleteBookmark}
+            handleNavigateToBookmark={handleNavigateToBookmark}
           />
 
           {/* Feature Info Card - Positioned at clicked location */}
