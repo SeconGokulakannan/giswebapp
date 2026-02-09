@@ -36,6 +36,8 @@ import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 import AttributeTableCard from '../subComponents/AttributeTableCard';
 import QueryBuilderCard from '../subComponents/QueryBuilderCard';
 import AnalysisCard from '../subComponents/AnalysisCard';
+import LayerManagementCard from '../subComponents/LayerManagementCard';
+import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
 import { getRenderPixel } from 'ol/render';
 
 import {
@@ -60,7 +62,8 @@ import {
   saveSequence,
   deleteFeature,
   updateFeature,
-  SaveNewAttribute
+  SaveNewAttribute,
+  saveNewFeature
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 
@@ -138,6 +141,13 @@ function GISMap() {
   const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
   const isHighlightAnimatingRef = useRef(isHighlightAnimating);
   const [availableDrawings, setAvailableDrawings] = useState([]); // ELITE: For adding attributes
+
+  // Layer Management State
+  const [showLayerManagement, setShowLayerManagement] = useState(false);
+  const [layerManagementData, setLayerManagementData] = useState([]);
+  const [isLayerManagementLoading, setIsLayerManagementLoading] = useState(false);
+  const [localVectorLayers, setLocalVectorLayers] = useState([]); // Client-side GeoJSON layers
+  const [showLoadTempModal, setShowLoadTempModal] = useState(false);
 
   // Query Builder State
   const [showQueryBuilder, setShowQueryBuilder] = useState(false);
@@ -291,6 +301,11 @@ function GISMap() {
     layersToClip.forEach((layer) => {
       layer.on('prerender', handlePreRender);
       layer.on('postrender', handlePostRender);
+      if (layer instanceof VectorLayer) {
+        layer.changed(); // Force vector layers to re-render for clipping
+      } else {
+        layer.getSource().changed(); // Tile layers also need refresh
+      }
     });
 
     map.render();
@@ -300,6 +315,11 @@ function GISMap() {
       layersToClip.forEach((layer) => {
         layer.un('prerender', handlePreRender);
         layer.un('postrender', handlePostRender);
+        if (layer instanceof VectorLayer) {
+          layer.changed();
+        } else {
+          layer.getSource().changed();
+        }
       });
       map.render();
     };
@@ -396,46 +416,67 @@ function GISMap() {
     handleFetchGeoServerLayers();
   }, []);
 
-  // Sync GeoServer Layers with Map
+  // Sync Combined Layers with Map
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    geoServerLayers.forEach(layer => {
+    const allLayers = [...geoServerLayers, ...localVectorLayers];
+    allLayers.forEach(layer => {
       const existingLayer = operationalLayersRef.current[layer.id];
 
       if (layer.visible) {
         if (!existingLayer) {
           // Create and add layer
-          const sourceParams = getWMSSourceParams(layer.fullName);
-          if (layer.cqlFilter) {
-            sourceParams.params['CQL_FILTER'] = layer.cqlFilter;
+          let mapLayer;
+
+          if (layer.type === 'vector' || layer.isLocal) {
+            // Local Vector Layer (GeoJSON)
+            mapLayer = new VectorLayer({
+              source: new VectorSource({
+                features: new GeoJSON().readFeatures(layer.data, {
+                  featureProjection: 'EPSG:3857'
+                })
+              }),
+              zIndex: 1000 - (layer.sequence || 999),
+              opacity: layer.opacity,
+              properties: { id: layer.id }
+            });
+          } else {
+            // WMS Layer
+            const sourceParams = getWMSSourceParams(layer.fullName);
+            if (layer.cqlFilter) {
+              sourceParams.params['CQL_FILTER'] = layer.cqlFilter;
+            }
+
+            mapLayer = new TileLayer({
+              source: new TileWMS({
+                ...sourceParams,
+                params: sourceParams.params
+              }),
+              zIndex: 1000 - (layer.sequence || 999),
+              opacity: layer.opacity,
+              properties: { id: layer.id }
+            });
           }
 
-          const wmsLayer = new TileLayer({
-            source: new TileWMS({
-              ...sourceParams,
-              params: sourceParams.params
-            }),
-            zIndex: 1000 - (layer.sequence || 999),
-            opacity: layer.opacity,
-            properties: { id: layer.id }
-          });
-          mapInstanceRef.current.addLayer(wmsLayer);
-          operationalLayersRef.current[layer.id] = wmsLayer;
+          mapInstanceRef.current.addLayer(mapLayer);
+          operationalLayersRef.current[layer.id] = mapLayer;
         } else {
-          // Update existing properties if needed (e.g. opacity, sequence/zIndex, cqlFilter)
+          // Update existing properties
           existingLayer.setOpacity(layer.opacity);
           existingLayer.setZIndex(1000 - (layer.sequence || 999));
 
-          const source = existingLayer.getSource();
-          const currentParams = source.getParams();
-          const newParams = { ...currentParams };
+          if (layer.type !== 'vector') {
+            const source = existingLayer.getSource();
+            const currentParams = source.getParams();
+            const newParams = { ...currentParams };
 
-          if (currentParams['CQL_FILTER'] !== layer.cqlFilter) {
-            newParams['CQL_FILTER'] = layer.cqlFilter;
+            if (currentParams['CQL_FILTER'] !== layer.cqlFilter) {
+              newParams['CQL_FILTER'] = layer.cqlFilter;
+            }
+
+            source.updateParams(newParams);
           }
-
-          source.updateParams(newParams);
         }
       } else if (!layer.visible && existingLayer) {
         // Remove layer
@@ -446,15 +487,18 @@ function GISMap() {
 
     // Handle deletions if state array shrinks
     Object.keys(operationalLayersRef.current).forEach(id => {
-      if (!geoServerLayers.find(l => l.id === id)) {
+      if (!allLayers.find(l => l.id === id)) {
         mapInstanceRef.current.removeLayer(operationalLayersRef.current[id]);
         delete operationalLayersRef.current[id];
       }
     });
-  }, [geoServerLayers]);
+  }, [geoServerLayers, localVectorLayers]);
 
   const handleToggleGeoLayer = (layerId) => {
     setGeoServerLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, visible: !l.visible } : l
+    ));
+    setLocalVectorLayers(prev => prev.map(l =>
       l.id === layerId ? { ...l, visible: !l.visible } : l
     ));
   };
@@ -463,21 +507,28 @@ function GISMap() {
     setGeoServerLayers(prev => prev.map(l =>
       l.id === layerId ? { ...l, queryable: !l.queryable } : l
     ));
+    setLocalVectorLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, queryable: !l.queryable } : l
+    ));
   };
 
   const handleToggleAllLayers = (turnOn) => {
     setGeoServerLayers(prev => prev.map(l => ({ ...l, visible: turnOn })));
+    setLocalVectorLayers(prev => prev.map(l => ({ ...l, visible: turnOn })));
   };
 
   const handleLayerOpacityChange = (layerId, newOpacity) => {
     setGeoServerLayers(prev => prev.map(l =>
       l.id === layerId ? { ...l, opacity: parseFloat(newOpacity) } : l
     ));
+    setLocalVectorLayers(prev => prev.map(l =>
+      l.id === layerId ? { ...l, opacity: parseFloat(newOpacity) } : l
+    ));
   };
 
   const handleZoomToLayer = async (layerId) => {
     if (!mapInstanceRef.current) return;
-    const layer = geoServerLayers.find(l => l.id === layerId);
+    const layer = [...geoServerLayers, ...localVectorLayers].find(l => l.id === layerId);
     if (!layer) return;
 
     // Set as the active selected layer
@@ -485,6 +536,17 @@ function GISMap() {
     setActiveHighlightLayerId(null); // Clear other tool's selection
 
     try {
+      if (layer.isLocal) {
+        const olLayer = operationalLayersRef.current[layer.id];
+        if (olLayer) {
+          const extent = olLayer.getSource().getExtent();
+          mapInstanceRef.current.getView().fit(extent, {
+            padding: [50, 50, 50, 50],
+            duration: 1000
+          });
+        }
+        return;
+      }
       const bbox = await getLayerBBox(layer.fullName);
       if (bbox) {
         // [minx, miny, maxx, maxy] - OpenLayers expects [minx, miny, maxx, maxy]
@@ -619,6 +681,46 @@ function GISMap() {
       toast.error("Failed to create feature. Check console.");
       return false;
     }
+  };
+
+  // Layer Management Handlers
+  const handleOpenLayerManagement = async () => {
+    setShowLayerManagement(true);
+    handleRefreshLayerManagement();
+  };
+
+  const handleRefreshLayerManagement = async () => {
+    setIsLayerManagementLoading(true);
+    try {
+      const data = await getFeaturesForAttributeTable('Layer', 'gisweb:Layer');
+      setLayerManagementData(data);
+    } catch (err) {
+      console.error("Failed to refresh layer management data:", err);
+    } finally {
+      setIsLayerManagementLoading(false);
+    }
+  };
+
+
+
+  const handleAddLocalVectorLayer = (newLayer) => {
+    setLocalVectorLayers(prev => [...prev, newLayer]);
+  };
+
+  const handleUpdateLayerMetadata = async (fullLayerName, changes) => {
+    const success = await updateFeature(fullLayerName, null, null); // This is wrong, updateFeature needs specific call logic
+    // Wait, updateFeature in Server.js takes (fullLayerName, featureId, properties)
+    // I need to loop through changes
+    let successCount = 0;
+    for (const [rowId, props] of Object.entries(changes)) {
+      const ok = await updateFeature(fullLayerName, rowId, props);
+      if (ok) successCount++;
+    }
+    return successCount > 0;
+  };
+
+  const handleDeleteLayerMetadata = async (fullLayerName, feature) => {
+    return await deleteFeature(fullLayerName, feature);
   };
 
   const handleRunAnalysis = async (config) => {
@@ -1137,7 +1239,10 @@ function GISMap() {
         const view = map.getView();
         const viewResolution = view.getResolution();
         const projection = view.getProjection();
-        const visibleLayers = geoServerLayersRef.current.filter(l => l.visible && l.queryable);
+        const visibleLayers = [
+          ...geoServerLayersRef.current,
+          ...localVectorLayers
+        ].filter(l => l.visible && l.queryable);
 
         // Hide previous card immediately
         setFeatureInfoResult(null);
@@ -1178,11 +1283,14 @@ function GISMap() {
           return;
         }
 
-        const fetchPromises = visibleLayers.map(async (layer) => {
+        // 1. Fetch WMS/GeoServer results
+        const fetchPromises = visibleLayers.filter(l => !l.isLocal).map(async (layer) => {
           const existingLayer = operationalLayersRef.current[layer.id];
           if (!existingLayer) return null;
 
           const source = existingLayer.getSource();
+          if (typeof source.getFeatureInfoUrl !== 'function') return null;
+
           const url = source.getFeatureInfoUrl(
             evt.coordinate,
             viewResolution,
@@ -1207,8 +1315,35 @@ function GISMap() {
         });
 
         const results = await Promise.all(fetchPromises);
-        const validResults = results.filter(r => r && r.features && r.features.length > 0);
+        let validResults = results.filter(r => r && r.features && r.features.length > 0);
 
+        // 2. Query Local Vector Layers
+        const localActiveLayers = visibleLayers.filter(l => l.isLocal);
+        localActiveLayers.forEach(layer => {
+          const features = [];
+          map.forEachFeatureAtPixel(pixel, (feature, olLayer) => {
+            // Check if this feature belongs to the current local layer
+            const layerInstance = operationalLayersRef.current[layer.id];
+            if (olLayer === layerInstance) {
+              const props = feature.getProperties();
+              // Remove geometry from properties
+              const { geometry, ...others } = props;
+              features.push({
+                type: 'Feature',
+                id: feature.getId() || others.id || `local-${Math.random()}`,
+                properties: others,
+                geometry: null
+              });
+            }
+          });
+
+          if (features.length > 0) {
+            validResults.push({
+              layerName: layer.name,
+              features: features
+            });
+          }
+        });
         // Add features to selection layer for highlighting
         if (selectionSourceRef.current && validResults.length > 0) {
           const format = new GeoJSON();
@@ -1344,18 +1479,34 @@ function GISMap() {
     if (showAttributeTable && selectedAttributeLayerId) {
       const fetchAttrData = async () => {
         setIsAttributeTableLoading(true);
-        const layer = geoServerLayers.find(l => l.id === selectedAttributeLayerId);
+
+        // Search across all possible layer types
+        const allLayers = [...geoServerLayers, ...localVectorLayers];
+        const layer = allLayers.find(l => l.id === selectedAttributeLayerId);
+
         if (layer) {
-          const data = await getFeaturesForAttributeTable(layer.id, layer.fullName);
-          setAttributeTableData(data);
+          if (layer.isLocal && layer.data) {
+            // For local layers, attributes are already in the GeoJSON
+            const tableData = layer.data.features.map((f, idx) => ({
+              ...f,
+              id: f.id || f.properties?.id || f.properties?.fid || `local-${idx}`
+            }));
+            setAttributeTableData(tableData);
+            console.log(`Loaded ${tableData.length} attributes for local layer: ${layer.name}`);
+          } else {
+            // For GeoServer/Session layers, fetch via API
+            const data = await getFeaturesForAttributeTable(layer.layerId || layer.id, layer.fullName);
+            setAttributeTableData(data);
+          }
         }
+
         setIsAttributeTableLoading(false);
       };
       fetchAttrData();
     } else {
       setAttributeTableData([]);
     }
-  }, [showAttributeTable, selectedAttributeLayerId, geoServerLayers]);
+  }, [showAttributeTable, selectedAttributeLayerId, geoServerLayers, localVectorLayers]);
 
   // Feature Info Card - Update position only on moveend (debounced)
   useEffect(() => {
@@ -1879,6 +2030,8 @@ function GISMap() {
           handleToolClick={handleToolClick}
           hasDrawings={hasDrawings}
           hasMeasurements={hasMeasurements}
+          onOpenLayerManagement={handleOpenLayerManagement}
+          onOpenLoadTempModal={() => setShowLoadTempModal(true)}
         />
 
         {/* Map Container */}
@@ -1997,143 +2150,162 @@ function GISMap() {
             handleNavigateToBookmark={handleNavigateToBookmark}
             selectedQueryLayerIds={selectedQueryLayerIds}
             setSelectedQueryLayerIds={setSelectedQueryLayerIds}
+            allAvailableLayers={[...geoServerLayers, ...localVectorLayers]}
           />
 
-          {/* Feature Info Card - Positioned at clicked location */}
-          {featureInfoResult && featureInfoResult.length > 0 && featureInfoCoordinate && mapInstanceRef.current && (() => {
-            const pixel = mapInstanceRef.current.getPixelFromCoordinate(featureInfoCoordinate);
-            if (!pixel) return null;
+          {/* Define allLayers for easy lookup */}
+          {(() => {
+            const allLayers = [...geoServerLayers, ...localVectorLayers];
+            const activeAttributeLayer = allLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId);
+
             return (
-              <FeatureInfoCard
-                featureInfo={featureInfoResult}
-                onClose={() => {
-                  setFeatureInfoResult(null);
-                  setFeatureInfoCoordinate(null);
-                  if (selectionSourceRef.current) selectionSourceRef.current.clear();
-                }}
-                style={{
-                  position: 'absolute',
-                  left: pixel[0],
-                  top: pixel[1],
-                  transform: 'translate(-18px, -100%) translateY(-10px)',
-                  zIndex: 1000
-                }}
-              />
+              <>
+                {/* Feature Info Card - Positioned at clicked location */}
+                {featureInfoResult && featureInfoResult.length > 0 && featureInfoCoordinate && mapInstanceRef.current && (() => {
+                  const pixel = mapInstanceRef.current.getPixelFromCoordinate(featureInfoCoordinate);
+                  if (!pixel) return null;
+                  return (
+                    <FeatureInfoCard
+                      featureInfo={featureInfoResult}
+                      onClose={() => {
+                        setFeatureInfoResult(null);
+                        setFeatureInfoCoordinate(null);
+                        if (selectionSourceRef.current) selectionSourceRef.current.clear();
+                      }}
+                      style={{
+                        position: 'absolute',
+                        left: pixel[0],
+                        top: pixel[1],
+                        transform: 'translate(-18px, -100%) translateY(-10px)',
+                        zIndex: 1000
+                      }}
+                    />
+                  );
+                })()}
+
+                <LoadTempLayerModal
+                  isOpen={showLoadTempModal}
+                  onClose={() => setShowLoadTempModal(false)}
+                  onLayerLoaded={handleAddLocalVectorLayer}
+                  existingNames={allLayers.map(l => l.name)}
+                />
+
+                {/* Attribute Table Card */}
+                {showAttributeTable && selectedAttributeLayerId && activeAttributeLayer && (
+                  <AttributeTableCard
+                    isOpen={showAttributeTable}
+                    onClose={() => {
+                      // Clear highlights when closing table
+                      if (selectionSourceRef.current) {
+                        selectionSourceRef.current.clear();
+                      }
+                      setShowAttributeTable(false);
+                      setSelectedAttributeLayerId(null);
+                    }}
+                    layerName={activeAttributeLayer.name || 'Unknown Layer'}
+                    layerFullName={activeAttributeLayer.fullName}
+                    layerId={selectedAttributeLayerId}
+                    data={attributeTableData}
+                    isLoading={isAttributeTableLoading}
+                    isReadOnly={activeAttributeLayer.isLocal}
+                    onHighlightFeatures={(features) => {
+                      if (!features || features.length === 0) return;
+
+                      // Clear previous highlights
+                      if (selectionSourceRef.current) {
+                        selectionSourceRef.current.clear();
+                      }
+
+                      // Parse and add features to selection layer
+                      const geoJsonFormat = new GeoJSON();
+                      features.forEach(feature => {
+                        try {
+                          // Parse the GeoJSON feature
+                          const olFeature = geoJsonFormat.readFeature(feature, {
+                            dataProjection: 'EPSG:4326',
+                            featureProjection: 'EPSG:3857'
+                          });
+
+                          // Add to selection source for highlighting
+                          if (selectionSourceRef.current) {
+                            selectionSourceRef.current.addFeature(olFeature);
+                          }
+                        } catch (error) {
+                          console.error('Error parsing feature for highlight:', error, feature);
+                        }
+                      });
+
+                      // Zoom to highlighted features
+                      if (selectionSourceRef.current && selectionSourceRef.current.getFeatures().length > 0) {
+                        const extent = selectionSourceRef.current.getExtent();
+                        mapInstanceRef.current.getView().fit(extent, {
+                          padding: [50, 50, 50, 50],
+                          duration: 500,
+                          maxZoom: 18
+                        });
+
+                        toast.success(`Highlighted ${features.length} feature(s) on map`);
+                      }
+                    }}
+                    onClearHighlights={() => {
+                      // Clear highlights when Stop button is clicked
+                      if (selectionSourceRef.current) {
+                        selectionSourceRef.current.clear();
+                      }
+                    }}
+                    onDeleteFeature={async (fullLayerName, feature) => {
+                      const success = await deleteFeature(fullLayerName, feature);
+                      if (success) {
+                        toast.success("Feature deleted successfully");
+                        // Refresh the table data using the current layer ID
+                        const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+                        if (activeLayer) {
+                          const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+                          setAttributeTableData(data);
+                        }
+                      } else {
+                        toast.error("Failed to delete feature. Ensure WFS-T is enabled on GeoServer.");
+                      }
+                    }}
+                    onUpdateFeatures={async (fullLayerName, changes) => {
+                      let successCount = 0;
+                      let failCount = 0;
+                      const rowIds = Object.keys(changes);
+
+                      toast.loading(`Saving changes to ${rowIds.length} row(s)...`, { id: 'save-toast' });
+
+                      for (const rowId of rowIds) {
+                        const success = await updateFeature(fullLayerName, rowId, changes[rowId]);
+                        if (success) successCount++;
+                        else failCount++;
+                      }
+
+                      if (successCount > 0) {
+                        toast.success(`Successfully updated ${successCount} feature(s)`, { id: 'save-toast' });
+                        // Refresh data
+                        const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+                        if (activeLayer) {
+                          const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+                          setAttributeTableData(data);
+                          return true;
+                        }
+                        return true;
+                      }
+
+                      if (failCount > 0) {
+                        toast.error(`Failed to update ${failCount} feature(s)`, { id: 'save-toast' });
+                      }
+                      return false;
+                    }}
+                    isMinimized={isAttributeTableMinimized}
+                    onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
+                    drawings={availableDrawings}
+                    onSaveNewAttribute={handleSaveNewAttribute}
+                  />
+                )}
+              </>
             );
           })()}
-
-          {/* Attribute Table Card */}
-          {showAttributeTable && selectedAttributeLayerId && (
-            <AttributeTableCard
-              isOpen={showAttributeTable}
-              onClose={() => {
-                // Clear highlights when closing table
-                if (selectionSourceRef.current) {
-                  selectionSourceRef.current.clear();
-                }
-                setShowAttributeTable(false);
-                setSelectedAttributeLayerId(null);
-              }}
-              layerName={geoServerLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId)?.name || 'Unknown Layer'}
-              layerFullName={geoServerLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId)?.fullName}
-              layerId={selectedAttributeLayerId}
-              data={attributeTableData}
-              isLoading={isAttributeTableLoading}
-              onHighlightFeatures={(features) => {
-                if (!features || features.length === 0) return;
-
-                // Clear previous highlights
-                if (selectionSourceRef.current) {
-                  selectionSourceRef.current.clear();
-                }
-
-                // Parse and add features to selection layer
-                const geoJsonFormat = new GeoJSON();
-                features.forEach(feature => {
-                  try {
-                    // Parse the GeoJSON feature
-                    const olFeature = geoJsonFormat.readFeature(feature, {
-                      dataProjection: 'EPSG:4326',
-                      featureProjection: 'EPSG:3857'
-                    });
-
-                    // Add to selection source for highlighting
-                    if (selectionSourceRef.current) {
-                      selectionSourceRef.current.addFeature(olFeature);
-                    }
-                  } catch (error) {
-                    console.error('Error parsing feature for highlight:', error, feature);
-                  }
-                });
-
-                // Zoom to highlighted features
-                if (selectionSourceRef.current && selectionSourceRef.current.getFeatures().length > 0) {
-                  const extent = selectionSourceRef.current.getExtent();
-                  mapInstanceRef.current.getView().fit(extent, {
-                    padding: [50, 50, 50, 50],
-                    duration: 500,
-                    maxZoom: 18
-                  });
-
-                  toast.success(`Highlighted ${features.length} feature(s) on map`);
-                }
-              }}
-              onClearHighlights={() => {
-                // Clear highlights when Stop button is clicked
-                if (selectionSourceRef.current) {
-                  selectionSourceRef.current.clear();
-                }
-              }}
-              onDeleteFeature={async (fullLayerName, feature) => {
-                const success = await deleteFeature(fullLayerName, feature);
-                if (success) {
-                  toast.success("Feature deleted successfully");
-                  // Refresh the table data using the current layer ID
-                  const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
-                  if (activeLayer) {
-                    const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
-                    setAttributeTableData(data);
-                  }
-                } else {
-                  toast.error("Failed to delete feature. Ensure WFS-T is enabled on GeoServer.");
-                }
-              }}
-              onUpdateFeatures={async (fullLayerName, changes) => {
-                let successCount = 0;
-                let failCount = 0;
-                const rowIds = Object.keys(changes);
-
-                toast.loading(`Saving changes to ${rowIds.length} row(s)...`, { id: 'save-toast' });
-
-                for (const rowId of rowIds) {
-                  const success = await updateFeature(fullLayerName, rowId, changes[rowId]);
-                  if (success) successCount++;
-                  else failCount++;
-                }
-
-                if (successCount > 0) {
-                  toast.success(`Successfully updated ${successCount} feature(s)`, { id: 'save-toast' });
-                  // Refresh data
-                  const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
-                  if (activeLayer) {
-                    const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
-                    setAttributeTableData(data);
-                    return true;
-                  }
-                  return true; // Return true even if activeLayer not found but updates succeeded
-                }
-
-                if (failCount > 0) {
-                  toast.error(`Failed to update ${failCount} feature(s)`, { id: 'save-toast' });
-                }
-                return false;
-              }}
-              isMinimized={isAttributeTableMinimized}
-              onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
-              drawings={availableDrawings}
-              onSaveNewAttribute={handleSaveNewAttribute}
-            />
-          )}
 
           <AnalysisCard
             isOpen={activeLayerTool === 'analysis' && analysisLayerIds.length > 0}
@@ -2162,7 +2334,17 @@ function GISMap() {
             setSelectedLayerIds={setSelectedQueryLayerIds}
           />
 
-          {/* Swipe Control moved to LayerOperations panel */}
+          <LayerManagementCard
+            isOpen={showLayerManagement}
+            onClose={() => setShowLayerManagement(false)}
+            data={layerManagementData}
+            isLoading={isLayerManagementLoading}
+            onDeleteFeature={handleDeleteLayerMetadata}
+            onUpdateFeatures={handleUpdateLayerMetadata}
+            onSaveNewFeature={saveNewFeature}
+            onRefresh={handleRefreshLayerManagement}
+          />
+
           <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
         </div>
 

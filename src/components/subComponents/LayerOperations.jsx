@@ -9,7 +9,8 @@ import {
     MousePointer2, BoxSelect, GripVertical, MousePointerClick,
     Brush,
     LayoutGrid,
-    MessageSquareCode
+    MessageSquareCode,
+    FileJson
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -52,7 +53,8 @@ const LayerOperations = ({
 
     useEffect(() => {
         if (geoServerLayers && geoServerLayers.length > 0) {
-            setLocalLayers([...geoServerLayers]);
+            // Filter out temporary/local layers for the reorder list
+            setLocalLayers(geoServerLayers.filter(l => !l.isLocal));
         }
     }, [geoServerLayers]);
 
@@ -66,10 +68,12 @@ const LayerOperations = ({
                 .map(l => l.sequence)
                 .sort((a, b) => a - b);
 
-            const sequenceList = localLayers.map((layer, index) => ({
-                layerId: layer.layerId,
-                sequenceNumber: availableSequences[index] !== undefined ? availableSequences[index] : 999
-            }));
+            const sequenceList = localLayers
+                .filter(l => l.layerId) // Only save persistent layers
+                .map((layer, index) => ({
+                    layerId: layer.layerId,
+                    sequenceNumber: availableSequences[index] !== undefined ? availableSequences[index] : 999
+                }));
 
             await saveSequence(sequenceList);
 
@@ -743,6 +747,10 @@ const LayerOperations = ({
 
     const allLayersVisible = geoServerLayers.length > 0 && geoServerLayers.every(l => l.visible);
 
+    // Split layers into Server and Temporary
+    const serverLayers = geoServerLayers.filter(l => !l.isLocal);
+    const tempLayers = geoServerLayers.filter(l => l.isLocal);
+
     const renderLayerContent = (layer) => {
         switch (activeLayerTool) {
             case 'visibility':
@@ -806,42 +814,50 @@ const LayerOperations = ({
                             </Tooltip.Portal>
                         </Tooltip.Root>
 
-                        <Tooltip.Root>
-                            <Tooltip.Trigger asChild>
-                                <button
-                                    className={`action-btn ${isHighlighting ? 'active animating' : ''}`}
-                                    onClick={() => handleHighlightLayer(layer.id)}
-                                >
-                                    {isHighlighting ? <Square size={14} fill="currentColor" /> : <Play size={16} />}
-                                </button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Portal>
-                                <Tooltip.Content className="TooltipContent" side="top" sideOffset={5}>
-                                    {isHighlighting ? 'Stop Highlight' : 'Highlight Layer'}
-                                    <Tooltip.Arrow className="TooltipArrow" />
-                                </Tooltip.Content>
-                            </Tooltip.Portal>
-                        </Tooltip.Root>
+                        {!layer.isLocal && (
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className={`action-btn ${isHighlighting ? 'active animating' : ''}`}
+                                        onClick={() => handleHighlightLayer(layer.id)}
+                                    >
+                                        {isHighlighting ? <Square size={14} fill="currentColor" /> : <Play size={16} />}
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" side="top" sideOffset={5}>
+                                        {isHighlighting ? 'Stop Highlight' : 'Highlight Layer'}
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+                        )}
                     </div>
                 );
             }
             case 'legend':
                 return (
                     <div className="layer-legend-preview" style={{ marginLeft: 'auto' }}>
-                        <img
-                            src={getLegendUrl(layer.fullName)}
-                            alt={`${layer.name} legend`}
-                            style={{ maxHeight: '24px', maxWidth: '100px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
-                            onError={(e) => e.target.style.display = 'none'}
-                        />
+                        {!layer.isLocal ? (
+                            <img
+                                src={getLegendUrl(layer.fullName)}
+                                alt={`${layer.name} legend`}
+                                style={{ maxHeight: '24px', maxWidth: '100px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
+                                onError={(e) => e.target.style.display = 'none'}
+                            />
+                        ) : (
+                            <div style={{ fontSize: '10px', opacity: 0.5, fontStyle: 'italic' }}>Local Layer</div>
+                        )}
                     </div>
                 );
             case 'styles':
                 return (
                     <button
                         className={`icon-toggle ${editingStyleLayer === layer.id ? 'active' : ''}`}
-                        onClick={() => handleLoadStyle(layer)}
-                        title="Customize Styles"
+                        onClick={() => !layer.isLocal && handleLoadStyle(layer)}
+                        title={layer.isLocal ? "Styles cannot be edited for local layers" : "Customize Styles"}
+                        disabled={layer.isLocal}
+                        style={{ opacity: layer.isLocal ? 0.3 : 1 }}
                     >
                         <Brush size={18} />
                     </button>
@@ -1047,6 +1063,8 @@ const LayerOperations = ({
                     </>
                 )}
 
+
+
                 <div className="layer-section-header" style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -1142,14 +1160,19 @@ const LayerOperations = ({
                             </button>
                         )}
                     </div>
-                    {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && geoServerLayers.length > 0 && (
+                    {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && serverLayers.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '11px', fontWeight: 500 }}>ALL</span>
                             <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>
                                 <input
                                     type="checkbox"
-                                    checked={allLayersVisible}
-                                    onChange={(e) => handleToggleAllLayers(e.target.checked)}
+                                    checked={serverLayers.every(l => l.visible)}
+                                    onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        serverLayers.forEach(l => {
+                                            if (l.visible !== checked) handleToggleGeoLayer(l.id);
+                                        });
+                                    }}
                                 />
                                 <span className="toggle-slider"></span>
                             </label>
@@ -1172,7 +1195,7 @@ const LayerOperations = ({
 
                 <div className="layer-list-group scrollable">
                     {(() => {
-                        const sourceLayers = activeLayerTool === 'reorder' ? localLayers : geoServerLayers;
+                        const sourceLayers = activeLayerTool === 'reorder' ? localLayers : serverLayers;
 
                         const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'styles' || activeLayerTool === 'attribute' || activeLayerTool === 'swipe')
                             ? sourceLayers.filter(l => l.visible)
@@ -1182,7 +1205,7 @@ const LayerOperations = ({
                             return (
                                 <div className="empty-layers-msg">
                                     {(activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'styles' || activeLayerTool === 'swipe')
-                                        ? "No visible layers."
+                                        ? "No visible server layers."
                                         : "No server layers connected."}
                                 </div>
                             );
@@ -1526,6 +1549,88 @@ const LayerOperations = ({
                         ));
                     })()}
                 </div>
+
+                {/* TEMPORARY LAYERS SECTION - Moved to Bottom */}
+                {tempLayers.length > 0 && (
+                    <div style={{ marginTop: '10px', borderTop: '1px solid var(--color-border)', paddingTop: '8px' }}>
+                        <div className="layer-section-header" style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginBottom: '8px',
+                            padding: '0 8px'
+                        }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, opacity: 0.8, color: 'var(--color-warning)' }}>TEMPORARY LAYERS</span>
+                            {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && (
+                                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 500 }}>ALL</span>
+                                    <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={tempLayers.every(l => l.visible)}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                tempLayers.forEach(l => {
+                                                    if (l.visible !== checked) handleToggleGeoLayer(l.id);
+                                                });
+                                            }}
+                                        />
+                                        <span className="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+                        <div className="layer-list-group">
+                            {tempLayers.map((layer) => {
+                                // Check if tool is supported for temp layers
+                                const isToolSupported =
+                                    activeLayerTool === 'visibility' ||
+                                    activeLayerTool === 'density' ||
+                                    activeLayerTool === 'info' ||
+                                    activeLayerTool === 'action' ||
+                                    activeLayerTool === 'swipe' ||
+                                    activeLayerTool === 'attribute';
+
+                                if (activeLayerTool && !isToolSupported) return null;
+
+                                if (activeLayerTool === 'visibility' || activeLayerTool === 'density' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'swipe' || activeLayerTool === 'attribute') {
+                                    if (!layer.visible && activeLayerTool !== 'visibility') return null;
+                                }
+
+
+                                return (
+                                    <div key={layer.id} className="layer-item-redesigned" style={{
+                                        borderLeft: (
+                                            (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id))
+                                        ) ? '3px solid var(--color-warning)' : 'none',
+                                    }}>
+                                        <div className="layer-info" style={{
+                                            flex: activeLayerTool === 'density' ? '0 0 auto' : '1',
+                                            maxWidth: activeLayerTool === 'density' ? '120px' : 'none'
+                                        }}>
+                                            <FileJson size={14} className="layer-icon" style={{ color: 'var(--color-warning)' }} />
+                                            <span style={{
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                fontSize: '13px',
+                                                fontWeight: '500'
+                                            }}>
+                                                {layer.name}
+                                            </span>
+                                        </div>
+                                        {renderLayerContent(layer)}
+                                    </div>
+                                );
+                            })}
+                            {activeLayerTool && !['visibility', 'density', 'info', 'action', 'swipe', 'attribute'].includes(activeLayerTool) && (
+                                <div style={{ padding: '8px 12px', fontSize: '12px', opacity: 0.5, fontStyle: 'italic' }}>
+                                    This tool is not available for temporary layers.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         </div >
     );

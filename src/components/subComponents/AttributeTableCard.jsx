@@ -7,7 +7,7 @@ import { toast } from 'react-hot-toast';
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute }) => {
+const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute, isReadOnly = false }) => {
     const [selectedRows, setSelectedRows] = useState([]);
     const [gridApi, setGridApi] = useState(null);
     const [isHighlighting, setIsHighlighting] = useState(false);
@@ -75,7 +75,8 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
             // If data is empty, we can't easily guess columns without DescribeFeatureType (server side).
             // Fallback: If no data, we can't render columns easily unless we track schema separately.
 
-            const firstFeatureProps = referenceData ? referenceData.properties : (Object.values(newRows)[0] || {});
+            const firstFeature = referenceData || Object.values(newRows)[0];
+            const firstFeatureProps = firstFeature?.properties || firstFeature || {};
 
             cols = [
                 {
@@ -96,8 +97,8 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     sortable: true,
                     filter: true,
                     resizable: true,
-                    // Editable if Edit Mode OR if it's a new row
-                    editable: (params) => isEditMode || (params.data.id && String(params.data.id).startsWith('new-')),
+                    // Editable if Edit Mode OR if it's a new row, AND not Read Only
+                    editable: (params) => !isReadOnly && (isEditMode || (params.data.id && String(params.data.id).startsWith('new-'))),
                     // Ensure value setter updates correctly
                     valueSetter: (params) => {
                         const isNew = String(params.data.id).startsWith('new-');
@@ -122,7 +123,7 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
             rows = data ? data.map((feature, idx) => {
                 const rowId = getFeatureId(feature) || `fallback-${idx}`;
                 const row = {
-                    ...feature.properties,
+                    ...(feature.properties || {}),
                     id: rowId,
                     _feature: feature
                 };
@@ -136,7 +137,7 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
             Object.keys(newRows).forEach(newId => {
                 const newRowData = newRows[newId];
                 rows.unshift({ // Add to top
-                    ...newRowData, // contains properties
+                    ...(newRowData?.properties || newRowData || {}),
                     id: newId,
                     _isNew: true
                 });
@@ -335,55 +336,59 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                 </div>
                 {!isMinimized && (
                     <div className="attribute-table-actions">
-                        {/* New Add Button */}
-                        <div className="actions-group" style={{ position: 'relative' }}>
-                            <button
-                                className="action-btn btn-add"
-                                onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-                                title="Add new attribute"
-                            >
-                                <Plus size={12} strokeWidth={1.5} />
-                                <span>Add</span>
-                            </button>
-                            {isAddMenuOpen && (
-                                <div className="elite-dropdown-menu">
-                                    <div className="elite-dropdown-header">
-                                        <span>Select Drawing</span>
-                                        <button className="dropdown-close-btn" onClick={() => setIsAddMenuOpen(false)}>
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                    {drawings && drawings.length > 0 ? (
-                                        drawings.map(d => (
-                                            <button
-                                                key={d.id}
-                                                className="elite-dropdown-item"
-                                                onClick={() => handleAddFeature(d)}
-                                            >
-                                                {getShapeIcon(d.type)}
-                                                {d.name}
+                        {/* New Add Button - Only show if not read-only */}
+                        {!isReadOnly && (
+                            <div className="actions-group" style={{ position: 'relative' }}>
+                                <button
+                                    className="action-btn btn-add"
+                                    onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                                    title="Add new attribute"
+                                >
+                                    <Plus size={12} strokeWidth={1.5} />
+                                    <span>Add</span>
+                                </button>
+                                {isAddMenuOpen && (
+                                    <div className="elite-dropdown-menu">
+                                        <div className="elite-dropdown-header">
+                                            <span>Select Drawing</span>
+                                            <button className="dropdown-close-btn" onClick={() => setIsAddMenuOpen(false)}>
+                                                <X size={14} />
                                             </button>
-                                        ))
-                                    ) : (
-                                        <div className="elite-dropdown-empty">No drawings found</div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                                        </div>
+                                        {drawings && drawings.length > 0 ? (
+                                            drawings.map(d => (
+                                                <button
+                                                    key={d.id}
+                                                    className="elite-dropdown-item"
+                                                    onClick={() => handleAddFeature(d)}
+                                                >
+                                                    {getShapeIcon(d.type)}
+                                                    {d.name}
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="elite-dropdown-empty">No drawings found</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                        <div className="edit-switch-container">
-                            <span style={{ fontSize: '11px', fontWeight: 600 }}>Edit</span>
-                            <label className="toggle-switch" style={{ transform: 'scale(0.7)' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={isEditMode}
-                                    onChange={(e) => setIsEditMode(e.target.checked)}
-                                />
-                                <span className="toggle-slider"></span>
-                            </label>
-                        </div>
+                        {!isReadOnly && (
+                            <div className="edit-switch-container">
+                                <span style={{ fontSize: '11px', fontWeight: 600 }}>Edit</span>
+                                <label className="toggle-switch" style={{ transform: 'scale(0.7)' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isEditMode}
+                                        onChange={(e) => setIsEditMode(e.target.checked)}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                            </div>
+                        )}
 
-                        {hasChanges && (
+                        {hasChanges && !isReadOnly && (
                             <>
                                 <div className="actions-group">
                                     <button
@@ -408,17 +413,19 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                             </>
                         )}
 
-                        <div className="actions-group">
-                            <button
-                                className="action-btn btn-delete"
-                                onClick={handleDelete}
-                                disabled={!hasSelection}
-                                title="Delete selected features"
-                            >
-                                <Trash2 size={12} strokeWidth={1.5} />
-                                <span>Delete</span>
-                            </button>
-                        </div>
+                        {!isReadOnly && (
+                            <div className="actions-group">
+                                <button
+                                    className="action-btn btn-delete"
+                                    onClick={handleDelete}
+                                    disabled={!hasSelection}
+                                    title="Delete selected features"
+                                >
+                                    <Trash2 size={12} strokeWidth={1.5} />
+                                    <span>Delete</span>
+                                </button>
+                            </div>
+                        )}
 
                         <div className="actions-group">
                             <button

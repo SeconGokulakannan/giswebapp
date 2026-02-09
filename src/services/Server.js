@@ -32,48 +32,80 @@ export const getLegendUrl = (layerName) => {
 let TARGET_LAYERS = [];
 export const getGeoServerLayers = async () => {
     try {
-        let response = await axios.get(`/giswebapi/api/GIS/GetAllLayers`);
-        if (response.data) {
-            const sortedData = response.data
-                .filter(x => x.IsShowLayer == true)
-                .sort((a, b) => (a.LayerSequenceNo || 999) - (b.LayerSequenceNo || 999));
+        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${WORKSPACE}:Layer&outputFormat=application/json`;
+        const response = await axios.get(url, {
+            headers: {
+                'Authorization': AUTH_HEADER
+            }
+        });
 
-            return sortedData.map(layer => ({
-                fullName: `${WORKSPACE}:${layer.LayerName}`,
-                sequence: layer.LayerSequenceNo || 999,
-                initialVisibility: Boolean(layer.LayerVisibilityOnLoad),
-                layerId: layer.LayerId // Added from API property
+        if (response.data && response.data.features) {
+            const filteredFeatures = response.data.features
+                .filter(f => f.properties.LayerName !== 'Layer' && f.properties.IsShowLayer === true)
+                .sort((a, b) => (a.properties.LayerSequenceNo || 999) - (b.properties.LayerSequenceNo || 999));
+
+            return filteredFeatures.map(feature => ({
+                fullName: `${WORKSPACE}:${feature.properties.LayerName}`,
+                sequence: feature.properties.LayerSequenceNo || 999,
+                initialVisibility: Boolean(feature.properties.LayerVisibilityOnLoad),
+                layerId: feature.properties.LayerName,
+                fid: feature.id // Store fid for WFS-T updates
             }));
         }
     }
     catch (error) {
-        console.error("Failed to fetch layers from API", error);
+        console.error("Failed to fetch layers from GeoServer metadata layer", error);
     }
     return [];
 };
 
 export const saveSequence = async (sequenceList) => {
-
-    const layerSequenceMap = {};
-    sequenceList.forEach(x => {
-        layerSequenceMap[x.layerId] = x.sequenceNumber;
-    });
-
     try {
-        const response = await axios.put(
-            "/giswebapi/api/GIS/UpdateLayerSequence",
-            layerSequenceMap,
-            {
-                headers:
-                {
-                    "Content-Type": "application/json"
-                }
-            }
-        );
-        return response.data === true;
-    }
-    catch (err) {
-        console.error("Update failed", err);
+        const url = `${GEOSERVER_URL}/wfs`;
+
+        // Construct bulk WFS-T Update XML
+        let updates = '';
+        for (const item of sequenceList) {
+            updates += `
+            <wfs:Update typeName="${WORKSPACE}:Layer">
+                <wfs:Property>
+                    <wfs:Name>LayerSequenceNo</wfs:Name>
+                    <wfs:Value>${item.sequenceNumber}</wfs:Value>
+                </wfs:Property>
+                <ogc:Filter>
+                    <ogc:PropertyIsEqualTo>
+                        <ogc:PropertyName>LayerName</ogc:PropertyName>
+                        <ogc:Literal>${item.layerId}</ogc:Literal>
+                    </ogc:PropertyIsEqualTo>
+                </ogc:Filter>
+            </wfs:Update>`.trim();
+        }
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+            ${updates}
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'text/xml'
+            },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            return resultText.includes('TransactionSummary');
+        }
+        return false;
+    } catch (error) {
+        console.error("Failed to save layer sequences via WFS-T", error);
         return false;
     }
 };
@@ -363,6 +395,54 @@ xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.
         return false;
     } catch (error) {
         console.error(`Failed to delete feature via WFS-T (${fullLayerName}):`, error);
+        return false;
+    }
+};
+
+export const saveNewFeature = async (fullLayerName, properties) => {
+    try {
+        const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : ['feature', fullLayerName];
+        let featureContentXml = '';
+
+        for (const [key, value] of Object.entries(properties)) {
+            if (!key || key === 'id' || key.startsWith('_') || value === null || value === undefined) continue;
+            featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
+        }
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:gml="http://www.opengis.net/gml"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:${prefix}="${GEOSERVER_URL}/workspaces/${prefix}"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Insert>
+            <${fullLayerName}>
+                ${featureContentXml}
+            </${fullLayerName}>
+        </wfs:Insert>
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'text/xml'
+            },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>')) {
+                return true;
+            }
+            return resultText.includes('TransactionSummary');
+        }
+        return false;
+    } catch (error) {
+        console.error(`Failed to create feature via WFS-T (${fullLayerName}):`, error);
         return false;
     }
 };

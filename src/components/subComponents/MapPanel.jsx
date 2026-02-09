@@ -119,7 +119,8 @@ const MapPanel = ({
     handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds, swipePosition, setSwipePosition,
     analysisLayerIds, handleToggleAnalysisLayer,
     bookmarks, handleAddBookmark, handleDeleteBookmark, handleNavigateToBookmark,
-    selectedQueryLayerIds, setSelectedQueryLayerIds
+    selectedQueryLayerIds, setSelectedQueryLayerIds,
+    allAvailableLayers
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -266,7 +267,7 @@ const MapPanel = ({
                     <LayerOperations
                         isDrawingVisible={isDrawingVisible}
                         setIsDrawingVisible={setIsDrawingVisible}
-                        geoServerLayers={geoServerLayers}
+                        geoServerLayers={allAvailableLayers || geoServerLayers}
                         handleToggleGeoLayer={handleToggleGeoLayer}
                         handleLayerOpacityChange={handleLayerOpacityChange}
                         handleZoomToLayer={handleZoomToLayer}

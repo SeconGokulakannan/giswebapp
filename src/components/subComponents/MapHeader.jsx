@@ -31,6 +31,8 @@ const MapHeader = ({
     handleToolClick,
     hasDrawings,
     hasMeasurements,
+    onOpenLayerManagement,
+    onOpenLoadTempModal
 }) => {
     return (
         <header className="header">
@@ -118,8 +120,12 @@ const MapHeader = ({
                                     <button
                                         className={`toolbar-button ${activePanel === 'layermanagement' ? 'active' : ''}`}
                                         onClick={() => {
-                                            setActivePanel(activePanel === 'layermanagement' ? null : 'layermanagement');
-                                            setIsPanelMinimized(false);
+                                            if (onOpenLayerManagement) {
+                                                onOpenLayerManagement();
+                                            } else {
+                                                setActivePanel(activePanel === 'layermanagement' ? null : 'layermanagement');
+                                                setIsPanelMinimized(false);
+                                            }
                                         }}
                                         aria-label="Layer Management"
                                     >
@@ -129,6 +135,24 @@ const MapHeader = ({
                                 <Tooltip.Portal>
                                     <Tooltip.Content className="TooltipContent" sideOffset={8}>
                                         Layer Management
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className="toolbar-button"
+                                        onClick={onOpenLoadTempModal}
+                                        aria-label="Load Temp Layers"
+                                    >
+                                        <Earth size={20} />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                                        Load Temp Layers (Shapefile)
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -320,8 +344,8 @@ const MapHeader = ({
                         </div>
                     </nav>
                 </div>
-            </div>
-        </header>
+            </div >
+        </header >
     );
 };
 
