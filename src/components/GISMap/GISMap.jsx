@@ -8,6 +8,8 @@ import TileLayer from 'ol/layer/Tile';
 import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
 import TileWMS from 'ol/source/TileWMS';
+import ImageWMS from 'ol/source/ImageWMS';
+import ImageLayer from 'ol/layer/Image';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { Draw, Modify, Snap, DragPan, DragZoom, DragBox } from 'ol/interaction';
@@ -398,35 +400,112 @@ function GISMap() {
 
     geoServerLayers.forEach(layer => {
       const existingLayer = operationalLayersRef.current[layer.id];
+      const hasAnalysisSLD = !!analysisSLDMap[layer.id];
 
       if (layer.visible) {
-        if (!existingLayer) {
-          // Create and add layer
+        // Check if we need to recreate the layer (switching between TileWMS and ImageWMS)
+        const existingIsImage = existingLayer && existingLayer.getSource && existingLayer.getSource() instanceof ImageWMS;
+        const needsRecreate = existingLayer && (hasAnalysisSLD !== existingIsImage);
+
+        if (needsRecreate) {
+          // Remove old layer before recreating with different source type
+          mapInstanceRef.current.removeLayer(existingLayer);
+          delete operationalLayersRef.current[layer.id];
+        }
+
+        if (!existingLayer || needsRecreate) {
+          // Create and add layer - use ImageWMS for analysis (handles large SLD), TileWMS otherwise
           const sourceParams = getWMSSourceParams(layer.fullName);
           if (layer.cqlFilter) {
             sourceParams.params['CQL_FILTER'] = layer.cqlFilter;
           }
 
-          const wmsLayer = new TileLayer({
-            source: new TileWMS({
-              ...sourceParams,
+          let wmsLayer;
+          if (hasAnalysisSLD) {
+            // Use ImageWMS with POST for analysis - handles large SLD bodies
+            // Custom loader uses POST to avoid URL length limits
+            const sldBody = analysisSLDMap[layer.id];
+            const baseUrl = sourceParams.url;
+
+            const imageSource = new ImageWMS({
+              url: baseUrl,
               params: {
-                ...sourceParams.params,
-                ...(analysisSLDMap[layer.id] ? { 'SLD_BODY': analysisSLDMap[layer.id], 'STYLES': '' } : {})
+                'LAYERS': layer.fullName,
+                'STYLES': '',
+                'FORMAT': 'image/png',
+                'TRANSPARENT': true,
+                ...(layer.cqlFilter ? { 'CQL_FILTER': layer.cqlFilter } : {})
+              },
+              serverType: 'geoserver',
+              crossOrigin: 'anonymous',
+              ratio: 1,
+              // Custom loader that uses POST for large SLD bodies
+              imageLoadFunction: (image, src) => {
+                // Parse existing URL params - handle relative URLs
+                const url = new URL(src, window.location.origin);
+                const params = new URLSearchParams();
+
+                // Copy existing params
+                url.searchParams.forEach((value, key) => {
+                  params.append(key, value);
+                });
+
+                // Add SLD_BODY to POST body
+                params.append('SLD_BODY', sldBody);
+
+                // Make POST request to absolute URL
+                const requestUrl = url.origin + url.pathname;
+                fetch(requestUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                  },
+                  body: params.toString()
+                })
+                  .then(response => {
+                    if (!response.ok) throw new Error(`WMS request failed: ${response.status}`);
+                    return response.blob();
+                  })
+                  .then(blob => {
+                    const objectUrl = URL.createObjectURL(blob);
+                    image.getImage().src = objectUrl;
+                    // Clean up object URL after image loads
+                    image.getImage().onload = () => URL.revokeObjectURL(objectUrl);
+                  })
+                  .catch(err => {
+                    console.error('WMS POST request failed:', err);
+                    // Fallback: try GET anyway (might work for smaller SLDs)
+                    image.getImage().src = src + '&SLD_BODY=' + encodeURIComponent(sldBody);
+                  });
               }
-            }),
-            zIndex: 1000 - (layer.sequence || 999),
-            opacity: layer.opacity,
-            properties: { id: layer.id }
-          });
+            });
+
+            wmsLayer = new ImageLayer({
+              source: imageSource,
+              zIndex: 1000 - (layer.sequence || 999),
+              opacity: layer.opacity,
+              properties: { id: layer.id }
+            });
+          } else {
+            // Use TileWMS for normal display (better performance for large areas)
+            wmsLayer = new TileLayer({
+              source: new TileWMS({
+                ...sourceParams,
+                params: sourceParams.params
+              }),
+              zIndex: 1000 - (layer.sequence || 999),
+              opacity: layer.opacity,
+              properties: { id: layer.id }
+            });
+          }
+
           mapInstanceRef.current.addLayer(wmsLayer);
           operationalLayersRef.current[layer.id] = wmsLayer;
         } else {
-          // Update existing properties if needed (e.g. opacity, sequence/zIndex, cqlFilter)
+          // Update existing layer properties
           existingLayer.setOpacity(layer.opacity);
           existingLayer.setZIndex(1000 - (layer.sequence || 999));
 
-          // Update CQL Filter if changed
           const source = existingLayer.getSource();
           const currentParams = source.getParams();
           const newParams = { ...currentParams };
@@ -435,12 +514,8 @@ function GISMap() {
             newParams['CQL_FILTER'] = layer.cqlFilter;
           }
 
-          if (analysisSLDMap[layer.id]) {
+          if (hasAnalysisSLD) {
             newParams['SLD_BODY'] = analysisSLDMap[layer.id];
-            newParams['STYLES'] = '';
-          } else if (currentParams['SLD_BODY']) {
-            // If SLD_BODY was there but now it's gone from map, remove it
-            newParams['SLD_BODY'] = null;
             newParams['STYLES'] = '';
           }
 
@@ -704,20 +779,11 @@ function GISMap() {
     }
 
     // 2. Apply temporarily to Map (Session)
+    // Setting state triggers useEffect to recreate layer with ImageWMS
     setAnalysisSLDMap(prev => ({
       ...prev,
       [layerId]: sldBody
     }));
-
-    // Trigger immediate redraw
-    const olLayer = operationalLayersRef.current[layerId];
-    if (olLayer) {
-      olLayer.getSource().updateParams({
-        'SLD_BODY': sldBody,
-        'STYLES': '',
-        '_t': Date.now()
-      });
-    }
 
     toast.success("Analysis style applied!", { id: 'analysis-toast' });
 

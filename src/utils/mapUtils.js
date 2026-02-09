@@ -363,8 +363,8 @@ export const modifyStyle = new Style({
  * @returns {string} SLD XML
  */
 /**
- * Generates an SLD Rule fragment for a single attribute value mapping.
- * Includes necessary namespaces for standalone parsing.
+ * Generates a compact SLD Rule fragment for a single attribute value mapping.
+ * Minified to avoid URI length issues with WMS requests.
  * @param {string} property - Attribute name
  * @param {string} value - Value to filter on
  * @param {string} color - Color for styling
@@ -384,63 +384,16 @@ export const generateSingleRule = (property, value, color, operator = '=') => {
 
     const filterElement = operatorMap[operator] || 'PropertyIsEqualTo';
 
-    // Generate filter based on operator type
+    // Generate compact filter based on operator type (no whitespace)
     let filterContent;
     if (operator === 'LIKE') {
-        // LIKE requires wildCard, singleChar, and escapeChar attributes
-        filterContent = `
-            <ogc:Filter>
-                <ogc:PropertyIsLike wildCard="%" singleChar="_" escapeChar="\\">
-                    <ogc:PropertyName>${property}</ogc:PropertyName>
-                    <ogc:Literal>%${value}%</ogc:Literal>
-                </ogc:PropertyIsLike>
-            </ogc:Filter>`;
+        filterContent = `<ogc:Filter><ogc:PropertyIsLike wildCard="%" singleChar="_" escapeChar="\\"><ogc:PropertyName>${property}</ogc:PropertyName><ogc:Literal>%${value}%</ogc:Literal></ogc:PropertyIsLike></ogc:Filter>`;
     } else {
-        filterContent = `
-            <ogc:Filter>
-                <ogc:${filterElement}>
-                    <ogc:PropertyName>${property}</ogc:PropertyName>
-                    <ogc:Literal>${value}</ogc:Literal>
-                </ogc:${filterElement}>
-            </ogc:Filter>`;
+        filterContent = `<ogc:Filter><ogc:${filterElement}><ogc:PropertyName>${property}</ogc:PropertyName><ogc:Literal>${value}</ogc:Literal></ogc:${filterElement}></ogc:Filter>`;
     }
 
-    return `
-        <Rule xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc">
-            <Name>${operator} ${value}</Name>${filterContent}
-            <PolygonSymbolizer>
-                <Fill>
-                    <CssParameter name="fill">${color}</CssParameter>
-                    <CssParameter name="fill-opacity">0.7</CssParameter>
-                </Fill>
-                <Stroke>
-                    <CssParameter name="stroke">#ffffff</CssParameter>
-                    <CssParameter name="stroke-width">1</CssParameter>
-                </Stroke>
-            </PolygonSymbolizer>
-            <LineSymbolizer>
-                <Stroke>
-                    <CssParameter name="stroke">${color}</CssParameter>
-                    <CssParameter name="stroke-width">3</CssParameter>
-                </Stroke>
-            </LineSymbolizer>
-            <PointSymbolizer>
-                <Graphic>
-                    <Mark>
-                        <WellKnownName>circle</WellKnownName>
-                        <Fill>
-                            <CssParameter name="fill">${color}</CssParameter>
-                        </Fill>
-                        <Stroke>
-                            <CssParameter name="stroke">#ffffff</CssParameter>
-                            <CssParameter name="stroke-width">1</CssParameter>
-                        </Stroke>
-                    </Mark>
-                    <Size>12</Size>
-                </Graphic>
-            </PointSymbolizer>
-        </Rule>
-`;
+    // Return compact rule (no whitespace/newlines)
+    return `<Rule xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc"><Name>${operator}${value}</Name>${filterContent}<PolygonSymbolizer><Fill><CssParameter name="fill">${color}</CssParameter><CssParameter name="fill-opacity">0.7</CssParameter></Fill><Stroke><CssParameter name="stroke">#fff</CssParameter><CssParameter name="stroke-width">1</CssParameter></Stroke></PolygonSymbolizer><LineSymbolizer><Stroke><CssParameter name="stroke">${color}</CssParameter><CssParameter name="stroke-width">3</CssParameter></Stroke></LineSymbolizer><PointSymbolizer><Graphic><Mark><WellKnownName>circle</WellKnownName><Fill><CssParameter name="fill">${color}</CssParameter></Fill><Stroke><CssParameter name="stroke">#fff</CssParameter><CssParameter name="stroke-width">1</CssParameter></Stroke></Mark><Size>12</Size></Graphic></PointSymbolizer></Rule>`;
 };
 
 /**
@@ -493,7 +446,8 @@ export const mergeAnalysisRules = (originalSld, property, mappings) => {
 };
 
 /**
- * Generates an SLD XML string for dynamic attribute analysis.
+ * Generates a compact SLD XML string for dynamic attribute analysis.
+ * Minified to avoid URI length issues with WMS requests.
  * @param {string} layerName Full layer name (workspace:name)
  * @param {string} property Attribute name to filter on
  * @param {Array} mappings List of {value, color, operator} objects
@@ -502,33 +456,6 @@ export const mergeAnalysisRules = (originalSld, property, mappings) => {
 export const generateAnalysisSLD = (layerName, property, mappings) => {
     const rules = mappings.map(m => generateSingleRule(property, m.value, m.color, m.operator || '=')).join('');
 
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<StyledLayerDescriptor version="1.0.0" 
-    xsi:schemaLocation="http://www.opengis.net/styled-layer-descriptor http://schemas.opengis.net/sld/1.0.0/StyledLayerDescriptor.xsd" 
-    xmlns="http://www.opengis.net/sld" 
-    xmlns:ogc="http://www.opengis.net/ogc" 
-    xmlns:xlink="http://www.w3.org/1999/xlink" 
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <NamedLayer>
-        <Name>${layerName}</Name>
-        <UserStyle>
-            <FeatureTypeStyle>
-                ${rules}
-                <Rule>
-                    <ElseFilter/>
-                    <PolygonSymbolizer>
-                        <Fill>
-                            <CssParameter name="fill">#cccccc</CssParameter>
-                            <CssParameter name="fill-opacity">0.2</CssParameter>
-                        </Fill>
-                        <Stroke>
-                            <CssParameter name="stroke">#999999</CssParameter>
-                            <CssParameter name="stroke-width">0.5</CssParameter>
-                        </Stroke>
-                    </PolygonSymbolizer>
-                </Rule>
-            </FeatureTypeStyle>
-        </UserStyle>
-    </NamedLayer>
-</StyledLayerDescriptor>`;
+    // Compact SLD (no whitespace)
+    return `<?xml version="1.0" encoding="UTF-8"?><StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><NamedLayer><Name>${layerName}</Name><UserStyle><FeatureTypeStyle>${rules}<Rule><ElseFilter/><PolygonSymbolizer><Fill><CssParameter name="fill">#ccc</CssParameter><CssParameter name="fill-opacity">0.2</CssParameter></Fill><Stroke><CssParameter name="stroke">#999</CssParameter><CssParameter name="stroke-width">0.5</CssParameter></Stroke></PolygonSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>`;
 };
