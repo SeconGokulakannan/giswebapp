@@ -362,19 +362,22 @@ export const modifyStyle = new Style({
  * @param {Array} mappings List of {value, color} objects
  * @returns {string} SLD XML
  */
-export const generateAnalysisSLD = (layerName, property, mappings) => {
-    const rules = mappings.map(m => `
-        <Rule>
-            <Name>${m.value}</Name>
+/**
+ * Generates an SLD Rule fragment for a single attribute value mapping.
+ * Includes necessary namespaces for standalone parsing.
+ */
+export const generateSingleRule = (property, value, color) => `
+        <Rule xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc">
+            <Name>${value}</Name>
             <ogc:Filter>
                 <ogc:PropertyIsEqualTo>
                     <ogc:PropertyName>${property}</ogc:PropertyName>
-                    <ogc:Literal>${m.value}</ogc:Literal>
+                    <ogc:Literal>${value}</ogc:Literal>
                 </ogc:PropertyIsEqualTo>
             </ogc:Filter>
             <PolygonSymbolizer>
                 <Fill>
-                    <CssParameter name="fill">${m.color}</CssParameter>
+                    <CssParameter name="fill">${color}</CssParameter>
                     <CssParameter name="fill-opacity">0.7</CssParameter>
                 </Fill>
                 <Stroke>
@@ -384,7 +387,7 @@ export const generateAnalysisSLD = (layerName, property, mappings) => {
             </PolygonSymbolizer>
             <LineSymbolizer>
                 <Stroke>
-                    <CssParameter name="stroke">${m.color}</CssParameter>
+                    <CssParameter name="stroke">${color}</CssParameter>
                     <CssParameter name="stroke-width">3</CssParameter>
                 </Stroke>
             </LineSymbolizer>
@@ -393,7 +396,7 @@ export const generateAnalysisSLD = (layerName, property, mappings) => {
                     <Mark>
                         <WellKnownName>circle</WellKnownName>
                         <Fill>
-                            <CssParameter name="fill">${m.color}</CssParameter>
+                            <CssParameter name="fill">${color}</CssParameter>
                         </Fill>
                         <Stroke>
                             <CssParameter name="stroke">#ffffff</CssParameter>
@@ -404,7 +407,66 @@ export const generateAnalysisSLD = (layerName, property, mappings) => {
                 </Graphic>
             </PointSymbolizer>
         </Rule>
-    `).join('');
+`;
+
+/**
+ * Merges analysis rules into an existing SLD body.
+ */
+export const mergeAnalysisRules = (originalSld, property, mappings) => {
+    try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(originalSld, "text/xml");
+
+        // Find FeatureTypeStyle
+        let featureTypeStyle = xmlDoc.getElementsByTagName("FeatureTypeStyle")[0];
+
+        // If not found, create one (unlikely for a valid SLD)
+        if (!featureTypeStyle) {
+            const userStyle = xmlDoc.getElementsByTagName("UserStyle")[0];
+            if (!userStyle) return originalSld; // Fallback
+            featureTypeStyle = xmlDoc.createElementNS(xmlDoc.documentElement.namespaceURI, "FeatureTypeStyle");
+            userStyle.appendChild(featureTypeStyle);
+        }
+
+        // Generate rules as fragments and convert to real nodes
+        // prepend so they have priority
+        mappings.slice().reverse().forEach(m => {
+            if (!m.value) return;
+            const ruleXml = generateSingleRule(property, m.value, m.color);
+            const ruleDoc = parser.parseFromString(ruleXml, "text/xml");
+
+            // Check for parser errors
+            if (ruleDoc.getElementsByTagName("parsererror").length > 0) {
+                console.error("Rule parsing error:", ruleDoc.documentElement.textContent);
+                return;
+            }
+
+            const ruleNode = xmlDoc.importNode(ruleDoc.documentElement, true);
+
+            if (featureTypeStyle.firstChild) {
+                featureTypeStyle.insertBefore(ruleNode, featureTypeStyle.firstChild);
+            } else {
+                featureTypeStyle.appendChild(ruleNode);
+            }
+        });
+
+        const serializer = new XMLSerializer();
+        return serializer.serializeToString(xmlDoc);
+    } catch (err) {
+        console.error("Merging SLD failed, falling back to basic analysis SLD:", err);
+        return null;
+    }
+};
+
+/**
+ * Generates an SLD XML string for dynamic attribute analysis.
+ * @param {string} layerName Full layer name (workspace:name)
+ * @param {string} property Attribute name to filter on
+ * @param {Array} mappings List of {value, color} objects
+ * @returns {string} SLD XML
+ */
+export const generateAnalysisSLD = (layerName, property, mappings) => {
+    const rules = mappings.map(m => generateSingleRule(property, m.value, m.color)).join('');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <StyledLayerDescriptor version="1.0.0" 
