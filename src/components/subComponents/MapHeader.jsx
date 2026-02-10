@@ -13,7 +13,8 @@ import {
     Earth,
     ChevronsLeftRightEllipsis,
     DraftingCompass,
-    MessageSquareCode
+    MessageSquareCode,
+    Cog
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -73,6 +74,32 @@ const MapHeader = ({
 
                     <nav className="toolbar">
                         <div className="toolbar-group">
+
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className={`toolbar-button ${activePanel === 'layermanagement' ? 'active' : ''}`}
+                                        onClick={() => {
+                                            if (onOpenLayerManagement) {
+                                                onOpenLayerManagement();
+                                            } else {
+                                                setActivePanel(activePanel === 'layermanagement' ? null : 'layermanagement');
+                                                setIsPanelMinimized(false);
+                                            }
+                                        }}
+                                        aria-label="Layer Management"
+                                    >
+                                        <Cog size={20} />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                                        Layer Management
+                                        <Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
@@ -115,48 +142,9 @@ const MapHeader = ({
                                 </Tooltip.Portal>
                             </Tooltip.Root>
 
-                            <Tooltip.Root>
-                                <Tooltip.Trigger asChild>
-                                    <button
-                                        className={`toolbar-button ${activePanel === 'layermanagement' ? 'active' : ''}`}
-                                        onClick={() => {
-                                            if (onOpenLayerManagement) {
-                                                onOpenLayerManagement();
-                                            } else {
-                                                setActivePanel(activePanel === 'layermanagement' ? null : 'layermanagement');
-                                                setIsPanelMinimized(false);
-                                            }
-                                        }}
-                                        aria-label="Layer Management"
-                                    >
-                                        <ChevronsLeftRightEllipsis size={20} />
-                                    </button>
-                                </Tooltip.Trigger>
-                                <Tooltip.Portal>
-                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Layer Management
-                                        <Tooltip.Arrow className="TooltipArrow" />
-                                    </Tooltip.Content>
-                                </Tooltip.Portal>
-                            </Tooltip.Root>
 
-                            <Tooltip.Root>
-                                <Tooltip.Trigger asChild>
-                                    <button
-                                        className="toolbar-button"
-                                        onClick={onOpenLoadTempModal}
-                                        aria-label="Load Temp Layers"
-                                    >
-                                        <Earth size={20} />
-                                    </button>
-                                </Tooltip.Trigger>
-                                <Tooltip.Portal>
-                                    <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                                        Load Temp Layers (Shapefile)
-                                        <Tooltip.Arrow className="TooltipArrow" />
-                                    </Tooltip.Content>
-                                </Tooltip.Portal>
-                            </Tooltip.Root>
+
+
 
                             <div className="toolbar-divider" />
                             <Tooltip.Root>
