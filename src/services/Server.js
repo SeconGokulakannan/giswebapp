@@ -42,11 +42,11 @@ export const getGeoServerLayers = async () => {
         if (response.data && response.data.features) {
             const filteredFeatures = response.data.features
                 .filter(f => f.properties.LayerName !== 'Layer' && f.properties.IsShowLayer === true)
-                .sort((a, b) => (a.properties.LayerSequenceNo || 999) - (b.properties.LayerSequenceNo || 999));
+                .sort((a, b) => (a.properties.LayerSequenceNo ?? 999) - (b.properties.LayerSequenceNo ?? 999));
 
             return filteredFeatures.map(feature => ({
                 fullName: `${WORKSPACE}:${feature.properties.LayerName}`,
-                sequence: feature.properties.LayerSequenceNo || 999,
+                sequence: feature.properties.LayerSequenceNo ?? 999,
                 initialVisibility: Boolean(feature.properties.LayerVisibilityOnLoad),
                 layerId: feature.properties.LayerName,
                 fid: feature.id // Store fid for WFS-T updates
@@ -63,23 +63,88 @@ export const saveSequence = async (sequenceList) => {
     try {
         const url = `${GEOSERVER_URL}/wfs`;
 
-        // Construct bulk WFS-T Update XML
-        let updates = '';
+        // Constraint Handler: LayerSequenceNo is Unique.
+        // We must avoid collisions during the update (e.g. swapping 1 and 2).
+        // Strategy: Two-Pass Update in a single Transaction.
+        // 1. Move all targeted layers to a temporary "safe" high range (e.g. 100000+).
+        // 2. Move all targeted layers to their final destination.
+
+        let tempUpdates = '';
+        let finalUpdates = '';
+
+        // Pass 1: Move to Temp Range
+        sequenceList.forEach((item, index) => {
+            if (item.sequenceNumber === undefined || item.sequenceNumber === null) return;
+
+            // Should be safe enough, assuming strict integer was checked before calling or check here
+            const tempSeq = 100000 + index + Math.floor(Math.random() * 1000); // Add randomness to ensure uniqueness even in temp
+
+            if (item.fid) {
+                tempUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${tempSeq}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:FeatureId fid="${item.fid}"/>
+                    </ogc:Filter>
+                </wfs:Update>`;
+            } else {
+                tempUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${tempSeq}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:PropertyIsEqualTo>
+                            <ogc:PropertyName>LayerName</ogc:PropertyName>
+                            <ogc:Literal>${item.layerId}</ogc:Literal>
+                        </ogc:PropertyIsEqualTo>
+                    </ogc:Filter>
+                </wfs:Update>`;
+            }
+        });
+
+        // Pass 2: Move to Final
         for (const item of sequenceList) {
-            updates += `
-            <wfs:Update typeName="${WORKSPACE}:Layer">
-                <wfs:Property>
-                    <wfs:Name>LayerSequenceNo</wfs:Name>
-                    <wfs:Value>${item.sequenceNumber}</wfs:Value>
-                </wfs:Property>
-                <ogc:Filter>
-                    <ogc:PropertyIsEqualTo>
-                        <ogc:PropertyName>LayerName</ogc:PropertyName>
-                        <ogc:Literal>${item.layerId}</ogc:Literal>
-                    </ogc:PropertyIsEqualTo>
-                </ogc:Filter>
-            </wfs:Update>`.trim();
+            if (item.sequenceNumber === undefined || item.sequenceNumber === null) continue;
+
+            const seqInt = parseInt(item.sequenceNumber, 10);
+            if (isNaN(seqInt)) continue;
+
+            if (item.fid) {
+                finalUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${seqInt}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:FeatureId fid="${item.fid}"/>
+                    </ogc:Filter>
+                </wfs:Update>`;
+            } else {
+                finalUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${seqInt}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:PropertyIsEqualTo>
+                            <ogc:PropertyName>LayerName</ogc:PropertyName>
+                            <ogc:Literal>${item.layerId}</ogc:Literal>
+                        </ogc:PropertyIsEqualTo>
+                    </ogc:Filter>
+                </wfs:Update>`;
+            }
         }
+
+        const updates = tempUpdates + finalUpdates;
+
+        if (!updates) return false;
 
         const wfsTransactionXml = `
         <wfs:Transaction service="WFS" version="1.1.0"
@@ -89,6 +154,8 @@ export const saveSequence = async (sequenceList) => {
         xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
             ${updates}
         </wfs:Transaction>`.trim();
+
+        console.log('Using Two-Pass Unique-Safe XML:', wfsTransactionXml);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -101,6 +168,12 @@ export const saveSequence = async (sequenceList) => {
 
         if (response.ok) {
             const resultText = await response.text();
+            console.log('Save Sequence Response:', resultText);
+
+            if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Exception:', resultText);
+                return false;
+            }
             return resultText.includes('TransactionSummary');
         }
         return false;

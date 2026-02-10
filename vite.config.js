@@ -6,12 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/geoserver': {
-        target: 'http://192.168.1.3:8080',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/giswebapi': {
-        target: 'http://192.168.7.70',
+        target: 'http://192.168.7.70:8080',
         changeOrigin: true,
         secure: false,
       },

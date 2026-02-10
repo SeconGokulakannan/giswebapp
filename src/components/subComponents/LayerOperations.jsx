@@ -62,18 +62,27 @@ const LayerOperations = ({
         setIsSavingSequences(true);
         try {
             // Prepare Key-Value list: layerId, SequenceNumber
-            // We use the pool of sequence numbers coming from the server
-            // and assign them based on the new local order.
+            // We use the pool of sequence numbers coming from the server (EXCLUDING local layers)
+            // and assign them based on the new local order (which only contains persistent layers).
+
+            // 1. Get pool of valid sequence numbers from server layers only
             const availableSequences = geoServerLayers
+                .filter(l => !l.isLocal && l.sequence !== undefined && l.sequence !== null)
                 .map(l => l.sequence)
                 .sort((a, b) => a - b);
+
+            console.log('Available Sequences Pool:', availableSequences);
 
             const sequenceList = localLayers
                 .filter(l => l.layerId) // Only save persistent layers
                 .map((layer, index) => ({
                     layerId: layer.layerId,
-                    sequenceNumber: availableSequences[index] !== undefined ? availableSequences[index] : 999
+                    fid: layer.fid, // Pass Feature ID for robust WFS-T update
+                    // Assign from the sorted pool. If we run out (shouldn't happen if lists match), fallback to 999 or current.
+                    sequenceNumber: availableSequences[index] !== undefined ? availableSequences[index] : (layer.sequence ?? 999)
                 }));
+
+            console.log('Saving Sequence List:', sequenceList);
 
             await saveSequence(sequenceList);
 
@@ -865,9 +874,14 @@ const LayerOperations = ({
 
 
             case 'reorder': {
-                const availableSequences = [...geoServerLayers].map(l => l.sequence).sort((a, b) => a - b);
+                // Same logic: Filter out local layers to get the true pool of sequences
+                const availableSequences = [...geoServerLayers]
+                    .filter(l => !l.isLocal && l.sequence !== undefined && l.sequence !== null)
+                    .map(l => l.sequence)
+                    .sort((a, b) => a - b);
+
                 const currentIndex = localLayers.findIndex(l => l.id === layer.id);
-                const projectedSeq = availableSequences[currentIndex] !== undefined ? availableSequences[currentIndex] : (layer.sequence || '??');
+                const projectedSeq = availableSequences[currentIndex] !== undefined ? availableSequences[currentIndex] : (layer.sequence ?? '??');
 
                 return (
                     <div className="sequence-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-primary)', fontWeight: 600 }}>
