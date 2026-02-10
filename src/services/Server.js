@@ -474,13 +474,31 @@ xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.
 
 export const saveNewFeature = async (fullLayerName, properties) => {
     try {
+
+        console.clear();
+        console.log("properties ", properties);
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : ['feature', fullLayerName];
         let featureContentXml = '';
 
         for (const [key, value] of Object.entries(properties)) {
-            if (!key || key === 'id' || key.startsWith('_') || value === null || value === undefined) continue;
+            // Skip internal identifiers, private fields, and identity/auto-increment columns
+            // Omitting 'LayerId' allows the database to handle its own identity generation
+            if (!key ||
+                key === 'id' ||
+                key.toLowerCase() === 'layerid' ||
+                key.toLowerCase() === 'fid' ||
+                key.toLowerCase() === 'ogc_fid' ||
+                key.startsWith('_') ||
+                value === null ||
+                value === undefined ||
+                value === ''
+            ) continue;
             featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
         }
+
+        // Use the exact targetNamespace discovered from GeoServer (gisweb)
+        // Previous assumed http-formatted URI was causing feature type not found errors
+        const namespaceUri = prefix;
 
         const wfsTransactionXml = `
         <wfs:Transaction service="WFS" version="1.1.0"
@@ -488,7 +506,7 @@ export const saveNewFeature = async (fullLayerName, properties) => {
         xmlns:ogc="http://www.opengis.net/ogc"
         xmlns:gml="http://www.opengis.net/gml"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:${prefix}="${GEOSERVER_URL}/workspaces/${prefix}"
+        xmlns:${prefix}="${namespaceUri}"
         xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
         <wfs:Insert>
             <${fullLayerName}>
@@ -496,6 +514,8 @@ export const saveNewFeature = async (fullLayerName, properties) => {
             </${fullLayerName}>
         </wfs:Insert>
         </wfs:Transaction>`.trim();
+
+        console.log('Save New Feature XML:', wfsTransactionXml);
 
         const response = await fetch(`${GEOSERVER_URL}/wfs`, {
             method: 'POST',
@@ -508,14 +528,92 @@ export const saveNewFeature = async (fullLayerName, properties) => {
 
         if (response.ok) {
             const resultText = await response.text();
-            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>')) {
-                return true;
+            console.log('Save New Feature Response:', resultText);
+
+            if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Create Exception:', resultText);
+                return false;
             }
-            return resultText.includes('TransactionSummary');
+
+            return resultText.includes('TransactionSummary') &&
+                (resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>') ||
+                    resultText.includes('totalInserted="1"'));
         }
         return false;
     } catch (error) {
         console.error(`Failed to create feature via WFS-T (${fullLayerName}):`, error);
+        return false;
+    }
+};
+
+export const addNewLayerConfig = async (properties) => {
+    try {
+        console.clear();
+        console.log("Saving New Layer Config:", properties);
+
+        const fullLayerName = `${WORKSPACE}:Layer`;
+        const prefix = WORKSPACE;
+        let featureContentXml = '';
+
+        for (const [key, value] of Object.entries(properties)) {
+            // Explicitly exclude identity columns and empty values
+            if (!key ||
+                key === 'id' ||
+                key.toLowerCase() === 'layerid' ||
+                key.toLowerCase() === 'fid' ||
+                key.toLowerCase() === 'ogc_fid' ||
+                key.startsWith('_') ||
+                value === null ||
+                value === undefined ||
+                value === ''
+            ) continue;
+            featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
+        }
+
+        const namespaceUri = prefix;
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:gml="http://www.opengis.net/gml"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:${prefix}="${namespaceUri}"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Insert>
+            <${fullLayerName}>
+                ${featureContentXml}
+            </${fullLayerName}>
+        </wfs:Insert>
+        </wfs:Transaction>`.trim();
+
+        console.log('addNewLayerConfig XML:', wfsTransactionXml);
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'text/xml'
+            },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            console.log('addNewLayerConfig Response:', resultText);
+
+            if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Create Exception (Layer):', resultText);
+                return false;
+            }
+
+            return resultText.includes('TransactionSummary') &&
+                (resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>') ||
+                    resultText.includes('totalInserted="1"'));
+        }
+        return false;
+    } catch (error) {
+        console.error("Failed to create specialized layer configuration:", error);
         return false;
     }
 };

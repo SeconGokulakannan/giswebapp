@@ -63,9 +63,10 @@ import {
   deleteFeature,
   updateFeature,
   SaveNewAttribute,
-  saveNewFeature
+  saveNewFeature,
+  addNewLayerConfig
 } from '../../services/Server';
-import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
+import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from '../../services/ServerCredentials';
 import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
 
@@ -727,19 +728,34 @@ function GISMap() {
   };
 
   const handleUpdateLayerMetadata = async (fullLayerName, changes) => {
-    const success = await updateFeature(fullLayerName, null, null); // This is wrong, updateFeature needs specific call logic
-    // Wait, updateFeature in Server.js takes (fullLayerName, featureId, properties)
-    // I need to loop through changes
     let successCount = 0;
     for (const [rowId, props] of Object.entries(changes)) {
-      const ok = await updateFeature(fullLayerName, rowId, props);
+      // Resolve the true GeoServer FID using either the LayerId or the original feature ID
+      const feature = layerManagementData.find(f =>
+        (f.properties?.LayerId?.toString() === rowId.toString()) ||
+        (f.id === rowId) ||
+        (f.properties?.id?.toString() === rowId.toString())
+      );
+
+      const targetId = feature ? feature.id : rowId;
+      const ok = await updateFeature(fullLayerName, targetId, props);
       if (ok) successCount++;
     }
+    if (successCount > 0) handleRefreshLayerManagement();
     return successCount > 0;
   };
 
+  const handleSaveNewLayerMetadata = async (fullLayerName, props) => {
+    // Specialized service for Layer configuration
+    const success = await addNewLayerConfig(props);
+    if (success) handleRefreshLayerManagement();
+    return success;
+  };
+
   const handleDeleteLayerMetadata = async (fullLayerName, feature) => {
-    return await deleteFeature(fullLayerName, feature);
+    const success = await deleteFeature(fullLayerName, feature);
+    if (success) handleRefreshLayerManagement();
+    return success;
   };
 
   const handleRunAnalysis = async (config) => {
@@ -2393,7 +2409,7 @@ function GISMap() {
             isLoading={isLayerManagementLoading}
             onDeleteFeature={handleDeleteLayerMetadata}
             onUpdateFeatures={handleUpdateLayerMetadata}
-            onSaveNewFeature={saveNewFeature}
+            onSaveNewFeature={handleSaveNewLayerMetadata}
             onRefresh={handleRefreshLayerManagement}
             onOpenLoadTempModal={() => setShowLoadTempModal(true)}
           />

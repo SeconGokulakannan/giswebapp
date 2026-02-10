@@ -17,6 +17,21 @@ const LayerManagementCard = ({
     const [newRows, setNewRows] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
 
+    // Clear local state when new data is received (to sync with server)
+    React.useEffect(() => {
+        setPendingChanges({});
+        setNewRows({});
+        setSelectedIds([]);
+    }, [data]);
+
+    // Handle internal refresh that clears stale local edits
+    const handleInternalRefresh = () => {
+        setPendingChanges({});
+        setNewRows({});
+        setSelectedIds([]);
+        if (onRefresh) onRefresh();
+    };
+
     // Dynamically detect attribute keys from the data source
     const attributeKeys = useMemo(() => {
         if (!data || data.length === 0) {
@@ -29,7 +44,8 @@ const LayerManagementCard = ({
 
     const allConfigs = useMemo(() => {
         const rows = (data || []).map(f => {
-            const id = f.id || f.properties?.id || f.properties?.fid;
+            // Prioritize LayerId as the primary identifier
+            const id = f.properties?.LayerId || f.id || f.properties?.id || f.properties?.fid;
             return {
                 id,
                 original: f.properties,
@@ -72,14 +88,27 @@ const LayerManagementCard = ({
         // 1. Handle New Rows
         const newRowIds = Object.keys(newRows);
         if (newRowIds.length > 0) {
+            let failureCount = 0;
             for (const id of newRowIds) {
                 const row = { ...newRows[id] };
                 const success = await onSaveNewFeature(layerFullName, row);
-                if (success) successCount++;
+                if (success) {
+                    successCount++;
+                    setNewRows(prev => {
+                        const next = { ...prev };
+                        delete next[id];
+                        return next;
+                    });
+                } else {
+                    failureCount++;
+                }
             }
+
             if (successCount > 0) {
                 toast.success(`Created ${successCount} new layer configuration(s).`);
-                setNewRows({});
+            }
+            if (failureCount > 0) {
+                toast.error(`Failed to create ${failureCount} configuration(s). Check console for details.`);
             }
         }
 
@@ -189,11 +218,11 @@ const LayerManagementCard = ({
                 }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem', gap: '6px' }}>
-                            <Upload size={14} />
-                            Load Session Layer
+                            <Upload size={14} />&nbsp;
+                            Add Acting Layer
                         </button>
                         <button className="elite-btn secondary" onClick={handleAddRow} style={{ padding: '6px 14px', fontSize: '0.8rem', gap: '6px' }}>
-                            <Plus size={14} />
+                            <Plus size={14} />&nbsp;
                             Add Configuration
                         </button>
                     </div>
@@ -205,7 +234,7 @@ const LayerManagementCard = ({
                                 <span>Delete ({selectedIds.length})</span>
                             </button>
                         )}
-                        <button className="action-icon-btn" onClick={onRefresh} title="Refresh Data">
+                        <button className="action-icon-btn" onClick={handleInternalRefresh} title="Refresh Data">
                             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
                         </button>
                     </div>
@@ -281,6 +310,7 @@ const LayerManagementCard = ({
                                         {attributeKeys.map(key => {
                                             const value = config.current[key];
                                             const isBoolean = typeof value === 'boolean';
+                                            const isReadOnly = key.toLowerCase().includes('id') || key.toLowerCase().includes('fid');
 
                                             if (isBoolean) {
                                                 return (
@@ -299,13 +329,16 @@ const LayerManagementCard = ({
                                                 <input
                                                     key={key}
                                                     type={typeof value === 'number' ? 'number' : 'text'}
-                                                    className="row-input"
+                                                    className={`row-input ${isReadOnly ? 'readonly' : ''}`}
                                                     value={value ?? ''}
+                                                    readOnly={isReadOnly}
                                                     onChange={(e) => {
+                                                        if (isReadOnly) return;
                                                         const val = e.target.type === 'number' ? (parseInt(e.target.value) || 0) : e.target.value;
                                                         handleUpdateField(config.id, key, val, config.isNew);
                                                     }}
-                                                    placeholder={key}
+                                                    placeholder={isReadOnly ? '-' : key}
+                                                    title={isReadOnly ? "Read-only identity field" : ""}
                                                 />
                                             );
                                         })}
@@ -366,6 +399,14 @@ const LayerManagementCard = ({
                     .row-input:focus {
                         border-color: var(--color-primary);
                         box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+                    }
+                    .row-input.readonly {
+                        background: rgba(var(--color-text-muted-rgb), 0.05);
+                        border-color: transparent;
+                        color: var(--color-text-muted);
+                        cursor: not-allowed;
+                        pointer-events: none;
+                        font-style: italic;
                     }
                     .row-checkbox {
                         width: 18px;
