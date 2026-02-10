@@ -10,7 +10,8 @@ import {
     Brush,
     LayoutGrid,
     MessageSquareCode,
-    FileJson
+    FileJson,
+    MessageSquareShare
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -38,6 +39,7 @@ const LayerOperations = ({
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
         { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' },
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
+        { icon: MessageSquareShare, label: 'Spatial Join', id: 'spatialjoin' },
         { icon: LayoutGrid, label: 'Attribute Table', id: 'attribute' },
         { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
     ];
