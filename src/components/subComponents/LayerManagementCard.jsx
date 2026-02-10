@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { fetchLayerStatuses } from '../../services/Server';
 import { X, LayoutGrid, Plus, Eraser, Save, RefreshCw, Layers, Upload, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -13,15 +14,28 @@ const LayerManagementCard = ({
     onRefresh,
     onOpenLoadTempModal
 }) => {
+    // Import the new service function at the top of the file, but since I can only replace chunks, I'll assumme the import is handled or I'll add it here if possible. 
+    // Wait, I cannot add imports easily with multi_replace if they are at the top. 
+    // I will use a separate replace for the import or just use the existing import if I can find it.
+    // Actually, I should probably check if `fetchAllPublishedLayers` is exported from `Server.js` (Yes it is).
+    // I need to add it to the import statement.
+
+    const [layerStatuses, setLayerStatuses] = useState({});
     const [pendingChanges, setPendingChanges] = useState({});
     const [newRows, setNewRows] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
 
     // Clear local state when new data is received (to sync with server)
-    React.useEffect(() => {
+    useEffect(() => {
         setPendingChanges({});
         setNewRows({});
         setSelectedIds([]);
+
+        const loadLayers = async () => {
+            const statusMap = await fetchLayerStatuses();
+            setLayerStatuses(statusMap || {});
+        };
+        loadLayers();
     }, [data]);
 
     // Handle internal refresh that clears stale local edits
@@ -36,10 +50,10 @@ const LayerManagementCard = ({
     const attributeKeys = useMemo(() => {
         if (!data || data.length === 0) {
             // Fallback to standard keys if no data is loaded yet
-            return ['LayerName', 'LayerSequenceNo', 'IsShowLayer', 'LayerVisibilityOnLoad', 'GeometryType', 'GeometryFieldName', 'AttributeTableName', 'AttributeTableSchema', 'SRId'];
+            return ['LayerName', 'LayerSequenceNo', 'IsShowLayer', 'LayerVisibilityOnLoad', 'GeometryType', 'GeometryFieldName', 'AttributeTableName', 'AttributeTableSchema', 'SRId', 'GeoServerStatus'];
         }
-        // Use properties of the first feature as the schema
-        return Object.keys(data[0].properties);
+        // Use properties of the first feature as the schema + Status
+        return [...Object.keys(data[0].properties), 'GeoServerStatus'];
     }, [data]);
 
     const allConfigs = useMemo(() => {
@@ -310,7 +324,7 @@ const LayerManagementCard = ({
                                         {attributeKeys.map(key => {
                                             const value = config.current[key];
                                             const isBoolean = typeof value === 'boolean';
-                                            const isReadOnly = key.toLowerCase().includes('id') || key.toLowerCase().includes('fid');
+                                            const isReadOnly = (key.toLowerCase().includes('id') || key.toLowerCase().includes('fid')) && key.toLowerCase() !== 'srid';
 
                                             if (isBoolean) {
                                                 return (
@@ -321,6 +335,56 @@ const LayerManagementCard = ({
                                                             onChange={(e) => handleUpdateField(config.id, key, e.target.checked, config.isNew)}
                                                             className="row-checkbox"
                                                         />
+                                                    </div>
+                                                );
+                                            }
+
+
+
+                                            if (key === 'GeoServerStatus') {
+                                                const layerName = config.current['LayerName'];
+
+                                                // Check for exact match or workspace-stripped match in the status map
+                                                let status = layerStatuses[layerName];
+                                                if (!status) {
+                                                    // Try finding key by matching suffix
+                                                    const matchingKey = Object.keys(layerStatuses).find(k => k === layerName || k.split(':').pop() === layerName || layerName.split(':').pop() === k);
+                                                    status = matchingKey ? layerStatuses[matchingKey] : 'Layer Pending';
+                                                }
+
+                                                let bgColor, textColor, borderColor;
+                                                if (status === 'Valid Layer') {
+                                                    bgColor = 'rgba(16, 185, 129, 0.1)';
+                                                    textColor = '#10b981';
+                                                    borderColor = 'rgba(16, 185, 129, 0.2)';
+                                                } else if (status === 'Layer Error') {
+                                                    bgColor = 'rgba(239, 68, 68, 0.1)';
+                                                    textColor = '#ef4444';
+                                                    borderColor = 'rgba(239, 68, 68, 0.2)';
+                                                } else { // Pending
+                                                    bgColor = 'rgba(245, 158, 11, 0.1)';
+                                                    textColor = '#f59e0b';
+                                                    borderColor = 'rgba(245, 158, 11, 0.2)';
+                                                }
+
+                                                return (
+                                                    <div key={key} style={{
+                                                        display: 'flex',
+                                                        justifyContent: 'center',
+                                                        alignItems: 'center',
+                                                        height: '100%',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 600
+                                                    }}>
+                                                        <span style={{
+                                                            padding: '2px 8px',
+                                                            borderRadius: '12px',
+                                                            background: bgColor,
+                                                            color: textColor,
+                                                            border: `1px solid ${borderColor}`
+                                                        }}>
+                                                            {status}
+                                                        </span>
                                                     </div>
                                                 );
                                             }

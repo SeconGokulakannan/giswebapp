@@ -62,6 +62,70 @@ export const getGeoServerLayers = async () => {
     return [];
 };
 
+export const fetchLayerStatuses = async () => {
+    const statuses = {};
+    try {
+        // 1. Fetch Configured Layers from REST API
+        const restUrl = `${GEOSERVER_URL}/rest/layers.json`;
+        const restResponse = await fetch(restUrl, {
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Accept': 'application/json'
+            }
+        });
+
+        let configuredLayers = [];
+        if (restResponse.ok) {
+            const data = await restResponse.json();
+            if (data && data.layers && data.layers.layer) {
+                configuredLayers = data.layers.layer.map(l => l.name);
+            }
+        }
+
+        // 2. Fetch Active Layers from WFS Capabilities
+        // This ensures the layer is actually enabled and serving
+        const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`;
+        const wfsResponse = await fetch(wfsUrl);
+        let activeLayers = [];
+
+        if (wfsResponse.ok) {
+            const text = await wfsResponse.text();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(text, "text/xml");
+            const featureTypes = xmlDoc.getElementsByTagName("FeatureType");
+
+            for (let i = 0; i < featureTypes.length; i++) {
+                const nameNodes = featureTypes[i].getElementsByTagName("Name");
+                if (nameNodes.length > 0) {
+                    activeLayers.push(nameNodes[0].textContent);
+                }
+            }
+        }
+
+        // 3. Determine Status
+        configuredLayers.forEach(layerName => {
+            // Check if active (allowing for workspace prefix mismatches)
+            const isActive = activeLayers.some(al =>
+                al === layerName ||
+                al.split(':').pop() === layerName ||
+                layerName.split(':').pop() === al
+            );
+
+            if (isActive) {
+                statuses[layerName] = 'Valid Layer'; // Green
+            } else {
+                statuses[layerName] = 'Layer Error'; // Red (Configured but not serving)
+            }
+        });
+
+        // Note: Layers not in configuredLayers will return undefined (Pending)
+
+    } catch (err) {
+        console.error('Failed to fetch layer statuses:', err);
+    }
+    return statuses;
+};
+
 export const saveSequence = async (sequenceList) => {
     try {
         const url = `${GEOSERVER_URL}/wfs`;
