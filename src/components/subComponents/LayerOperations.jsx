@@ -26,7 +26,8 @@ const LayerOperations = ({
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
     queryingLayer, handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds,
     swipePosition, setSwipePosition, analysisLayerIds, handleToggleAnalysisLayer,
-    selectedQueryLayerIds, setSelectedQueryLayerIds
+    selectedQueryLayerIds, setSelectedQueryLayerIds,
+    setShowSpatialJoin
 }) => {
 
     const tools = [
@@ -986,6 +987,30 @@ const LayerOperations = ({
                         />
                         <span className="toggle-slider"></span>
                     </label>
+                );
+            }
+
+            case 'spatialjoin': {
+                return (
+                    <button
+                        onClick={() => setShowSpatialJoin(true)}
+                        style={{
+                            border: 'none',
+                            background: 'rgba(var(--color-primary-rgb), 0.1)',
+                            color: 'var(--color-primary)',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <Zap size={12} /> Join
+                    </button>
                 );
             }
 

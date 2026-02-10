@@ -120,6 +120,7 @@ const MapPanel = ({
     analysisLayerIds, handleToggleAnalysisLayer,
     bookmarks, handleAddBookmark, handleDeleteBookmark, handleNavigateToBookmark,
     selectedQueryLayerIds, setSelectedQueryLayerIds,
+    setShowSpatialJoin,
     allAvailableLayers
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
@@ -302,6 +303,7 @@ const MapPanel = ({
                         handleToggleAnalysisLayer={handleToggleAnalysisLayer}
                         selectedQueryLayerIds={selectedQueryLayerIds}
                         setSelectedQueryLayerIds={setSelectedQueryLayerIds}
+                        setShowSpatialJoin={setShowSpatialJoin}
                     />
                 )}
 

@@ -38,6 +38,7 @@ import QueryBuilderCard from '../subComponents/QueryBuilderCard';
 import AnalysisCard from '../subComponents/AnalysisCard';
 import LayerManagementCard from '../subComponents/LayerManagementCard';
 import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
+import SpatialJoinCard from '../subComponents/SpatialJoinCard';
 import { getRenderPixel } from 'ol/render';
 
 import {
@@ -156,6 +157,11 @@ function GISMap() {
   const [showQueryBuilder, setShowQueryBuilder] = useState(false);
   const [queryingLayer, setQueryingLayer] = useState(null);
   const [selectedQueryLayerIds, setSelectedQueryLayerIds] = useState([]);
+
+  // Spatial Join State
+  const [showSpatialJoin, setShowSpatialJoin] = useState(false);
+  const spatialJoinVectorLayersRef = useRef({});
+  const spatialJoinWMSVisibilitiesRef = useRef({});
 
   // Analysis State
   const [analysisConfig, setAnalysisConfig] = useState(null);
@@ -906,6 +912,123 @@ function GISMap() {
     setIsAnalysisPlaying(false);
 
     toast.success("Analysis reset. Client-side layers removed.");
+  };
+
+  // === Spatial Join Handlers ===
+  const handlePerformSpatialJoin = async (config) => {
+    const { layerA: layerAId, attrA, layerB: layerBId, attrB, colorA, colorB } = config;
+    const layerAObj = geoServerLayers.find(l => l.id === layerAId);
+    const layerBObj = geoServerLayers.find(l => l.id === layerBId);
+    if (!layerAObj || !layerBObj || !mapInstanceRef.current) return;
+
+    toast.loading('Fetching data for spatial join...', { id: 'spatialjoin-toast' });
+
+    try {
+      // 1. Fetch WFS GeoJSON for both layers
+      const fetchWFS = async (layer) => {
+        const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&outputFormat=application/json&srsName=EPSG:3857`;
+        const res = await fetch(wfsUrl, { headers: { 'Authorization': AUTH_HEADER } });
+        if (!res.ok) throw new Error(`Failed to fetch ${layer.name}`);
+        return res.json();
+      };
+
+      const [geojsonA, geojsonB] = await Promise.all([fetchWFS(layerAObj), fetchWFS(layerBObj)]);
+
+      if (!geojsonA.features?.length || !geojsonB.features?.length) {
+        toast.error('One or both layers returned no features', { id: 'spatialjoin-toast' });
+        return;
+      }
+
+      // 2. Build lookup sets
+      const valuesA = new Set(geojsonA.features.map(f => String(f.properties?.[attrA] ?? '')));
+      const valuesB = new Set(geojsonB.features.map(f => String(f.properties?.[attrB] ?? '')));
+
+      // 3. Hide original WMS layers
+      [layerAId, layerBId].forEach(lid => {
+        const layer = geoServerLayers.find(l => l.id === lid);
+        if (layer) {
+          spatialJoinWMSVisibilitiesRef.current[lid] = layer.visible;
+          setGeoServerLayers(prev => prev.map(l =>
+            l.id === lid ? { ...l, visible: false } : l
+          ));
+        }
+      });
+
+      // 4. Style function factory
+      const createStyleFn = (attrName, matchSet, matchColor) => (feature) => {
+        const val = String(feature.get(attrName) ?? '');
+        const isMatch = matchSet.has(val);
+        if (isMatch) {
+          return [
+            new Style({
+              fill: new Fill({ color: matchColor + 'b3' }),
+              stroke: new Stroke({ color: '#fff', width: 1.5 }),
+              image: new CircleStyle({
+                radius: 6,
+                fill: new Fill({ color: matchColor }),
+                stroke: new Stroke({ color: '#fff', width: 1 })
+              })
+            })
+          ];
+        }
+        return [
+          new Style({
+            fill: new Fill({ color: 'rgba(204, 204, 204, 0.15)' }),
+            stroke: new Stroke({ color: 'rgba(153, 153, 153, 0.3)', width: 0.5 })
+          })
+        ];
+      };
+
+      // 5. Create vector layers
+      const addJoinLayer = (geojson, layerId, attrName, matchSet, matchColor) => {
+        const source = new VectorSource({ features: new GeoJSON().readFeatures(geojson) });
+        const vectorLayer = new VectorLayer({
+          source,
+          style: createStyleFn(attrName, matchSet, matchColor),
+          zIndex: 1001,
+          properties: { id: `spatialjoin-${layerId}`, isSpatialJoin: true }
+        });
+
+        // Cleanup existing
+        if (spatialJoinVectorLayersRef.current[layerId]) {
+          mapInstanceRef.current.removeLayer(spatialJoinVectorLayersRef.current[layerId]);
+        }
+        mapInstanceRef.current.addLayer(vectorLayer);
+        spatialJoinVectorLayersRef.current[layerId] = vectorLayer;
+      };
+
+      // Layer A: highlight features whose attrA values exist in Layer B's attrB values
+      addJoinLayer(geojsonA, layerAId, attrA, valuesB, colorA);
+      // Layer B: highlight features whose attrB values exist in Layer A's attrA values
+      addJoinLayer(geojsonB, layerBId, attrB, valuesA, colorB);
+
+      const matchCount = [...valuesA].filter(v => valuesB.has(v)).length;
+      toast.success(`Spatial join complete! ${matchCount} matching value(s) found.`, { id: 'spatialjoin-toast' });
+
+    } catch (err) {
+      console.error('Spatial join failed:', err);
+      toast.error(`Spatial join failed: ${err.message}`, { id: 'spatialjoin-toast' });
+    }
+  };
+
+  const handleResetSpatialJoin = () => {
+    if (mapInstanceRef.current) {
+      Object.keys(spatialJoinVectorLayersRef.current).forEach(layerId => {
+        const vectorLayer = spatialJoinVectorLayersRef.current[layerId];
+        if (vectorLayer) {
+          mapInstanceRef.current.removeLayer(vectorLayer);
+        }
+        const originalVisible = spatialJoinWMSVisibilitiesRef.current[layerId];
+        if (originalVisible !== undefined) {
+          setGeoServerLayers(prev => prev.map(l =>
+            l.id === layerId ? { ...l, visible: originalVisible } : l
+          ));
+        }
+      });
+    }
+    spatialJoinVectorLayersRef.current = {};
+    spatialJoinWMSVisibilitiesRef.current = {};
+    toast.success('Spatial join reset. Layers restored.');
   };
 
   // Analysis Playback Loop
@@ -2222,6 +2345,7 @@ function GISMap() {
             handleNavigateToBookmark={handleNavigateToBookmark}
             selectedQueryLayerIds={selectedQueryLayerIds}
             setSelectedQueryLayerIds={setSelectedQueryLayerIds}
+            setShowSpatialJoin={setShowSpatialJoin}
             allAvailableLayers={[...geoServerLayers, ...localVectorLayers]}
           />
 
@@ -2407,6 +2531,14 @@ function GISMap() {
             handleApplyLayerFilter={handleApplyLayerFilter}
             selectedLayerIds={selectedQueryLayerIds}
             setSelectedLayerIds={setSelectedQueryLayerIds}
+          />
+
+          <SpatialJoinCard
+            isOpen={showSpatialJoin}
+            onClose={() => setShowSpatialJoin(false)}
+            allGeoServerLayers={geoServerLayers}
+            onPerformSpatialJoin={handlePerformSpatialJoin}
+            onResetSpatialJoin={handleResetSpatialJoin}
           />
 
           <LayerManagementCard
