@@ -147,6 +147,7 @@ function GISMap() {
   const [layerManagementData, setLayerManagementData] = useState([]);
   const [isLayerManagementLoading, setIsLayerManagementLoading] = useState(false);
   const [localVectorLayers, setLocalVectorLayers] = useState([]); // Client-side GeoJSON layers
+  const localVectorLayersRef = useRef(localVectorLayers);
   const [showLoadTempModal, setShowLoadTempModal] = useState(false);
 
   // Query Builder State
@@ -171,9 +172,10 @@ function GISMap() {
     activeLayerToolRef.current = activeLayerTool;
     infoSelectionModeRef.current = infoSelectionMode;
     geoServerLayersRef.current = geoServerLayers;
+    localVectorLayersRef.current = localVectorLayers;
     activeHighlightLayerIdRef.current = activeHighlightLayerId;
     isHighlightAnimatingRef.current = isHighlightAnimating;
-  }, [activeLayerTool, infoSelectionMode, geoServerLayers, activeHighlightLayerId, isHighlightAnimating]);
+  }, [activeLayerTool, infoSelectionMode, geoServerLayers, localVectorLayers, activeHighlightLayerId, isHighlightAnimating]);
 
   // Manage interaction activation based on current tool/mode
   useEffect(() => {
@@ -571,7 +573,8 @@ function GISMap() {
 
   const handleHighlightLayer = async (layerId) => {
     if (!mapInstanceRef.current) return;
-    const layer = geoServerLayers.find(l => l.id === layerId);
+    const allLayers = [...geoServerLayers, ...localVectorLayers];
+    const layer = allLayers.find(l => l.id === layerId);
     if (!layer) return;
 
     // Toggle logic
@@ -588,7 +591,7 @@ function GISMap() {
     // If switching, reset previous layer first
     if (activeHighlightLayerId && activeHighlightLayerId !== layerId) {
       const prevLayer = operationalLayersRef.current[activeHighlightLayerId];
-      const prevLayerData = geoServerLayers.find(l => l.id === activeHighlightLayerId);
+      const prevLayerData = allLayers.find(l => l.id === activeHighlightLayerId);
       if (prevLayer && prevLayerData) prevLayer.setOpacity(prevLayerData.opacity || 1);
     }
 
@@ -597,18 +600,31 @@ function GISMap() {
     setActiveZoomLayerId(null);
 
     try {
-      const bbox = await getLayerBBox(layer.fullName);
-      if (bbox) {
-        // Pan to the layer
-        const p1 = fromLonLat([bbox[0], bbox[1]]);
-        const p2 = fromLonLat([bbox[2], bbox[3]]);
-        const extent = [p1[0], p1[1], p2[0], p2[1]];
+      if (layer.isLocal) {
+        // Local vector layer: read extent from OL source directly
+        const olLayer = operationalLayersRef.current[layerId];
+        if (olLayer) {
+          const extent = olLayer.getSource().getExtent();
+          mapInstanceRef.current.getView().fit(extent, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 14,
+            duration: 800
+          });
+        }
+      } else {
+        const bbox = await getLayerBBox(layer.fullName);
+        if (bbox) {
+          // Pan to the layer
+          const p1 = fromLonLat([bbox[0], bbox[1]]);
+          const p2 = fromLonLat([bbox[2], bbox[3]]);
+          const extent = [p1[0], p1[1], p2[0], p2[1]];
 
-        mapInstanceRef.current.getView().fit(extent, {
-          padding: [50, 50, 50, 50],
-          maxZoom: 14,
-          duration: 800
-        });
+          mapInstanceRef.current.getView().fit(extent, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 14,
+            duration: 800
+          });
+        }
       }
     } catch (err) {
       console.error('Highlight error:', err);
@@ -1241,7 +1257,7 @@ function GISMap() {
         const projection = view.getProjection();
         const visibleLayers = [
           ...geoServerLayersRef.current,
-          ...localVectorLayers
+          ...localVectorLayersRef.current
         ].filter(l => l.visible && l.queryable);
 
         // Hide previous card immediately
@@ -1385,15 +1401,20 @@ function GISMap() {
         const extent = dragBox.getGeometry().getExtent();
         const center = [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
         const projection = map.getView().getProjection().getCode();
-        const visibleLayers = geoServerLayersRef.current.filter(l => l.visible && l.queryable);
+        const allVisibleLayers = [
+          ...geoServerLayersRef.current,
+          ...localVectorLayersRef.current
+        ].filter(l => l.visible && l.queryable);
 
         setFeatureInfoResult(null);
         setFeatureInfoCoordinate(null);
         if (selectionSourceRef.current) selectionSourceRef.current.clear();
 
-        if (visibleLayers.length === 0) return;
+        if (allVisibleLayers.length === 0) return;
 
-        const results = await Promise.all(visibleLayers.map(async (layer) => {
+        // 1. Query WMS/GeoServer layers via WFS
+        const serverLayers = allVisibleLayers.filter(l => !l.isLocal);
+        const results = await Promise.all(serverLayers.map(async (layer) => {
           // Construct WFS BBOX query
           const [ws, name] = layer.fullName.split(':');
           const bboxStr = `${extent[0]},${extent[1]},${extent[2]},${extent[3]},${projection}`;
@@ -1413,17 +1434,45 @@ function GISMap() {
           }
         }));
 
-        const validResults = results.filter(r => r && r.features && r.features.length > 0);
+        let validResults = results.filter(r => r && r.features && r.features.length > 0);
+
+        // 2. Query Local Vector Layers by extent intersection
+        const localActiveLayers = allVisibleLayers.filter(l => l.isLocal);
+        localActiveLayers.forEach(layer => {
+          const layerInstance = operationalLayersRef.current[layer.id];
+          if (!layerInstance) return;
+          const source = layerInstance.getSource();
+          const features = [];
+          source.forEachFeatureIntersectingExtent(extent, (feature) => {
+            const props = feature.getProperties();
+            const { geometry, ...others } = props;
+            features.push({
+              type: 'Feature',
+              id: feature.getId() || others.id || `local-${Math.random()}`,
+              properties: others,
+              geometry: null
+            });
+          });
+          if (features.length > 0) {
+            validResults.push({
+              layerName: layer.name,
+              features: features
+            });
+          }
+        });
 
         // Add features to selection layer for highlighting
         if (selectionSourceRef.current && validResults.length > 0) {
           const format = new GeoJSON();
           validResults.forEach(res => {
-            const features = format.readFeatures({
-              type: 'FeatureCollection',
-              features: res.features
-            });
-            selectionSourceRef.current.addFeatures(features);
+            const filteredFeatures = res.features.filter(f => f.geometry);
+            if (filteredFeatures.length > 0) {
+              const olFeatures = format.readFeatures({
+                type: 'FeatureCollection',
+                features: filteredFeatures
+              });
+              selectionSourceRef.current.addFeatures(olFeatures);
+            }
           });
         }
 

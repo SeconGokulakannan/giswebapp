@@ -823,24 +823,22 @@ const LayerOperations = ({
                             </Tooltip.Portal>
                         </Tooltip.Root>
 
-                        {!layer.isLocal && (
-                            <Tooltip.Root>
-                                <Tooltip.Trigger asChild>
-                                    <button
-                                        className={`action-btn ${isHighlighting ? 'active animating' : ''}`}
-                                        onClick={() => handleHighlightLayer(layer.id)}
-                                    >
-                                        {isHighlighting ? <Square size={14} fill="currentColor" /> : <Play size={16} />}
-                                    </button>
-                                </Tooltip.Trigger>
-                                <Tooltip.Portal>
-                                    <Tooltip.Content className="TooltipContent" side="top" sideOffset={5}>
-                                        {isHighlighting ? 'Stop Highlight' : 'Highlight Layer'}
-                                        <Tooltip.Arrow className="TooltipArrow" />
-                                    </Tooltip.Content>
-                                </Tooltip.Portal>
-                            </Tooltip.Root>
-                        )}
+                        <Tooltip.Root>
+                            <Tooltip.Trigger asChild>
+                                <button
+                                    className={`action-btn ${isHighlighting ? 'active animating' : ''}`}
+                                    onClick={() => handleHighlightLayer(layer.id)}
+                                >
+                                    {isHighlighting ? <Square size={14} fill="currentColor" /> : <Play size={16} />}
+                                </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                                <Tooltip.Content className="TooltipContent" side="top" sideOffset={5}>
+                                    {isHighlighting ? 'Stop Highlight' : 'Highlight Layer'}
+                                    <Tooltip.Arrow className="TooltipArrow" />
+                                </Tooltip.Content>
+                            </Tooltip.Portal>
+                        </Tooltip.Root>
                     </div>
                 );
             }
