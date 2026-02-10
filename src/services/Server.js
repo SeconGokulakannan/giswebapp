@@ -50,7 +50,9 @@ export const getGeoServerLayers = async () => {
                 initialVisibility: Boolean(feature.properties.LayerVisibilityOnLoad),
                 layerId: feature.properties.LayerName,
                 fid: feature.id, // Store fid for WFS-T updates
-                geometryFieldName: feature.properties.GeometryFieldName || 'geom'
+                geometryFieldName: feature.properties.GeometryFieldName || 'geom',
+                geometryType: feature.properties.GeometryType || 'Unknown',
+                srid: feature.properties.SRId || '3857'
             }));
         }
     }
@@ -619,32 +621,47 @@ export const addNewLayerConfig = async (properties) => {
     }
 };
 
-export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature, geometryName = 'geom') => {
+export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown') => {
     try {
         if (!geometryFeature) {
             console.error("No geometry feature provided for creation");
             return false;
         }
 
-        const geometry = geometryFeature.getGeometry();
-        // Use the geometryName provided (from layer metadata)
-        // const geometryName = 'geom';
-        // geometryName is now passed as an argument
+        // Clone and transform geometry if needed
+        const geometry = geometryFeature.getGeometry().clone();
+
+        // Transform from Map Display Projection (EPSG:3857) to Layer Projection (e.g., EPSG:4326)
+        if (srid && srid !== '3857') {
+            try {
+                geometry.transform('EPSG:3857', `EPSG:${srid}`);
+                console.log(`Transformed geometry from EPSG:3857 to EPSG:${srid}`);
+            } catch (err) {
+                console.error(`Failed to transform geometry to EPSG:${srid}`, err);
+                // Fallback: proceed with original geometry, might fail on server
+            }
+        }
 
         // Convert OpenLayers Geometry to GML3 fragment
-        // This is a simplified GML construction. For complex cases, consider using ol/format/GML.
         const coords = geometry.getCoordinates();
         let gmlGeometry = '';
         const type = geometry.getType();
 
         if (type === 'Point') {
-            gmlGeometry = `<gml:Point srsName="EPSG:3857"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
+            gmlGeometry = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
         } else if (type === 'LineString') {
-            gmlGeometry = `<gml:LineString srsName="EPSG:3857"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
+            gmlGeometry = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
         } else if (type === 'Polygon') {
             // Polygons in GML are rings. First ring is exterior.
             const exterior = coords[0].map(c => c.join(' ')).join(' ');
-            gmlGeometry = `<gml:Polygon srsName="EPSG:3857"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+            let polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+
+            // Check if target layer expects MultiPolygon but we have a Polygon
+            if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
+                gmlGeometry = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
+            } else {
+                gmlGeometry = polygonXml;
+            }
         } else if (type === 'MultiPolygon') {
             // Simplified MultiPolygon support
             // ...implementation can be expanded if needed...
@@ -699,7 +716,7 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
             }
 
             // Skip geometry columns (they're added separately)
-            if (lowKey === 'geom' || lowKey === 'the_geom' || lowKey === 'geometry') {
+            if (lowKey === 'geom' || lowKey === 'the_geom' || lowKey === 'geometry' || lowKey === 'wkb_geometry') {
                 continue;
             }
 
@@ -710,13 +727,6 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
 
         // Add Geometry
         // Ensure geometryName matches what GeoServer expects (often 'geom' or 'the_geom').
-        console.log('🔍 SaveNewAttribute - Geometry Debug:', {
-            geometryName,
-            geometryType: type,
-            coordsLength: coords ? (Array.isArray(coords) ? coords.length : 'N/A') : 'null',
-            gmlGeometry: gmlGeometry.substring(0, 150),
-            fullGmlLength: gmlGeometry.length
-        });
         featureContentXml += `<${prefix}:${geometryName}>${gmlGeometry}</${prefix}:${geometryName}>`;
 
         // Use the exact namespace matching saveNewFeature — just the workspace prefix
@@ -736,8 +746,6 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
             </${fullLayerName}>
         </wfs:Insert>
         </wfs:Transaction>`.trim();
-
-        console.log('📤 SaveNewAttribute - Complete WFS-T XML:\n', wfsTransactionXml);
 
         const response = await fetch(`${GEOSERVER_URL}/wfs`, {
             method: 'POST',

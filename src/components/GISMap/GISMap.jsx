@@ -406,10 +406,14 @@ function GISMap() {
         fullName: layer.fullName,
         sequence: layer.sequence,
         layerId: layer.layerId, // Store the numeric/database ID
-        visible: layer.initialVisibility, // Use API property for initial visibility
+        initialVisibility: layer.initialVisibility, // Keep metadata copy
+        visible: layer.initialVisibility, // Used by the map logic
         opacity: 1,
         queryable: true,
-        cqlFilter: null
+        cqlFilter: null,
+        geometryFieldName: layer.geometryFieldName,
+        geometryType: layer.geometryType,
+        srid: layer.srid
       }));
       setGeoServerLayers(layerObjects.sort((a, b) => (a.sequence || 999) - (b.sequence || 999)));
     } catch (err) {
@@ -663,7 +667,7 @@ function GISMap() {
   };
 
   // ELITE: Save New Attribute (WFS-T Insert)
-  const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId, geometryName) => {
+  const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId, geometryName, srid, targetGeometryType) => {
     // specific feature from ID
     if (!vectorSourceRef.current) return false;
     const feature = vectorSourceRef.current.getFeatureById(geometryFeatureId);
@@ -679,7 +683,7 @@ function GISMap() {
       return false;
     }
 
-    const success = await SaveNewAttribute(fullLayerName, attributes, targetFeature, geometryName);
+    const success = await SaveNewAttribute(fullLayerName, attributes, targetFeature, geometryName, srid, targetGeometryType);
 
     if (success) {
       toast.success("Feature created successfully!");
@@ -2370,6 +2374,8 @@ function GISMap() {
                     drawings={availableDrawings}
                     onSaveNewAttribute={handleSaveNewAttribute}
                     geometryName={activeAttributeLayer.geometryFieldName}
+                    geometryType={activeAttributeLayer.geometryType}
+                    srid={activeAttributeLayer.srid}
                   />
                 )}
               </>

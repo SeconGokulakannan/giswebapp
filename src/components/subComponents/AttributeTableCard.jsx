@@ -7,7 +7,7 @@ import { toast } from 'react-hot-toast';
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute, isReadOnly = false, geometryName = 'geom' }) => {
+const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute, isReadOnly = false, geometryName = 'geom', geometryType = 'Unknown', srid = '3857' }) => {
     const [selectedRows, setSelectedRows] = useState([]);
     const [gridApi, setGridApi] = useState(null);
     const [isHighlighting, setIsHighlighting] = useState(false);
@@ -163,7 +163,7 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     delete attributes._isNew;
                     delete attributes._feature;
                     delete attributes.id;
-                    const success = await onSaveNewAttribute(layerFullName, attributes, drawingId, geometryName);
+                    const success = await onSaveNewAttribute(layerFullName, attributes, drawingId, geometryName, srid, geometryType);
                     if (success) insertSuccessCount++;
                 }
             }
@@ -363,25 +363,39 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                                 {isAddMenuOpen && (
                                     <div className="elite-dropdown-menu">
                                         <div className="elite-dropdown-header">
-                                            <span>Select Drawing</span>
+                                            <span>Select Drawing ({geometryType})</span>
                                             <button className="dropdown-close-btn" onClick={() => setIsAddMenuOpen(false)}>
                                                 <X size={14} />
                                             </button>
                                         </div>
-                                        {drawings && drawings.length > 0 ? (
-                                            drawings.map(d => (
-                                                <button
-                                                    key={d.id}
-                                                    className="elite-dropdown-item"
-                                                    onClick={() => handleAddFeature(d)}
-                                                >
-                                                    {getShapeIcon(d.type)}
-                                                    {d.name}
-                                                </button>
-                                            ))
-                                        ) : (
-                                            <div className="elite-dropdown-empty">No drawings found</div>
-                                        )}
+                                        {(() => {
+                                            const filteredDrawings = drawings ? drawings.filter(d => {
+                                                if (!geometryType || geometryType === 'Unknown') return true;
+                                                const dType = d.type ? d.type.toLowerCase() : '';
+                                                const lType = geometryType.toLowerCase();
+
+                                                if (lType.includes('point')) return dType.includes('point');
+                                                if (lType.includes('line')) return dType.includes('line');
+                                                if (lType.includes('polygon')) return dType.includes('polygon') || dType.includes('box') || dType.includes('rectangle');
+
+                                                return true;
+                                            }) : [];
+
+                                            return filteredDrawings.length > 0 ? (
+                                                filteredDrawings.map(d => (
+                                                    <button
+                                                        key={d.id}
+                                                        className="elite-dropdown-item"
+                                                        onClick={() => handleAddFeature(d)}
+                                                    >
+                                                        {getShapeIcon(d.type)}
+                                                        {d.name}
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="elite-dropdown-empty">No compatible drawings found</div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                             </div>
