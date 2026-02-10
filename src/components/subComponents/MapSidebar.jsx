@@ -1,6 +1,6 @@
 import React from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { Plus, Minus, LayoutGrid, Maximize, LocateFixed } from 'lucide-react';
+import { Plus, Minus, LayoutGrid, Maximize, LocateFixed, Navigation } from 'lucide-react';
 
 const MapSidebar = ({
     handleZoomIn,
@@ -8,7 +8,7 @@ const MapSidebar = ({
     showGrid,
     setShowGrid,
     handleFullscreen,
-    handleLocateMe,
+    handleLocateMe
 }) => {
     return (
         <div className="elite-sidebar">
@@ -65,7 +65,7 @@ const MapSidebar = ({
                 <Tooltip.Root>
                     <Tooltip.Trigger asChild>
                         <button className="elite-sidebar-btn locate" onClick={handleLocateMe}>
-                            <LocateFixed size={14} strokeWidth={1.5} />
+                            <Navigation size={14} strokeWidth={1.5} />
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>

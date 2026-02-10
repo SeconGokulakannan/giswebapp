@@ -66,6 +66,7 @@ import {
   saveNewFeature
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
+import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
 
 function GISMap() {
@@ -164,8 +165,9 @@ function GISMap() {
   const analysisVectorLayersRef = useRef({}); // layerId -> olVectorLayer
   const analysisWMSVisibilitiesRef = useRef({}); // layerId -> originalVisibility (for restore)
   const [bookmarks, setBookmarks] = useState(() => {
-    const saved = localStorage.getItem('gis_bookmarks');
-    return saved ? JSON.parse(saved) : [];
+    const key = getUniqueCookieKey('gis_bookmarks');
+    const saved = getCookie(key);
+    return saved || [];
   });
 
   useEffect(() => {
@@ -350,7 +352,8 @@ function GISMap() {
     }));
 
     // Save Bookmarks
-    localStorage.setItem('gis_bookmarks', JSON.stringify(bookmarks));
+    const key = getUniqueCookieKey('gis_bookmarks');
+    setCookie(key, bookmarks, 7);
   };
 
   // Sync unit ref and trigger redraw when state changes
