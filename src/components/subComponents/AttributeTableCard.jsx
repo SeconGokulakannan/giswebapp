@@ -7,7 +7,7 @@ import { toast } from 'react-hot-toast';
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute, isReadOnly = false }) => {
+const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId, data, isLoading, onHighlightFeatures, isMinimized, onToggleMinimize, onClearHighlights, onDeleteFeature, onUpdateFeatures, drawings, onSaveNewAttribute, isReadOnly = false, geometryName = 'geom' }) => {
     const [selectedRows, setSelectedRows] = useState([]);
     const [gridApi, setGridApi] = useState(null);
     const [isHighlighting, setIsHighlighting] = useState(false);
@@ -157,9 +157,13 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                 const attributes = { ...row };
                 delete attributes.drawingId; // Clean up internal keys if any other exist
 
-                // Call server add
+                // Call server add — clean internal keys before sending
                 if (onSaveNewAttribute) {
-                    const success = await onSaveNewAttribute(layerFullName, attributes, drawingId);
+                    // Remove all internal/UI-only keys that shouldn't be sent as WFS properties
+                    delete attributes._isNew;
+                    delete attributes._feature;
+                    delete attributes.id;
+                    const success = await onSaveNewAttribute(layerFullName, attributes, drawingId, geometryName);
                     if (success) insertSuccessCount++;
                 }
             }
@@ -203,15 +207,24 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
             gridApi.deselectAll();
         }
 
-        // Create a new blank row
+        // Create a new blank row with all columns pre-populated
         const newId = `new-${Date.now()}`;
-        // Initialize with drawingId
+        // Initialize all columns from existing data so cells are visible and editable
+        const initialData = { drawingId: drawing.id };
+        if (data && data.length > 0 && data[0].properties) {
+            Object.keys(data[0].properties).forEach(key => {
+                // Skip geometry columns — they come from the drawing
+                const lowKey = key.toLowerCase();
+                if (lowKey === 'geom' || lowKey === 'the_geom' || lowKey === 'geometry') return;
+
+                // Initialize all fields as empty strings
+                // Empty strings will be skipped in Server.js, letting the database handle defaults
+                initialData[key] = '';
+            });
+        }
         setNewRows(prev => ({
             ...prev,
-            [newId]: {
-                drawingId: drawing.id,
-                // Initialize other columns as empty strings or nulls based on columnDefs if available
-            }
+            [newId]: initialData
         }));
         setIsAddMenuOpen(false);
         toast.success(`Added new row for ${drawing.name}. Please enter attributes.`);

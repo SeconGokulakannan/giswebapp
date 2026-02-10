@@ -663,7 +663,7 @@ function GISMap() {
   };
 
   // ELITE: Save New Attribute (WFS-T Insert)
-  const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId) => {
+  const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId, geometryName) => {
     // specific feature from ID
     if (!vectorSourceRef.current) return false;
     const feature = vectorSourceRef.current.getFeatureById(geometryFeatureId);
@@ -679,7 +679,7 @@ function GISMap() {
       return false;
     }
 
-    const success = await SaveNewAttribute(fullLayerName, attributes, targetFeature);
+    const success = await SaveNewAttribute(fullLayerName, attributes, targetFeature, geometryName);
 
     if (success) {
       toast.success("Feature created successfully!");
@@ -2369,6 +2369,7 @@ function GISMap() {
                     onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
                     drawings={availableDrawings}
                     onSaveNewAttribute={handleSaveNewAttribute}
+                    geometryName={activeAttributeLayer.geometryFieldName}
                   />
                 )}
               </>

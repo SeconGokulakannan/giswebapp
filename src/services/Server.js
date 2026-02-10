@@ -49,7 +49,8 @@ export const getGeoServerLayers = async () => {
                 sequence: feature.properties.LayerSequenceNo ?? 999,
                 initialVisibility: Boolean(feature.properties.LayerVisibilityOnLoad),
                 layerId: feature.properties.LayerName,
-                fid: feature.id // Store fid for WFS-T updates
+                fid: feature.id, // Store fid for WFS-T updates
+                geometryFieldName: feature.properties.GeometryFieldName || 'geom'
             }));
         }
     }
@@ -618,7 +619,7 @@ export const addNewLayerConfig = async (properties) => {
     }
 };
 
-export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature) => {
+export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature, geometryName = 'geom') => {
     try {
         if (!geometryFeature) {
             console.error("No geometry feature provided for creation");
@@ -626,10 +627,9 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
         }
 
         const geometry = geometryFeature.getGeometry();
-        // Assume default geometry name if not found in properties (GeoServer defaults: 'geom', 'the_geom')
-        // We will try 'geom' as a safe default for now, or check if properties has a hint.
-        // A more robust way would be checking DescribeFeatureType, but for now we proceed with standard WFS convention.
-        const geometryName = 'geom';
+        // Use the geometryName provided (from layer metadata)
+        // const geometryName = 'geom';
+        // geometryName is now passed as an argument
 
         // Convert OpenLayers Geometry to GML3 fragment
         // This is a simplified GML construction. For complex cases, consider using ol/format/GML.
@@ -663,22 +663,64 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
         // Unlike Update, Insert expects the actual feature structure: <prefix:LayerName><prefix:prop>val</prefix:prop></prefix:LayerName>
         let featureContentXml = '';
 
-        // Add Attributes
+        // Helper function to escape XML special characters
+        const escapeXml = (str) => {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        };
+
+        // Add Attributes — match user request to send 0/empty for identity columns
         for (const [key, value] of Object.entries(properties)) {
-            // Skip internal/empty values. 
-            if (!key || key === 'id' || key.startsWith('_') || value === null || value === undefined) continue;
-            featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
+            const lowKey = key.toLowerCase();
+
+            // Skip internal/identity columns
+            if (!key ||
+                key === 'id' ||
+                lowKey === 'layerid' ||
+                lowKey === 'gid' ||
+                lowKey === 'objectid' ||
+                lowKey === 'fid' ||
+                lowKey === 'ogc_fid' ||
+                key.startsWith('_') ||
+                value === null ||
+                value === undefined ||
+                value === '' // Skip empty strings to avoid type mismatch errors
+            ) continue;
+
+            // Skip computed/function columns (PostGIS functions)
+            if (lowKey.startsWith('st_')) {
+                console.log(`Skipping computed column: ${key}`);
+                continue;
+            }
+
+            // Skip geometry columns (they're added separately)
+            if (lowKey === 'geom' || lowKey === 'the_geom' || lowKey === 'geometry') {
+                continue;
+            }
+
+            // Escape XML special characters in the value
+            const escapedValue = escapeXml(value);
+            featureContentXml += `<${prefix}:${key}>${escapedValue}</${prefix}:${key}>`;
         }
 
         // Add Geometry
         // Ensure geometryName matches what GeoServer expects (often 'geom' or 'the_geom').
+        console.log('🔍 SaveNewAttribute - Geometry Debug:', {
+            geometryName,
+            geometryType: type,
+            coordsLength: coords ? (Array.isArray(coords) ? coords.length : 'N/A') : 'null',
+            gmlGeometry: gmlGeometry.substring(0, 150),
+            fullGmlLength: gmlGeometry.length
+        });
         featureContentXml += `<${prefix}:${geometryName}>${gmlGeometry}</${prefix}:${geometryName}>`;
 
-        // We need to define the workspace namespace. 
-        // We often don't know the exact URI without DescribeFeatureType, but usually http://{workspace} works or we can try a blind guess if needed.
-        // Better strategy: Add the namespace to the root if we can, or on the element.
-        // Assuming typical GeoServer defaults: xmlns:prefix="http://{prefix}" or matching the workspace name.
-        // For now, let's inject a standard placeholder or try to rely on GeoServer's leniency.
+        // Use the exact namespace matching saveNewFeature — just the workspace prefix
+        const namespaceUri = prefix;
 
         const wfsTransactionXml = `
         <wfs:Transaction service="WFS" version="1.1.0"
@@ -686,7 +728,7 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
         xmlns:ogc="http://www.opengis.net/ogc"
         xmlns:gml="http://www.opengis.net/gml"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:${prefix}="${GEOSERVER_URL}/workspaces/${prefix}"
+        xmlns:${prefix}="${namespaceUri}"
         xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
         <wfs:Insert>
             <${fullLayerName}>
@@ -694,6 +736,8 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
             </${fullLayerName}>
         </wfs:Insert>
         </wfs:Transaction>`.trim();
+
+        console.log('📤 SaveNewAttribute - Complete WFS-T XML:\n', wfsTransactionXml);
 
         const response = await fetch(`${GEOSERVER_URL}/wfs`, {
             method: 'POST',
