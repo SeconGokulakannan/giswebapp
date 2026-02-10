@@ -2418,7 +2418,7 @@ function GISMap() {
             onUpdateFeatures={handleUpdateLayerMetadata}
             onSaveNewFeature={handleSaveNewLayerMetadata}
             onRefresh={handleRefreshLayerManagement}
-            onOpenLoadTempModal={() => setShowLoadTempModal(true)}
+            onOpenLoadTempModal={() => { setShowLayerManagement(false); setShowLoadTempModal(true); }}
           />
 
           <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
