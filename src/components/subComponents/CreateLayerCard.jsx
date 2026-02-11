@@ -20,10 +20,14 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
     const resetState = () => {
         setLayerName('');
         setGeometryType('Point');
-        setAttributes([
-            { name: 'name', type: 'String' },
-            { name: 'description', type: 'String' }
-        ]);
+        if (activeTab === 'upload') {
+            setAttributes([]);
+        } else {
+            setAttributes([
+                { name: 'name', type: 'String' },
+                { name: 'description', type: 'String' }
+            ]);
+        }
         setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
         setParsedData(null);
     };
@@ -31,7 +35,14 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
     // Clear on close
     useEffect(() => {
         if (!isOpen) {
-            resetState();
+            setLayerName('');
+            setGeometryType('Point');
+            setAttributes([
+                { name: 'name', type: 'String' },
+                { name: 'description', type: 'String' }
+            ]);
+            setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
+            setParsedData(null);
             setActiveTab('manual');
         }
     }, [isOpen]);
@@ -57,6 +68,16 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
             });
             return;
         }
+
+        if (tab === 'upload') {
+            setAttributes([]);
+        } else {
+            setAttributes([
+                { name: 'name', type: 'String' },
+                { name: 'description', type: 'String' }
+            ]);
+        }
+
         setActiveTab(tab);
     };
 
