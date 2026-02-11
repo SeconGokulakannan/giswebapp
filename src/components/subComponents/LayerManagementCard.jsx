@@ -361,7 +361,7 @@ const LayerManagementCard = ({
                                                 if (!status) {
                                                     // Try finding key by matching suffix
                                                     const matchingKey = Object.keys(layerStatuses).find(k => k === layerName || k.split(':').pop() === layerName || layerName.split(':').pop() === k);
-                                                    status = matchingKey ? layerStatuses[matchingKey] : 'Layer Pending';
+                                                    status = matchingKey ? layerStatuses[matchingKey] : 'Un-Available';
                                                 }
 
                                                 let bgColor, textColor, borderColor;
