@@ -40,6 +40,7 @@ import LayerManagementCard from '../subComponents/LayerManagementCard';
 import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
 import SpatialJoinCard from '../subComponents/SpatialJoinCard';
 import CreateLayerCard from '../subComponents/CreateLayerCard';
+import DataManipulationCard from '../subComponents/DataManipulationCard';
 import { getRenderPixel } from 'ol/render';
 
 import {
@@ -69,6 +70,7 @@ import {
   addNewLayerConfig,
   publishNewLayer,
   batchInsertFeatures,
+  batchUpdateFeaturesByProperty,
   WORKSPACE
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
@@ -166,6 +168,7 @@ function GISMap() {
   const [showSpatialJoin, setShowSpatialJoin] = useState(false);
   const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
   const [showCreateLayerModal, setShowCreateLayerModal] = useState(false);
+  const [showDataManipulationModal, setShowDataManipulationModal] = useState(false);
   const spatialJoinVectorLayersRef = useRef({});
   const spatialJoinWMSVisibilitiesRef = useRef({});
 
@@ -1070,6 +1073,59 @@ function GISMap() {
       return true;
     } catch (err) {
       console.error("Publishing error in GISMap:", err);
+      return false;
+    }
+  };
+
+  const handleDataManipulation = async (config) => {
+    const { operation, targetLayer, sourceData, mapping, matchingKey } = config;
+    const fullLayerName = targetLayer.fullName;
+
+    try {
+      toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'} for ${sourceData.features.length} features...`, { id: 'manipulate-toast' });
+
+      // Transform source features to match target properties using the mapping
+      const mappedFeatures = sourceData.features.map(f => {
+        const newProps = {};
+        Object.entries(mapping).forEach(([destKey, srcKey]) => {
+          if (srcKey) {
+            newProps[destKey] = f.properties[srcKey];
+          }
+        });
+
+        // For Update, we MUST include the matching key value even if not explicitly mapped for update
+        if (operation === 'update' && matchingKey && !newProps[matchingKey]) {
+          newProps[matchingKey] = f.properties[matchingKey];
+        }
+
+        return {
+          ...f,
+          properties: newProps
+        };
+      });
+
+      let success = false;
+      if (operation === 'addon') {
+        success = await batchInsertFeatures(fullLayerName, mappedFeatures, 'geom', '4326');
+      } else {
+        success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey);
+      }
+
+      if (success) {
+        toast.success(`${operation === 'addon' ? 'Data Addon' : 'Data Update'} successful!`, { id: 'manipulate-toast' });
+        // Refresh map layer
+        const olLayer = operationalLayersRef.current[targetLayer.id];
+        if (olLayer) {
+          olLayer.getSource().updateParams({ '_t': Date.now() });
+        }
+        return true;
+      } else {
+        toast.error("Operation failed. Check server logs.", { id: 'manipulate-toast' });
+        return false;
+      }
+    } catch (err) {
+      console.error("Manual manipulation error:", err);
+      toast.error(`Fatal error: ${err.message}`, { id: 'manipulate-toast' });
       return false;
     }
   };
@@ -2609,6 +2665,17 @@ function GISMap() {
               setShowLayerManagement(false);
               setShowCreateLayerModal(true);
             }}
+            onOpenDataManipulation={() => {
+              setShowLayerManagement(false);
+              setShowDataManipulationModal(true);
+            }}
+          />
+
+          <DataManipulationCard
+            isOpen={showDataManipulationModal}
+            onClose={() => setShowDataManipulationModal(false)}
+            geoServerLayers={geoServerLayers}
+            onManipulate={handleDataManipulation}
           />
 
           <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />

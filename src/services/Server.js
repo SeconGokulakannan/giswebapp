@@ -1095,3 +1095,76 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
         return false;
     }
 };
+
+/**
+ * ELITE: Batch Update Features by Property
+ * Updates multiple features based on a matching property (Unique Key)
+ * @param {string} fullLayerName - Workspace:LayerName
+ * @param {Array} features - Array of objects containing properties to update
+ * @param {string} matchingKey - The property name used to match existing features
+ */
+export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingKey) => {
+    try {
+        if (!features || features.length === 0) return true;
+
+        const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
+        let updatesXml = '';
+
+        for (const feature of features) {
+            const keyValue = feature.properties?.[matchingKey];
+            if (keyValue === undefined || keyValue === null) continue;
+
+            let propertyXml = '';
+            for (const [key, value] of Object.entries(feature.properties || {})) {
+                const lowKey = key.toLowerCase();
+                // Skip internal/identity columns and the matching key itself in the Update body
+                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'wkb_geometry'].includes(lowKey) ||
+                    key === matchingKey ||
+                    key.startsWith('_') ||
+                    value === null ||
+                    value === undefined) continue;
+
+                propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
+            }
+
+            if (!propertyXml) continue; // Nothing to update for this feature
+
+            updatesXml += `
+            <wfs:Update typeName="${fullLayerName}">
+                ${propertyXml}
+                <ogc:Filter>
+                    <ogc:PropertyIsEqualTo>
+                        <ogc:PropertyName>${matchingKey}</ogc:PropertyName>
+                        <ogc:Literal>${keyValue}</ogc:Literal>
+                    </ogc:PropertyIsEqualTo>
+                </ogc:Filter>
+            </wfs:Update>`;
+        }
+
+        if (!updatesXml) return true;
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+            ${updatesXml}
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const result = await response.text();
+            return result.includes('TransactionSummary') && !result.includes('ExceptionText');
+        }
+        return false;
+    } catch (err) {
+        console.error("Batch update failed:", err);
+        return false;
+    }
+};
