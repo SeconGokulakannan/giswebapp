@@ -84,10 +84,14 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
 
                     // Deduce attributes from first feature properties
                     const props = firstFeature.properties;
-                    const deducedAttrs = Object.keys(props).map(key => ({
-                        name: key,
-                        type: typeof props[key] === 'number' ? 'Double' : 'String'
-                    }));
+                    const deducedAttrs = Object.keys(props).map(key => {
+                        const type = typeof props[key] === 'number' ? 'Double' : 'String';
+                        return {
+                            name: key,
+                            type: type,
+                            originalType: type
+                        };
+                    });
                     setAttributes(deducedAttrs);
                     setParsedData(geojson);
                     toast.success("Shapefile parsed. Schema detected.");
@@ -416,15 +420,20 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                                             placeholder="Field Name"
                                             value={attr.name}
                                             onChange={(e) => handleAttributeChange(index, 'name', e.target.value)}
-                                            disabled={isPublishing || activeTab === 'upload'}
-                                            style={{ flex: 1, padding: '6px 10px', fontSize: '0.8rem', opacity: activeTab === 'upload' ? 0.7 : 1 }}
+                                            disabled={isPublishing}
+                                            style={{ flex: 1, padding: '6px 10px', fontSize: '0.8rem' }}
                                         />
                                         <select
                                             className="elite-input"
                                             value={attr.type}
                                             onChange={(e) => handleAttributeChange(index, 'type', e.target.value)}
-                                            disabled={isPublishing || activeTab === 'upload'}
-                                            style={{ width: '100px', padding: '6px 10px', fontSize: '0.8rem', opacity: activeTab === 'upload' ? 0.7 : 1 }}
+                                            disabled={isPublishing || (activeTab === 'upload' && attr.originalType === 'String')}
+                                            style={{
+                                                width: '100px',
+                                                padding: '6px 10px',
+                                                fontSize: '0.8rem',
+                                                opacity: (activeTab === 'upload' && attr.originalType === 'String') ? 0.7 : 1
+                                            }}
                                         >
                                             <option value="String">String</option>
                                             <option value="Double">Double</option>
