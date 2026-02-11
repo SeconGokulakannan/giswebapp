@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fetchLayerStatuses } from '../../services/Server';
-import { X, LayoutGrid, Plus, Eraser, Save, RefreshCw, Layers, Upload, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { X, LayoutGrid, Plus, Eraser, Save, RefreshCw, Layers, Upload, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const LayerManagementCard = ({
@@ -12,8 +12,10 @@ const LayerManagementCard = ({
     onUpdateFeatures,
     onSaveNewFeature,
     onRefresh,
-    onOpenLoadTempModal
+    onOpenLoadTempModal,
+    onOpenCreateLayer
 }) => {
+    // ...existing code...
     // Import the new service function at the top of the file, but since I can only replace chunks, I'll assumme the import is handled or I'll add it here if possible. 
     // Wait, I cannot add imports easily with multi_replace if they are at the top. 
     // I will use a separate replace for the import or just use the existing import if I can find it.
@@ -232,13 +234,23 @@ const LayerManagementCard = ({
                 }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem', gap: '6px' }}>
-                            <Upload size={14} />&nbsp;
+                            <Globe size={14} />&nbsp;
                             Add Acting Layer
+                        </button>
+                        <button className="elite-btn primary" onClick={onOpenCreateLayer} style={{
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            gap: '6px',
+                            background: 'linear-gradient(135deg, #06b6d4, #3b82f6)'
+                        }}>
+                            <LayersPlus size={14} />&nbsp;
+                            Publish New Layer
                         </button>
                         <button className="elite-btn secondary" onClick={handleAddRow} style={{ padding: '6px 14px', fontSize: '0.8rem', gap: '6px' }}>
                             <Plus size={14} />&nbsp;
-                            Add Configuration
+                            Add Layer Config
                         </button>
+
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

@@ -39,6 +39,7 @@ import AnalysisCard from '../subComponents/AnalysisCard';
 import LayerManagementCard from '../subComponents/LayerManagementCard';
 import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
 import SpatialJoinCard from '../subComponents/SpatialJoinCard';
+import CreateLayerCard from '../subComponents/CreateLayerCard';
 import { getRenderPixel } from 'ol/render';
 
 import {
@@ -65,7 +66,8 @@ import {
   updateFeature,
   SaveNewAttribute,
   saveNewFeature,
-  addNewLayerConfig
+  addNewLayerConfig,
+  publishNewLayer
 } from '../../services/Server';
 import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from '../../services/ServerCredentials';
 import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
@@ -161,6 +163,7 @@ function GISMap() {
   // Spatial Join State
   const [showSpatialJoin, setShowSpatialJoin] = useState(false);
   const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
+  const [showCreateLayerModal, setShowCreateLayerModal] = useState(false);
   const spatialJoinVectorLayersRef = useRef({});
   const spatialJoinWMSVisibilitiesRef = useRef({});
 
@@ -1035,6 +1038,17 @@ function GISMap() {
     spatialJoinVectorLayersRef.current = {};
     spatialJoinWMSVisibilitiesRef.current = {};
     toast.success('Spatial join reset. Layers restored.');
+  };
+
+  const handlePublishNewLayer = async (config) => {
+    // Calling the service implemented in Server.js
+    const success = await publishNewLayer(config);
+    if (success) {
+      // Refresh layers list to show the newly published layer
+      handleFetchGeoServerLayers();
+      return true;
+    }
+    return false;
   };
 
   // Analysis Playback Loop
@@ -2549,6 +2563,12 @@ function GISMap() {
             targetLayerId={activeSpatialJoinLayerId}
           />
 
+          <CreateLayerCard
+            isOpen={showCreateLayerModal}
+            onClose={() => setShowCreateLayerModal(false)}
+            onPublish={handlePublishNewLayer}
+          />
+
           <LayerManagementCard
             isOpen={showLayerManagement}
             onClose={() => setShowLayerManagement(false)}
@@ -2558,7 +2578,8 @@ function GISMap() {
             onUpdateFeatures={handleUpdateLayerMetadata}
             onSaveNewFeature={handleSaveNewLayerMetadata}
             onRefresh={handleRefreshLayerManagement}
-            onOpenLoadTempModal={() => { setShowLayerManagement(false); setShowLoadTempModal(true); }}
+            onOpenLoadTempModal={() => setShowLoadTempModal(true)}
+            onOpenCreateLayer={() => setShowCreateLayerModal(true)}
           />
 
           <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />

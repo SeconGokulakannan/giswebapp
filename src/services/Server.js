@@ -924,3 +924,85 @@ export const QueryBuilderFilter = (conditions) => {
 
     return cqlParts.join("");
 };
+
+/**
+ * ELITE: Dynamic Layer Publishing
+ * 1. Creates a new PostGIS table via GeoServer REST (FeatureType)
+ * 2. Registers metadata in the application's Layer table
+ */
+export const publishNewLayer = async (config) => {
+    const { layerName, geometryType, srid = '4326', attributes = [] } = config;
+
+    try {
+        // Step 1: Find the PostGIS DataStore name
+        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores.json`, {
+            headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
+        });
+
+        if (!dsRes.ok) throw new Error("Failed to find datastores in workspace");
+        const dsData = await dsRes.json();
+        const dataStoreName = dsData.dataStores?.dataStore?.[0]?.name;
+
+        if (!dataStoreName) throw new Error("No PostGIS DataStore found in workspace. Please ensure one is configured.");
+
+        // Step 2: Create the FeatureType (and PostGIS Table)
+        const featureTypeBody = {
+            featureType: {
+                name: layerName,
+                nativeName: layerName,
+                title: layerName,
+                srs: `EPSG:${srid}`,
+                attributes: {
+                    attribute: [
+                        {
+                            name: 'geom',
+                            binding: `org.locationtech.jts.geom.${geometryType}`,
+                            nillable: true
+                        },
+                        ...attributes.map(attr => ({
+                            name: attr.name,
+                            binding: attr.type === 'String' ? 'java.lang.String' : 'java.lang.Double',
+                            nillable: true
+                        }))
+                    ]
+                }
+            }
+        };
+
+        const ftRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${dataStoreName}/featuretypes`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(featureTypeBody)
+        });
+
+        if (!ftRes.ok) {
+            const errorText = await ftRes.text();
+            throw new Error(`GeoServer creation failed: ${errorText}`);
+        }
+
+        // Step 3: Register in application metadata (Layer table)
+        // We use our existing addNewLayerConfig which hits the WFS-T on the metadata layer
+        const metadata = {
+            LayerName: layerName,
+            LayerSequenceNo: 0, // Will be re-ordered
+            LayerVisibilityOnLoad: true,
+            IsShowLayer: true,
+            GeometryFieldName: 'geom',
+            GeometryType: geometryType,
+            SRId: srid
+        };
+
+        const registered = await addNewLayerConfig(metadata);
+        if (!registered) {
+            console.warn("Layer published in GeoServer but metadata registration failed.");
+        }
+
+        return true;
+    } catch (err) {
+        console.error("Publishing error:", err);
+        throw err;
+    }
+};
