@@ -1170,3 +1170,110 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
         return false;
     }
 };
+
+/**
+ * ELITE: Fetch Full GeoServer Layer Details
+ * Retrieves all layers in the workspace along with their SRS and attributes
+ */
+export const fetchFullGeoServerDetails = async () => {
+    try {
+        // 1. Get layers list
+        const listRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers.json`, {
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+        if (!listRes.ok) throw new Error("Could not fetch layers list");
+        const listData = await listRes.json();
+        const layers = listData.layers?.layer || [];
+
+        // 2. Fetch details for each layer concurrently
+        const detailsPromises = layers.map(async (l) => {
+            const layerUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${l.name}.json`;
+            const detailRes = await fetch(layerUrl, {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+            if (!detailRes.ok) return null;
+            const detailData = await detailRes.json();
+
+            const resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${l.name}.json`;
+            const resourceRes = await fetch(resourceUrl, {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+            if (!resourceRes.ok) return null;
+            const resourceData = await resourceRes.json();
+
+            // Extract what we need: Name, DataStore, SRS, Attributes
+            const featureType = resourceData.featureType;
+            return {
+                id: l.name, // Use name as ID for server-only view
+                name: l.name,
+                fullPath: `${WORKSPACE}:${l.name}`,
+                srs: featureType.srs,
+                nativeSRS: featureType.nativeCRS,
+                store: featureType.store.name,
+                attributes: featureType.attributes?.attribute || [],
+                geometryType: featureType.attributes?.attribute?.find(a =>
+                    ['geom', 'the_geom', 'wkb_geometry', 'geometry', 'way'].includes(a.name.toLowerCase())
+                )?.binding?.split('.').pop() || 'Unknown'
+            };
+        });
+
+        const allDetails = await Promise.all(detailsPromises);
+        return allDetails.filter(Boolean);
+    } catch (err) {
+        console.error("Fetch full GeoServer details failed:", err);
+        return [];
+    }
+};
+
+/**
+ * ELITE: Update GeoServer Layer Projection
+ */
+export const updateGeoServerLayerSRS = async (layerName, newSrid) => {
+    try {
+        const body = {
+            featureType: {
+                srs: `EPSG:${newSrid}`,
+                projectionPolicy: 'FORCE_DECLARED'
+            }
+        };
+
+        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        return response.ok;
+    } catch (err) {
+        console.error("SRS update failed:", err);
+        return false;
+    }
+};
+
+/**
+ * ELITE: Delete Layer from GeoServer
+ * Removes both the Layer and the FeatureType
+ */
+export const deleteGeoServerLayerFull = async (layerName) => {
+    try {
+        // 1. Delete the Layer
+        const layerDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${layerName}.json`, {
+            method: 'DELETE',
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+
+        // 2. Delete the FeatureType (recurse=true to clean up)
+        const ftDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json?recurse=true`, {
+            method: 'DELETE',
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+
+        return layerDel.ok || ftDel.ok;
+    } catch (err) {
+        console.error("Delete GeoServer layer failed:", err);
+        return false;
+    }
+};

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fetchLayerStatuses } from '../../services/Server';
-import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft } from 'lucide-react';
+import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const LayerManagementCard = ({
@@ -14,7 +14,8 @@ const LayerManagementCard = ({
     onRefresh,
     onOpenLoadTempModal,
     onOpenCreateLayer,
-    onOpenDataManipulation
+    onOpenDataManipulation,
+    onOpenServerInfo
 }) => {
     const [layerStatuses, setLayerStatuses] = useState({});
     const [pendingChanges, setPendingChanges] = useState({});
@@ -192,6 +193,9 @@ const LayerManagementCard = ({
                         </button>
                         <button className="elite-btn primary" onClick={onOpenDataManipulation} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #f59e0b, #3b82f6)' }}>
                             <ArrowRightLeft size={14} />&nbsp;Data Manipulation
+                        </button>
+                        <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)' }}>
+                            <Server size={14} />&nbsp;Server Info
                         </button>
                         <button className="elite-btn secondary" onClick={handleAddRow} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
                             <Plus size={14} />&nbsp;Add Layer Config

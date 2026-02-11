@@ -41,6 +41,7 @@ import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
 import SpatialJoinCard from '../subComponents/SpatialJoinCard';
 import CreateLayerCard from '../subComponents/CreateLayerCard';
 import DataManipulationCard from '../subComponents/DataManipulationCard';
+import ServerInfoCard from '../subComponents/ServerInfoCard';
 import { getRenderPixel } from 'ol/render';
 
 import {
@@ -169,6 +170,7 @@ function GISMap() {
   const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
   const [showCreateLayerModal, setShowCreateLayerModal] = useState(false);
   const [showDataManipulationModal, setShowDataManipulationModal] = useState(false);
+  const [showServerInfoModal, setShowServerInfoModal] = useState(false);
   const spatialJoinVectorLayersRef = useRef({});
   const spatialJoinWMSVisibilitiesRef = useRef({});
 
@@ -2669,6 +2671,10 @@ function GISMap() {
               setShowLayerManagement(false);
               setShowDataManipulationModal(true);
             }}
+            onOpenServerInfo={() => {
+              setShowLayerManagement(false);
+              setShowServerInfoModal(true);
+            }}
           />
 
           <DataManipulationCard
@@ -2676,6 +2682,11 @@ function GISMap() {
             onClose={() => setShowDataManipulationModal(false)}
             geoServerLayers={geoServerLayers}
             onManipulate={handleDataManipulation}
+          />
+
+          <ServerInfoCard
+            isOpen={showServerInfoModal}
+            onClose={() => setShowServerInfoModal(false)}
           />
 
           <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
