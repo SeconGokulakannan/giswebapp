@@ -962,7 +962,9 @@ export const publishNewLayer = async (config) => {
                         },
                         ...attributes.map(attr => ({
                             name: attr.name,
-                            binding: attr.type === 'String' ? 'java.lang.String' : 'java.lang.Double',
+                            binding: attr.type === 'String' ? 'java.lang.String' :
+                                attr.type === 'Integer' ? 'java.lang.Integer' :
+                                    attr.type === 'Boolean' ? 'java.lang.Boolean' : 'java.lang.Double',
                             nillable: true
                         }))
                     ]

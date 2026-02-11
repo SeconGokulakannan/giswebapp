@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
 
@@ -85,11 +85,19 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                     // Deduce attributes from first feature properties
                     const props = firstFeature.properties;
                     const deducedAttrs = Object.keys(props).map(key => {
-                        const type = typeof props[key] === 'number' ? 'Double' : 'String';
+                        const val = props[key];
+                        let type = 'String';
+                        if (typeof val === 'number') {
+                            type = Number.isInteger(val) ? 'Integer' : 'Double';
+                        } else if (typeof val === 'boolean') {
+                            type = 'Boolean';
+                        }
                         return {
                             name: key,
+                            sourceName: key,
                             type: type,
-                            originalType: type
+                            originalType: type,
+                            ignored: false
                         };
                     });
                     setAttributes(deducedAttrs);
@@ -131,12 +139,29 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
 
         setIsPublishing(true);
         try {
+            // Filter out ignored attributes and clean up data
+            const filteredAttributes = attributes.filter(attr => !attr.ignored);
+            let finalData = parsedData;
+
+            if (activeTab === 'upload' && parsedData) {
+                const filteredFeatures = parsedData.features.map(f => {
+                    const newProps = {};
+                    filteredAttributes.forEach(attr => {
+                        // Use sourceName (original key in DBF) to target the value
+                        const sourceKey = attr.sourceName || attr.name;
+                        newProps[attr.name] = f.properties[sourceKey];
+                    });
+                    return { ...f, properties: newProps };
+                });
+                finalData = { ...parsedData, features: filteredFeatures };
+            }
+
             await onPublish({
                 layerName: layerName.trim(),
                 geometryType,
-                attributes,
-                srid: '4326', // Standardizing on 4326 for now, or could be dynamic
-                data: activeTab === 'upload' ? parsedData : null
+                attributes: filteredAttributes,
+                srid: '4326',
+                data: activeTab === 'upload' ? finalData : null
             });
             toast.success(activeTab === 'upload' ? "Layer published with data!" : "Layer created and published successfully!");
             onClose();
@@ -420,24 +445,56 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                                             placeholder="Field Name"
                                             value={attr.name}
                                             onChange={(e) => handleAttributeChange(index, 'name', e.target.value)}
-                                            disabled={isPublishing}
-                                            style={{ flex: 1, padding: '6px 10px', fontSize: '0.8rem' }}
+                                            disabled={isPublishing || attr.ignored}
+                                            style={{
+                                                flex: 1,
+                                                padding: '6px 10px',
+                                                fontSize: '0.8rem',
+                                                opacity: attr.ignored ? 0.7 : 1,
+                                                textDecoration: attr.ignored ? 'line-through' : 'none'
+                                            }}
                                         />
                                         <select
                                             className="elite-input"
                                             value={attr.type}
                                             onChange={(e) => handleAttributeChange(index, 'type', e.target.value)}
-                                            disabled={isPublishing || (activeTab === 'upload' && attr.originalType === 'String')}
+                                            disabled={isPublishing || activeTab === 'upload' || attr.ignored}
                                             style={{
                                                 width: '100px',
                                                 padding: '6px 10px',
                                                 fontSize: '0.8rem',
-                                                opacity: (activeTab === 'upload' && attr.originalType === 'String') ? 0.7 : 1
+                                                opacity: (activeTab === 'upload' || attr.ignored) ? 0.6 : 1,
+                                                textDecoration: attr.ignored ? 'line-through' : 'none',
+                                                backgroundColor: attr.ignored ? 'rgba(0,0,0,0.05)' : 'white'
                                             }}
                                         >
                                             <option value="String">String</option>
                                             <option value="Double">Double</option>
+                                            <option value="Integer">Integer</option>
+                                            <option value="Boolean">Boolean</option>
                                         </select>
+
+                                        {activeTab === 'upload' && (
+                                            <button
+                                                type="button"
+                                                title={attr.ignored ? "Don't Ignore" : "Ignore Attribute"}
+                                                onClick={() => handleAttributeChange(index, 'ignored', !attr.ignored)}
+                                                className="action-icon-btn"
+                                                style={{
+                                                    padding: '6px',
+                                                    color: attr.ignored ? '#ef4444' : 'var(--color-primary)',
+                                                    background: attr.ignored ? 'rgba(239, 68, 68, 0.05)' : 'transparent',
+                                                    border: attr.ignored ? '1px solid #ef4444' : '1px solid var(--color-border)',
+                                                    borderRadius: '6px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                            >
+                                                {attr.ignored ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </button>
+                                        )}
                                         {activeTab === 'manual' && (
                                             <button
                                                 type="button"
