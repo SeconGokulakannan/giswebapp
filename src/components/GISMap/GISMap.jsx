@@ -160,8 +160,14 @@ function GISMap() {
 
   // Spatial Join State
   const [showSpatialJoin, setShowSpatialJoin] = useState(false);
+  const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
   const spatialJoinVectorLayersRef = useRef({});
   const spatialJoinWMSVisibilitiesRef = useRef({});
+
+  const handleOpenSpatialJoin = (layerId) => {
+    setActiveSpatialJoinLayerId(layerId);
+    setShowSpatialJoin(true);
+  };
 
   // Analysis State
   const [analysisConfig, setAnalysisConfig] = useState(null);
@@ -2327,7 +2333,7 @@ function GISMap() {
             setSelectedAttributeLayerId={setSelectedAttributeLayerId}
             showAttributeTable={showAttributeTable}
             setShowAttributeTable={setShowAttributeTable}
-            GetLayerAttributes={GetLayerAttributesStub}
+            GetLayerAttributes={getLayerAttributes}
             handleApplyLayerFilter={handleApplyLayerFilter}
             setShowQueryBuilder={setShowQueryBuilder}
             setQueryingLayer={setQueryingLayer}
@@ -2346,6 +2352,7 @@ function GISMap() {
             selectedQueryLayerIds={selectedQueryLayerIds}
             setSelectedQueryLayerIds={setSelectedQueryLayerIds}
             setShowSpatialJoin={setShowSpatialJoin}
+            onOpenSpatialJoin={handleOpenSpatialJoin}
             allAvailableLayers={[...geoServerLayers, ...localVectorLayers]}
           />
 
@@ -2539,6 +2546,7 @@ function GISMap() {
             allGeoServerLayers={geoServerLayers}
             onPerformSpatialJoin={handlePerformSpatialJoin}
             onResetSpatialJoin={handleResetSpatialJoin}
+            targetLayerId={activeSpatialJoinLayerId}
           />
 
           <LayerManagementCard

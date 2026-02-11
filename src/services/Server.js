@@ -85,7 +85,11 @@ export const fetchLayerStatuses = async () => {
         // 2. Fetch Active Layers from WFS Capabilities
         // This ensures the layer is actually enabled and serving
         const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`;
-        const wfsResponse = await fetch(wfsUrl);
+        const wfsResponse = await fetch(wfsUrl, {
+            headers: {
+                'Authorization': AUTH_HEADER
+            }
+        });
         let activeLayers = [];
 
         if (wfsResponse.ok) {
@@ -105,11 +109,13 @@ export const fetchLayerStatuses = async () => {
         // 3. Determine Status
         configuredLayers.forEach(layerName => {
             // Check if active (allowing for workspace prefix mismatches)
-            const isActive = activeLayers.some(al =>
-                al === layerName ||
-                al.split(':').pop() === layerName ||
-                layerName.split(':').pop() === al
-            );
+            // Normalize names: remove workspace prefix if present for comparison
+            const normalizedLayerName = layerName.includes(':') ? layerName.split(':').pop() : layerName;
+
+            const isActive = activeLayers.some(al => {
+                const normalizedAl = al.includes(':') ? al.split(':').pop() : al;
+                return al === layerName || normalizedAl === normalizedLayerName;
+            });
 
             if (isActive) {
                 statuses[layerName] = 'Valid Layer'; // Green

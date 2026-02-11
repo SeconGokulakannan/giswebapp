@@ -11,7 +11,8 @@ import {
     LayoutGrid,
     MessageSquareCode,
     FileJson,
-    MessageSquareShare
+    MessageSquareShare,
+    SquaresSubtract
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -27,7 +28,8 @@ const LayerOperations = ({
     queryingLayer, handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds,
     swipePosition, setSwipePosition, analysisLayerIds, handleToggleAnalysisLayer,
     selectedQueryLayerIds, setSelectedQueryLayerIds,
-    setShowSpatialJoin
+    setShowSpatialJoin,
+    onOpenSpatialJoin
 }) => {
 
     const tools = [
@@ -40,7 +42,7 @@ const LayerOperations = ({
         { icon: Repeat, label: 'Reorder Layers', id: 'reorder' },
         { icon: GripVertical, label: 'Swipe Tool', id: 'swipe' },
         { icon: DatabaseZap, label: 'Query Builder', id: 'querybuilder' },
-        { icon: MessageSquareShare, label: 'Spatial Join', id: 'spatialjoin' },
+        { icon: SquaresSubtract, label: 'Spatial Join', id: 'spatialjoin' },
         { icon: LayoutGrid, label: 'Attribute Table', id: 'attribute' },
         { icon: FileChartPie, label: 'Run Analysis', id: 'analysis' },
     ];
@@ -993,7 +995,7 @@ const LayerOperations = ({
             case 'spatialjoin': {
                 return (
                     <button
-                        onClick={() => setShowSpatialJoin(true)}
+                        onClick={() => onOpenSpatialJoin(layer.id)}
                         style={{
                             border: 'none',
                             background: 'rgba(var(--color-primary-rgb), 0.1)',

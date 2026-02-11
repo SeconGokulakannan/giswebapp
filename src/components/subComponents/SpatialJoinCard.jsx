@@ -15,13 +15,12 @@ const getRandomColor = (exclude = null) => {
 const SpatialJoinCard = ({
     isOpen,
     onClose,
-    visibleLayers = [],
     allGeoServerLayers = [],
     onPerformSpatialJoin,
-    onResetSpatialJoin
+    onResetSpatialJoin,
+    targetLayerId
 }) => {
     const [isMinimized, setIsMinimized] = useState(false);
-    const [selectedLayerIds, setSelectedLayerIds] = useState([]);
     const [layerA, setLayerA] = useState('');
     const [layerB, setLayerB] = useState('');
     const [attrA, setAttrA] = useState('');
@@ -34,15 +33,12 @@ const SpatialJoinCard = ({
     const [isFetchingB, setIsFetchingB] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
 
-    // Sync selected layers with visible layers on open
+    // Set Layer A when targetLayerId changes or on open
     useEffect(() => {
-        if (isOpen && allGeoServerLayers.length > 0) {
-            const visibleIds = allGeoServerLayers.filter(l => l.visible).map(l => l.id);
-            if (selectedLayerIds.length === 0) {
-                setSelectedLayerIds(visibleIds);
-            }
+        if (isOpen && targetLayerId) {
+            setLayerA(targetLayerId);
         }
-    }, [isOpen, allGeoServerLayers.length]);
+    }, [isOpen, targetLayerId]);
 
     // Fetch attributes for Layer A when selected
     useEffect(() => {
@@ -68,7 +64,7 @@ const SpatialJoinCard = ({
             setLayerB('');
             setAttrB('');
         }
-    }, [layerA]);
+    }, [layerA, layerB]);
 
     const fetchAttributes = async (layerId, side) => {
         const layer = allGeoServerLayers.find(l => l.id === layerId);
@@ -103,24 +99,7 @@ const SpatialJoinCard = ({
         }
     };
 
-    const toggleLayerSelection = (layerId) => {
-        setSelectedLayerIds(prev =>
-            prev.includes(layerId)
-                ? prev.filter(id => id !== layerId)
-                : [...prev, layerId]
-        );
-    };
-
-    const toggleAllLayers = () => {
-        if (selectedLayerIds.length === allGeoServerLayers.length) {
-            setSelectedLayerIds([]);
-        } else {
-            setSelectedLayerIds(allGeoServerLayers.map(l => l.id));
-        }
-    };
-
-    const selectedLayers = allGeoServerLayers.filter(l => selectedLayerIds.includes(l.id));
-    const layerBOptions = selectedLayers.filter(l => l.id !== layerA);
+    const layerBOptions = allGeoServerLayers.filter(l => l.id !== layerA);
     const attrsA = attributesMapA[layerA] || [];
     const attrsB = attributesMapB[layerB] || [];
 
@@ -235,76 +214,18 @@ const SpatialJoinCard = ({
                 <div style={{ padding: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                        {/* Layer Switches */}
-                        <div style={{
-                            background: 'var(--color-bg-secondary)',
-                            borderRadius: '12px',
-                            border: '1px solid var(--color-border)',
-                            padding: '12px',
-                            maxHeight: '160px',
-                            overflowY: 'auto'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                                <label style={{ fontSize: '10px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                                    AVAILABLE LAYERS
-                                </label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>ALL</span>
-                                    <label className="toggle-switch" style={{ transform: 'scale(0.7)' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={allGeoServerLayers.length > 0 && selectedLayerIds.length === allGeoServerLayers.length}
-                                            onChange={toggleAllLayers}
-                                        />
-                                        <span className="toggle-slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                            {allGeoServerLayers.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '16px', color: 'var(--color-text-muted)', fontSize: '12px' }}>
-                                    No GeoServer layers available
-                                </div>
-                            ) : (
-                                allGeoServerLayers.map(layer => (
-                                    <div key={layer.id} style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        padding: '6px 8px', borderRadius: '8px',
-                                        background: selectedLayerIds.includes(layer.id)
-                                            ? 'rgba(var(--color-primary-rgb), 0.08)' : 'transparent',
-                                        transition: 'all 0.2s'
-                                    }}>
-                                        <span style={{
-                                            fontSize: '12px', fontWeight: '600',
-                                            color: selectedLayerIds.includes(layer.id) ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1
-                                        }}>
-                                            {layer.name}
-                                        </span>
-                                        <label className="toggle-switch" style={{ transform: 'scale(0.7)', flexShrink: 0 }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedLayerIds.includes(layer.id)}
-                                                onChange={() => toggleLayerSelection(layer.id)}
-                                            />
-                                            <span className="toggle-slider"></span>
-                                        </label>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-
-                        {selectedLayers.length < 2 && (
+                        {allGeoServerLayers.length < 2 && (
                             <div style={{
                                 textAlign: 'center', padding: '20px', color: 'var(--color-text-muted)',
                                 background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
                                 borderRadius: '12px', border: '1px dashed var(--color-border)'
                             }}>
                                 <MessageSquareShare size={24} style={{ opacity: 0.4, marginBottom: '8px' }} />
-                                <p style={{ fontSize: '12px', fontWeight: '600' }}>Select at least 2 layers to perform a spatial join.</p>
+                                <p style={{ fontSize: '12px', fontWeight: '600' }}>Not enough layers available for spatial join.</p>
                             </div>
                         )}
 
-                        {selectedLayers.length >= 2 && (
+                        {allGeoServerLayers.length >= 2 && (
                             <>
                                 {/* Layer A */}
                                 <div style={{
@@ -318,7 +239,7 @@ const SpatialJoinCard = ({
                                             background: colorA, flexShrink: 0
                                         }} />
                                         <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                            LAYER A
+                                            LAYER A (TARGET)
                                         </label>
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -335,7 +256,7 @@ const SpatialJoinCard = ({
                                                 }}
                                             >
                                                 <option value="">Select layer...</option>
-                                                {selectedLayers.map(l => (
+                                                {allGeoServerLayers.map(l => (
                                                     <option key={l.id} value={l.id}>{l.name}</option>
                                                 ))}
                                             </select>
@@ -424,7 +345,7 @@ const SpatialJoinCard = ({
                                             background: colorB, flexShrink: 0
                                         }} />
                                         <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                            LAYER B
+                                            LAYER B (SOURCE)
                                         </label>
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
