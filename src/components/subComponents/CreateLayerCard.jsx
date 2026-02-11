@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
 
@@ -13,10 +13,52 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
         { name: 'description', type: 'String' }
     ]);
 
-    // Upload State
     const [uploadFiles, setUploadFiles] = useState({ shp: null, dbf: null, shx: null, prj: null });
     const [parsedData, setParsedData] = useState(null);
     const fileInputRef = useRef(null);
+
+    const resetState = () => {
+        setLayerName('');
+        setGeometryType('Point');
+        setAttributes([
+            { name: 'name', type: 'String' },
+            { name: 'description', type: 'String' }
+        ]);
+        setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
+        setParsedData(null);
+    };
+
+    // Clear on close
+    useEffect(() => {
+        if (!isOpen) {
+            resetState();
+            setActiveTab('manual');
+        }
+    }, [isOpen]);
+
+    const hasData = () => {
+        if (activeTab === 'manual') {
+            // Check if layerName is set or attributes modified from default
+            return layerName.trim() !== '' ||
+                attributes.length !== 2 ||
+                attributes[0].name !== 'name' ||
+                attributes[1].name !== 'description';
+        } else {
+            // Check if any files uploaded
+            return Object.values(uploadFiles).some(f => f !== null);
+        }
+    };
+
+    const handleTabSwitch = (tab) => {
+        if (activeTab === tab) return;
+        if (hasData()) {
+            toast.error(`Please discard changes in ${activeTab === 'manual' ? 'Manual' : 'Upload'} mode before switching.`, {
+                id: 'tab-switch-warn'
+            });
+            return;
+        }
+        setActiveTab(tab);
+    };
 
     const handleAddAttribute = () => {
         setAttributes([...attributes, { name: '', type: 'String' }]);
@@ -165,10 +207,7 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
             });
             toast.success(activeTab === 'upload' ? "Layer published with data!" : "Layer created and published successfully!");
             onClose();
-            // Reset
-            setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
-            setParsedData(null);
-            setLayerName('');
+            resetState();
         } catch (err) {
             toast.error(`Failed to publish layer: ${err.message}`);
         } finally {
@@ -232,7 +271,7 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                     gap: '20px'
                 }}>
                     <button
-                        onClick={() => setActiveTab('manual')}
+                        onClick={() => handleTabSwitch('manual')}
                         style={{
                             padding: '12px 0',
                             fontSize: '0.85rem',
@@ -248,7 +287,7 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                         Manual Configuration
                     </button>
                     <button
-                        onClick={() => setActiveTab('upload')}
+                        onClick={() => handleTabSwitch('upload')}
                         style={{
                             padding: '12px 0',
                             fontSize: '0.85rem',
@@ -550,6 +589,20 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                     <button className="elite-btn secondary" onClick={onClose} style={{ padding: '8px 20px' }} disabled={isPublishing}>
                         Cancel
                     </button>
+                    {hasData() && !isPublishing && (
+                        <button
+                            className="elite-btn danger"
+                            onClick={resetState}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'transparent',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                color: '#ef4444'
+                            }}
+                        >
+                            <RotateCcw size={14} />&nbsp;Discard
+                        </button>
+                    )}
                     <button
                         className="elite-btn primary"
                         onClick={handleFormSubmit}
