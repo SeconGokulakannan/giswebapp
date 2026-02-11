@@ -67,9 +67,11 @@ import {
   SaveNewAttribute,
   saveNewFeature,
   addNewLayerConfig,
-  publishNewLayer
+  publishNewLayer,
+  batchInsertFeatures,
+  WORKSPACE
 } from '../../services/Server';
-import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from '../../services/ServerCredentials';
+import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
 
@@ -1041,14 +1043,35 @@ function GISMap() {
   };
 
   const handlePublishNewLayer = async (config) => {
-    // Calling the service implemented in Server.js
-    const success = await publishNewLayer(config);
-    if (success) {
+    try {
+      // Step 1: Create the Layer structure
+      const success = await publishNewLayer(config);
+      if (!success) return false;
+
+      // Step 2: If we have data (Shapefile upload), insert features
+      if (config.data && config.data.features && config.data.features.length > 0) {
+        toast.loading(`Importing ${config.data.features.length} features...`, { id: 'publish-toast' });
+
+        // Small delay to allow GeoServer to register the featuretype
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const fullLayerName = `${WORKSPACE}:${config.layerName}`;
+        const insertSuccess = await batchInsertFeatures(fullLayerName, config.data.features, 'geom', config.srid || '4326');
+
+        if (insertSuccess) {
+          toast.success(`Layer published with ${config.data.features.length} features!`, { id: 'publish-toast' });
+        } else {
+          toast.error("Layer created but feature import failed.", { id: 'publish-toast' });
+        }
+      }
+
       // Refresh layers list to show the newly published layer
       handleFetchGeoServerLayers();
       return true;
+    } catch (err) {
+      console.error("Publishing error in GISMap:", err);
+      return false;
     }
-    return false;
   };
 
   // Analysis Playback Loop

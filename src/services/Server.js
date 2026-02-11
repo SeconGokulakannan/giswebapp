@@ -1,4 +1,5 @@
 import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from './ServerCredentials';
+export { WORKSPACE };
 import axios from 'axios';
 export const searchLocation = async (query) => {
     if (!query) return null;
@@ -1004,5 +1005,93 @@ export const publishNewLayer = async (config) => {
     } catch (err) {
         console.error("Publishing error:", err);
         throw err;
+    }
+};
+
+/**
+ * ELITE: Batch Insert Features
+ * Performs a single WFS-T Transaction with multiple Insert operations
+ * @param {string} fullLayerName - Workspace:LayerName
+ * @param {Array} features - Array of GeoJSON features
+ * @param {string} geometryName - Name of the geometry field (default 'geom')
+ * @param {string} srid - Target SRID
+ */
+export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857') => {
+    try {
+        if (!features || features.length === 0) return true;
+
+        const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
+        let insertsXml = '';
+
+        const escapeXml = (str) => {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+        };
+
+        for (const feature of features) {
+            let featureContentXml = '';
+
+            // 1. Process Properties
+            for (const [key, value] of Object.entries(feature.properties || {})) {
+                const lowKey = key.toLowerCase();
+                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid'].includes(lowKey) || key.startsWith('_') || value === null || value === undefined) continue;
+                featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
+            }
+
+            // 2. Process Geometry
+            const geom = feature.geometry;
+            if (geom) {
+                let gmlGeom = '';
+                const type = geom.type;
+                const coords = geom.coordinates;
+
+                if (type === 'Point') {
+                    gmlGeom = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
+                } else if (type === 'LineString') {
+                    gmlGeom = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
+                } else if (type === 'Polygon') {
+                    const ring = coords[0].map(c => c.join(' ')).join(' ');
+                    gmlGeom = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+                } else if (type === 'MultiPolygon') {
+                    let polygonsXml = '';
+                    coords.forEach(poly => {
+                        const ring = poly[0].map(c => c.join(' ')).join(' ');
+                        polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:polygonMember>`;
+                    });
+                    gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}">${polygonsXml}</gml:MultiPolygon>`;
+                }
+
+                if (gmlGeom) {
+                    featureContentXml += `<${prefix}:${geometryName}>${gmlGeom}</${prefix}:${geometryName}>`;
+                }
+            }
+
+            insertsXml += `<wfs:Insert><${fullLayerName}>${featureContentXml}</${fullLayerName}></wfs:Insert>`;
+        }
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:gml="http://www.opengis.net/gml"
+        xmlns:${prefix}="${prefix}"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+            ${insertsXml}
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+            method: 'POST',
+            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
+            body: wfsTransactionXml
+        });
+
+        if (response.ok) {
+            const result = await response.text();
+            return result.includes('TransactionSummary') && !result.includes('ExceptionText');
+        }
+        return false;
+    } catch (err) {
+        console.error("Batch insert failed:", err);
+        return false;
     }
 };

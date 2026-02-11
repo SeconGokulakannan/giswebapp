@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { X, Plus, Trash2, Database, Layers, Loader2, Info } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { parseShp, parseDbf, combine } from 'shpjs';
 
 const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
+    const [activeTab, setActiveTab] = useState('manual'); // 'manual' or 'upload'
     const [layerName, setLayerName] = useState('');
     const [geometryType, setGeometryType] = useState('Point');
     const [isPublishing, setIsPublishing] = useState(false);
@@ -10,6 +12,11 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
         { name: 'name', type: 'String' },
         { name: 'description', type: 'String' }
     ]);
+
+    // Upload State
+    const [uploadFiles, setUploadFiles] = useState({ shp: null, dbf: null, shx: null, prj: null });
+    const [parsedData, setParsedData] = useState(null);
+    const fileInputRef = useRef(null);
 
     const handleAddAttribute = () => {
         setAttributes([...attributes, { name: '', type: 'String' }]);
@@ -25,35 +32,114 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
         setAttributes(newAttrs);
     };
 
+    const readFileAsArrayBuffer = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+    });
+
+    const readFileAsText = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+    });
+
+    const handleFileChange = async (e) => {
+        const files = Array.from(e.target.files);
+        const newFiles = { ...uploadFiles };
+
+        files.forEach(file => {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (['shp', 'dbf', 'shx', 'prj'].includes(ext)) {
+                newFiles[ext] = file;
+            }
+        });
+
+        setUploadFiles(newFiles);
+
+        // Auto-set layer name if not already set
+        if (!layerName && newFiles.shp) {
+            setLayerName(newFiles.shp.name.replace(/\.shp$/i, ''));
+        }
+
+        // If we have at least SHP and PRJ (and ideally DBF), we can preview schema
+        if (newFiles.shp && newFiles.prj) {
+            try {
+                const shpBuffer = await readFileAsArrayBuffer(newFiles.shp);
+                const dbfBuffer = newFiles.dbf ? await readFileAsArrayBuffer(newFiles.dbf) : null;
+                const prjText = await readFileAsText(newFiles.prj);
+
+                const parsedShp = parseShp(shpBuffer, prjText);
+                const parsedDbf = dbfBuffer ? parseDbf(dbfBuffer) : null;
+                const geojson = combine([parsedShp, parsedDbf]);
+
+                if (geojson && geojson.features && geojson.features.length > 0) {
+                    const firstFeature = geojson.features[0];
+                    const gType = firstFeature.geometry.type;
+                    setGeometryType(gType === 'MultiPolygon' ? 'MultiPolygon' :
+                        gType === 'Polygon' ? 'Polygon' :
+                            gType === 'LineString' ? 'LineString' : 'Point');
+
+                    // Deduce attributes from first feature properties
+                    const props = firstFeature.properties;
+                    const deducedAttrs = Object.keys(props).map(key => ({
+                        name: key,
+                        type: typeof props[key] === 'number' ? 'Double' : 'String'
+                    }));
+                    setAttributes(deducedAttrs);
+                    setParsedData(geojson);
+                    toast.success("Shapefile parsed. Schema detected.");
+                }
+            } catch (err) {
+                console.error("Shapefile parsing error:", err);
+                toast.error("Failed to parse shapefile schema.");
+            }
+        }
+    };
+
     const handleFormSubmit = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
 
         if (!layerName.trim()) {
             toast.error("Please provide a layer name.");
             return;
         }
 
-        // Validate layer name (no spaces, special chars for DB safety)
         if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(layerName)) {
             toast.error("Layer name must start with a letter and contain only letters, numbers, or underscores.");
             return;
         }
 
-        const emptyAttrs = attributes.some(attr => !attr.name.trim());
-        if (emptyAttrs) {
-            toast.error("Please provide names for all attributes.");
-            return;
+        if (activeTab === 'upload') {
+            if (!uploadFiles.shp || !uploadFiles.prj) {
+                toast.error("Shapefile (.shp) and Projection (.prj) files are required.");
+                return;
+            }
+        } else {
+            const emptyAttrs = attributes.some(attr => !attr.name.trim());
+            if (emptyAttrs) {
+                toast.error("Please provide names for all attributes.");
+                return;
+            }
         }
 
         setIsPublishing(true);
         try {
             await onPublish({
-                layerName,
+                layerName: layerName.trim(),
                 geometryType,
-                attributes
+                attributes,
+                srid: '4326', // Standardizing on 4326 for now, or could be dynamic
+                data: activeTab === 'upload' ? parsedData : null
             });
-            toast.success("Layer created and published successfully!");
+            toast.success(activeTab === 'upload' ? "Layer published with data!" : "Layer created and published successfully!");
             onClose();
+            // Reset
+            setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
+            setParsedData(null);
+            setLayerName('');
         } catch (err) {
             toast.error(`Failed to publish layer: ${err.message}`);
         } finally {
@@ -61,18 +147,26 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
         }
     };
 
+    const fileCount = Object.values(uploadFiles).filter(Boolean).length;
+    const fileExtColors = {
+        shp: { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6' },
+        dbf: { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981' },
+        shx: { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b' },
+        prj: { bg: 'rgba(168, 85, 247, 0.15)', text: '#a855f7' }
+    };
+
     if (!isOpen) return null;
 
     return (
         <div className="elite-modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
             <div className="elite-modal" onClick={e => e.stopPropagation()} style={{
-                width: '480px',
-                maxHeight: '85vh',
+                width: '520px',
+                maxHeight: '90vh',
                 animation: 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)'
             }}>
                 {/* Header */}
                 <div className="elite-modal-header" style={{
-                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(168, 85, 247, 0.05))',
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(16, 185, 129, 0.05))',
                     borderBottom: '1px solid var(--color-border)',
                     padding: '14px 20px'
                 }}>
@@ -81,18 +175,18 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                             width: '32px',
                             height: '32px',
                             borderRadius: '8px',
-                            background: 'linear-gradient(135deg, #3b82f6, #0ea5e9)',
+                            background: 'linear-gradient(135deg, #3b82f6, #10b981)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)'
+                            boxShadow: '0 2px 8px rgba(59, 130, 246, 0.2)'
                         }}>
                             <Database size={16} color="white" />
                         </div>
                         <div>
-                            <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Create New Layer</div>
+                            <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Publish New Layer</div>
                             <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '1px' }}>
-                                Define table name, type, and attributes
+                                Create permanent layers via manual schema or file upload
                             </div>
                         </div>
                     </div>
@@ -101,14 +195,133 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                     </button>
                 </div>
 
+                {/* Tabs */}
+                <div style={{
+                    display: 'flex',
+                    padding: '0 20px',
+                    borderBottom: '1px solid var(--color-border)',
+                    gap: '20px'
+                }}>
+                    <button
+                        onClick={() => setActiveTab('manual')}
+                        style={{
+                            padding: '12px 0',
+                            fontSize: '0.85rem',
+                            fontWeight: 500,
+                            color: activeTab === 'manual' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                            borderBottom: `2px solid ${activeTab === 'manual' ? 'var(--color-primary)' : 'transparent'}`,
+                            background: 'none',
+                            borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        Manual Configuration
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('upload')}
+                        style={{
+                            padding: '12px 0',
+                            fontSize: '0.85rem',
+                            fontWeight: 500,
+                            color: activeTab === 'upload' ? '#10b981' : 'var(--color-text-muted)',
+                            borderBottom: `2px solid ${activeTab === 'upload' ? '#10b981' : 'transparent'}`,
+                            background: 'none',
+                            borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        Upload Shapefile
+                    </button>
+                </div>
+
                 {/* Body */}
                 <div className="elite-modal-content" style={{
                     padding: '16px 20px',
                     overflowY: 'auto',
-                    maxHeight: 'calc(85vh - 140px)'
+                    maxHeight: 'calc(90vh - 180px)'
                 }}>
                     <form onSubmit={handleFormSubmit} className="space-y-4">
-                        {/* Layer Settings Card */}
+
+                        {activeTab === 'upload' && (
+                            <div style={{
+                                border: '1px solid var(--color-border)',
+                                borderRadius: '10px',
+                                background: 'var(--color-bg-secondary)',
+                                padding: '16px',
+                                marginBottom: '16px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                                    <Upload size={14} style={{ color: '#10b981' }} />
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>Files to Publish</span>
+                                </div>
+
+                                <div
+                                    onClick={() => !isPublishing && fileInputRef.current.click()}
+                                    style={{
+                                        border: `1.5px dashed ${fileCount > 0 ? '#10b981' : 'var(--color-border)'}`,
+                                        borderRadius: '8px',
+                                        padding: '20px',
+                                        textAlign: 'center',
+                                        cursor: isPublishing ? 'default' : 'pointer',
+                                        background: fileCount > 0 ? 'rgba(16, 185, 129, 0.02)' : 'transparent',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    {fileCount > 0 ? (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+                                            {Object.entries(uploadFiles).map(([ext, file]) => file && (
+                                                <div key={ext} style={{
+                                                    backgroundColor: fileExtColors[ext].bg,
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 600,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    color: fileExtColors[ext].text
+                                                }}>
+                                                    <File size={11} />
+                                                    <span>.{ext}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <Upload size={24} style={{ opacity: 0.3, marginBottom: '8px', color: '#10b981' }} />
+                                            <p style={{ fontSize: '0.8rem', margin: '0 0 4px', color: 'var(--color-text)' }}>
+                                                Drop shapefile components here
+                                            </p>
+                                            <p style={{ fontSize: '0.65rem', opacity: 0.5, margin: 0 }}>
+                                                Required: .shp, .prj | Optional: .dbf, .shx
+                                            </p>
+                                        </div>
+                                    )}
+                                    <input
+                                        type="file" multiple accept=".shp,.dbf,.shx,.prj"
+                                        ref={fileInputRef}
+                                        onChange={handleFileChange}
+                                        style={{ display: 'none' }}
+                                    />
+                                </div>
+                                {parsedData && (
+                                    <div style={{
+                                        marginTop: '12px', padding: '10px', borderRadius: '8px',
+                                        background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.1)',
+                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                    }}>
+                                        <CheckCircle2 size={14} style={{ color: '#10b981' }} />
+                                        <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 500 }}>
+                                            Detected {parsedData.features.length} features
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Common Configuration */}
                         <div style={{
                             border: '1px solid var(--color-border)',
                             borderRadius: '10px',
@@ -117,8 +330,8 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                             marginBottom: '16px'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                                <Database size={14} style={{ color: 'var(--color-primary)' }} />
-                                <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>Layer Configuration</span>
+                                <FileType size={14} style={{ color: activeTab === 'manual' ? 'var(--color-primary)' : '#10b981' }} />
+                                <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>Layer Info</span>
                             </div>
 
                             <div className="form-group" style={{ marginBottom: '12px' }}>
@@ -134,7 +347,7 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                                 />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', fontSize: '0.65rem', color: 'var(--color-text-muted)', opacity: 0.8 }}>
                                     <Info size={10} />
-                                    <span>This will be the table name in PostGIS (letters and underscores only)</span>
+                                    <span>Used for PostGIS table and GeoServer layer</span>
                                 </div>
                             </div>
 
@@ -144,8 +357,8 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                                     className="elite-input"
                                     value={geometryType}
                                     onChange={(e) => setGeometryType(e.target.value)}
-                                    disabled={isPublishing}
-                                    style={{ width: '100%', boxSizing: 'border-box' }}
+                                    disabled={isPublishing || activeTab === 'upload'}
+                                    style={{ width: '100%', boxSizing: 'border-box', opacity: activeTab === 'upload' ? 0.7 : 1 }}
                                 >
                                     <option value="Point">Point</option>
                                     <option value="LineString">LineString</option>
@@ -164,30 +377,34 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Layers size={14} style={{ color: 'var(--color-primary)' }} />
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>Layer Attributes</span>
+                                    <Layers size={14} style={{ color: activeTab === 'manual' ? 'var(--color-primary)' : '#10b981' }} />
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>
+                                        {activeTab === 'upload' ? 'Detected Attributes' : 'Layer Attributes'}
+                                    </span>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={handleAddAttribute}
-                                    disabled={isPublishing}
-                                    style={{
-                                        border: '1px solid var(--color-border)',
-                                        background: 'transparent',
-                                        color: 'var(--color-text-muted)',
-                                        fontSize: '0.7rem',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                    onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-primary)'; e.currentTarget.style.color = 'var(--color-primary)'; }}
-                                    onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
-                                >
-                                    <Plus size={12} /> Add Field
-                                </button>
+                                {activeTab === 'manual' && (
+                                    <button
+                                        type="button"
+                                        onClick={handleAddAttribute}
+                                        disabled={isPublishing}
+                                        style={{
+                                            border: '1px solid var(--color-border)',
+                                            background: 'transparent',
+                                            color: 'var(--color-text-muted)',
+                                            fontSize: '0.7rem',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}
+                                        onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-primary)'; e.currentTarget.style.color = 'var(--color-primary)'; }}
+                                        onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                                    >
+                                        <Plus size={12} /> Add Field
+                                    </button>
+                                )}
                             </div>
 
                             <div className="attributes-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -199,41 +416,48 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                                             placeholder="Field Name"
                                             value={attr.name}
                                             onChange={(e) => handleAttributeChange(index, 'name', e.target.value)}
-                                            disabled={isPublishing}
-                                            style={{ flex: 1, padding: '6px 10px', fontSize: '0.8rem' }}
+                                            disabled={isPublishing || activeTab === 'upload'}
+                                            style={{ flex: 1, padding: '6px 10px', fontSize: '0.8rem', opacity: activeTab === 'upload' ? 0.7 : 1 }}
                                         />
                                         <select
                                             className="elite-input"
                                             value={attr.type}
                                             onChange={(e) => handleAttributeChange(index, 'type', e.target.value)}
-                                            disabled={isPublishing}
-                                            style={{ width: '100px', padding: '6px 10px', fontSize: '0.8rem' }}
+                                            disabled={isPublishing || activeTab === 'upload'}
+                                            style={{ width: '100px', padding: '6px 10px', fontSize: '0.8rem', opacity: activeTab === 'upload' ? 0.7 : 1 }}
                                         >
                                             <option value="String">String</option>
                                             <option value="Double">Double</option>
                                         </select>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveAttribute(index)}
-                                            disabled={isPublishing}
-                                            style={{
-                                                border: 'none', background: 'transparent', color: 'var(--color-text-muted)',
-                                                padding: '4px', borderRadius: '4px', cursor: 'pointer',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            onMouseOver={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
-                                            onMouseOut={e => { e.currentTarget.style.color = 'var(--color-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
-                                        >
-                                            <Trash2 size={13} />
-                                        </button>
+                                        {activeTab === 'manual' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveAttribute(index)}
+                                                disabled={isPublishing}
+                                                style={{
+                                                    border: 'none', background: 'transparent', color: 'var(--color-text-muted)',
+                                                    padding: '4px', borderRadius: '4px', cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onMouseOver={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+                                                onMouseOut={e => { e.currentTarget.style.color = 'var(--color-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
+                                {attributes.length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: '10px', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                                        No attributes defined.
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         {/* Info Note */}
                         <div style={{
-                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(168, 85, 247, 0.04))',
+                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(16, 185, 129, 0.04))',
                             border: '1px solid rgba(59, 130, 246, 0.12)',
                             padding: '10px 14px',
                             borderRadius: '8px',
@@ -242,9 +466,11 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                             alignItems: 'flex-start',
                             marginTop: '4px'
                         }}>
-                            <Info size={15} style={{ color: '#3b82f6', flexShrink: 0, marginTop: '1px' }} />
+                            <Info size={15} style={{ color: activeTab === 'manual' ? '#3b82f6' : '#10b981', flexShrink: 0, marginTop: '1px' }} />
                             <p style={{ margin: 0, fontSize: '0.68rem', lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
-                                Publishing a layer will create a physical table in the database and register it in GeoServer. This process is permanent.
+                                {activeTab === 'upload' ?
+                                    "Data will be imported into PostGIS and published to GeoServer. All fields from the shapefile will be preserved." :
+                                    "This creates an empty table structure. You can add data later using the map drawing tools."}
                             </p>
                         </div>
                     </form>
@@ -261,20 +487,25 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                     <button
                         className="elite-btn primary"
                         onClick={handleFormSubmit}
-                        disabled={isPublishing}
+                        disabled={isPublishing || (activeTab === 'upload' && !parsedData)}
                         style={{
                             padding: '8px 24px',
                             display: 'flex', alignItems: 'center', gap: '8px',
-                            background: 'linear-gradient(135deg, #3b82f6, #0ea5e9)',
-                            boxShadow: '0 2px 12px rgba(59, 130, 246, 0.3)'
+                            background: activeTab === 'manual' ?
+                                'linear-gradient(135deg, #3b82f6, #6366f1)' :
+                                'linear-gradient(135deg, #10b981, #059669)',
+                            boxShadow: activeTab === 'manual' ?
+                                '0 2px 12px rgba(59, 130, 246, 0.25)' :
+                                '0 2px 12px rgba(16, 185, 129, 0.25)',
+                            opacity: (activeTab === 'upload' && !parsedData) ? 0.6 : 1
                         }}
                     >
                         {isPublishing ? (
                             <Loader2 size={15} className="animate-spin" />
                         ) : (
-                            <Database size={15} />
+                            activeTab === 'manual' ? <Database size={15} /> : <Upload size={15} />
                         )}
-                        {isPublishing ? 'Publishing...' : 'Create & Publish'}
+                        {isPublishing ? 'Publishing...' : 'Publish Layer'}
                     </button>
                 </div>
             </div>
