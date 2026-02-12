@@ -1,6 +1,8 @@
 import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from './ServerCredentials';
 export { WORKSPACE };
 import axios from 'axios';
+
+
 export const searchLocation = async (query) => {
     if (!query) return null;
     try {
@@ -30,15 +32,17 @@ export const getLegendUrl = (layerName) => {
     return `${GEOSERVER_URL}/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&WIDTH=20&HEIGHT=20&LAYER=${layerName}`;
 };
 
-let TARGET_LAYERS = [];
+
+//Get Data Only from the Layer meta data Table
 export const getGeoServerLayers = async () => {
     try {
         const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${WORKSPACE}:Layer&outputFormat=application/json`;
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': AUTH_HEADER
-            }
-        });
+        const response = await axios.get(url,
+            {
+                headers: {
+                    'Authorization': AUTH_HEADER
+                }
+            });
 
         if (response.data && response.data.features) {
             const filteredFeatures = response.data.features
@@ -50,10 +54,10 @@ export const getGeoServerLayers = async () => {
                 sequence: feature.properties.LayerSequenceNo ?? 999,
                 initialVisibility: Boolean(feature.properties.LayerVisibilityOnLoad),
                 layerId: feature.properties.LayerName,
-                fid: feature.id, // Store fid for WFS-T updates
-                geometryFieldName: feature.properties.GeometryFieldName || 'geom',
-                geometryType: feature.properties.GeometryType || 'Unknown',
-                srid: feature.properties.SRId || '3857'
+                fid: feature.id,
+                geometryFieldName: feature.properties.GeometryFieldName || 'undef',
+                geometryType: feature.properties.GeometryType || 'undef',
+                srid: feature.properties.SRId || 'undef'
             }));
         }
     }
@@ -61,200 +65,6 @@ export const getGeoServerLayers = async () => {
         console.error("Failed to fetch layers from GeoServer metadata layer", error);
     }
     return [];
-};
-
-export const fetchLayerStatuses = async () => {
-    const statuses = {};
-    try {
-        // 1. Fetch Configured Layers from REST API
-        const restUrl = `${GEOSERVER_URL}/rest/layers.json`;
-        const restResponse = await fetch(restUrl, {
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Accept': 'application/json'
-            }
-        });
-
-        let configuredLayers = [];
-        if (restResponse.ok) {
-            const data = await restResponse.json();
-            if (data && data.layers && data.layers.layer) {
-                configuredLayers = data.layers.layer.map(l => l.name);
-            }
-        }
-
-        // 2. Fetch Active Layers from WFS Capabilities
-        // This ensures the layer is actually enabled and serving
-        const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`;
-        const wfsResponse = await fetch(wfsUrl, {
-            headers: {
-                'Authorization': AUTH_HEADER
-            }
-        });
-        let activeLayers = [];
-
-        if (wfsResponse.ok) {
-            const text = await wfsResponse.text();
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(text, "text/xml");
-            const featureTypes = xmlDoc.getElementsByTagName("FeatureType");
-
-            for (let i = 0; i < featureTypes.length; i++) {
-                const nameNodes = featureTypes[i].getElementsByTagName("Name");
-                if (nameNodes.length > 0) {
-                    activeLayers.push(nameNodes[0].textContent);
-                }
-            }
-        }
-
-        // 3. Determine Status
-        configuredLayers.forEach(layerName => {
-            // Check if active (allowing for workspace prefix mismatches)
-            // Normalize names: remove workspace prefix if present for comparison
-            const normalizedLayerName = layerName.includes(':') ? layerName.split(':').pop() : layerName;
-
-            const isActive = activeLayers.some(al => {
-                const normalizedAl = al.includes(':') ? al.split(':').pop() : al;
-                return al === layerName || normalizedAl === normalizedLayerName;
-            });
-
-            if (isActive) {
-                statuses[layerName] = 'Valid Layer'; // Green
-            } else {
-                statuses[layerName] = 'Layer Error'; // Red (Configured but not serving)
-            }
-        });
-
-        // Note: Layers not in configuredLayers will return undefined (Pending)
-
-    } catch (err) {
-        console.error('Failed to fetch layer statuses:', err);
-    }
-    return statuses;
-};
-
-export const saveSequence = async (sequenceList) => {
-    try {
-        const url = `${GEOSERVER_URL}/wfs`;
-
-        // Constraint Handler: LayerSequenceNo is Unique.
-        // We must avoid collisions during the update (e.g. swapping 1 and 2).
-        // Strategy: Two-Pass Update in a single Transaction.
-        // 1. Move all targeted layers to a temporary "safe" high range (e.g. 100000+).
-        // 2. Move all targeted layers to their final destination.
-
-        let tempUpdates = '';
-        let finalUpdates = '';
-
-        // Pass 1: Move to Temp Range
-        sequenceList.forEach((item, index) => {
-            if (item.sequenceNumber === undefined || item.sequenceNumber === null) return;
-
-            // Should be safe enough, assuming strict integer was checked before calling or check here
-            const tempSeq = 100000 + index + Math.floor(Math.random() * 1000); // Add randomness to ensure uniqueness even in temp
-
-            if (item.fid) {
-                tempUpdates += `
-                <wfs:Update typeName="${WORKSPACE}:Layer">
-                    <wfs:Property>
-                        <wfs:Name>LayerSequenceNo</wfs:Name>
-                        <wfs:Value>${tempSeq}</wfs:Value>
-                    </wfs:Property>
-                    <ogc:Filter>
-                        <ogc:FeatureId fid="${item.fid}"/>
-                    </ogc:Filter>
-                </wfs:Update>`;
-            } else {
-                tempUpdates += `
-                <wfs:Update typeName="${WORKSPACE}:Layer">
-                    <wfs:Property>
-                        <wfs:Name>LayerSequenceNo</wfs:Name>
-                        <wfs:Value>${tempSeq}</wfs:Value>
-                    </wfs:Property>
-                    <ogc:Filter>
-                        <ogc:PropertyIsEqualTo>
-                            <ogc:PropertyName>LayerName</ogc:PropertyName>
-                            <ogc:Literal>${item.layerId}</ogc:Literal>
-                        </ogc:PropertyIsEqualTo>
-                    </ogc:Filter>
-                </wfs:Update>`;
-            }
-        });
-
-        // Pass 2: Move to Final
-        for (const item of sequenceList) {
-            if (item.sequenceNumber === undefined || item.sequenceNumber === null) continue;
-
-            const seqInt = parseInt(item.sequenceNumber, 10);
-            if (isNaN(seqInt)) continue;
-
-            if (item.fid) {
-                finalUpdates += `
-                <wfs:Update typeName="${WORKSPACE}:Layer">
-                    <wfs:Property>
-                        <wfs:Name>LayerSequenceNo</wfs:Name>
-                        <wfs:Value>${seqInt}</wfs:Value>
-                    </wfs:Property>
-                    <ogc:Filter>
-                        <ogc:FeatureId fid="${item.fid}"/>
-                    </ogc:Filter>
-                </wfs:Update>`;
-            } else {
-                finalUpdates += `
-                <wfs:Update typeName="${WORKSPACE}:Layer">
-                    <wfs:Property>
-                        <wfs:Name>LayerSequenceNo</wfs:Name>
-                        <wfs:Value>${seqInt}</wfs:Value>
-                    </wfs:Property>
-                    <ogc:Filter>
-                        <ogc:PropertyIsEqualTo>
-                            <ogc:PropertyName>LayerName</ogc:PropertyName>
-                            <ogc:Literal>${item.layerId}</ogc:Literal>
-                        </ogc:PropertyIsEqualTo>
-                    </ogc:Filter>
-                </wfs:Update>`;
-            }
-        }
-
-        const updates = tempUpdates + finalUpdates;
-
-        if (!updates) return false;
-
-        const wfsTransactionXml = `
-        <wfs:Transaction service="WFS" version="1.1.0"
-        xmlns:wfs="http://www.opengis.net/wfs"
-        xmlns:ogc="http://www.opengis.net/ogc"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-            ${updates}
-        </wfs:Transaction>`.trim();
-
-        console.log('Using Two-Pass Unique-Safe XML:', wfsTransactionXml);
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'text/xml'
-            },
-            body: wfsTransactionXml
-        });
-
-        if (response.ok) {
-            const resultText = await response.text();
-            console.log('Save Sequence Response:', resultText);
-
-            if (resultText.includes('ExceptionText')) {
-                console.error('WFS-T Exception:', resultText);
-                return false;
-            }
-            return resultText.includes('TransactionSummary');
-        }
-        return false;
-    } catch (error) {
-        console.error("Failed to save layer sequences via WFS-T", error);
-        return false;
-    }
 };
 
 
@@ -270,15 +80,16 @@ export const getLayerBBox = async (fullLayerName) => {
                 }
             });
 
-        if (!layerResponse.ok) return null;
+        if (!layerResponse.ok)
+            return null;
+
         const layerData = await layerResponse.json();
         const type = layerData.layer.type.toLowerCase(); // 'featuretype' or 'coverage'
 
-        // Step 2: Fetch the actual resource (featuretype or coverage)
+        // Fetch the actual resource (featuretype or coverage)
         // We build the URL ourselves to avoid absolute URL / CORS issues
         const endpoint = type === 'raster' ? 'coverages' : 'featuretypes';
         const resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${ws}/${endpoint}/${name}.json`;
-
         const resResponse = await fetch(resourceUrl,
             {
                 headers: {
@@ -288,7 +99,6 @@ export const getLayerBBox = async (fullLayerName) => {
             });
 
         if (!resResponse.ok) return null;
-
         const resData = await resResponse.json();
         const info = resData.featureType || resData.coverage;
 
@@ -303,12 +113,10 @@ export const getLayerBBox = async (fullLayerName) => {
     return null;
 };
 
-
+//Retrive Layer Styles based on Layer Name
 export const getLayerStyle = async (fullLayerName) => {
     try {
         const [ws, name] = fullLayerName.split(':');
-
-        // Step 1: Get Layer Info to find default style name
         const layerResponse = await fetch(`${GEOSERVER_URL}/rest/layers/${name}.json?t=${Date.now()}`,
             {
                 headers: {
@@ -317,11 +125,12 @@ export const getLayerStyle = async (fullLayerName) => {
                 }
             });
 
-        if (!layerResponse.ok) return null;
+        if (!layerResponse.ok)
+            return null;
         const layerData = await layerResponse.json();
         const styleName = layerData.layer.defaultStyle.name;
 
-        // Step 2: Fetch the SLD body
+        // Fetch the SLD 
         const sldResponse = await fetch(`${GEOSERVER_URL}/rest/styles/${styleName}.sld?t=${Date.now()}`,
             {
                 headers: {
@@ -330,6 +139,7 @@ export const getLayerStyle = async (fullLayerName) => {
             });
 
         if (!sldResponse.ok) return null;
+
         const sldBody = await sldResponse.text();
 
         return { styleName, sldBody };
@@ -345,19 +155,22 @@ export const updateLayerStyle = async (fullLayerName, sldBody) => {
         const [ws, layerName] = fullLayerName.split(':');
         const targetStyleName = `${layerName}_style`;
 
-        // Priority 1: Check workspace-specific style
-        const wsCheck = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/styles/${targetStyleName}.json`, {
-            headers: { 'Authorization': AUTH_HEADER }
-        });
+        //Check workspace-specific style
+        const wsCheck = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/styles/${targetStyleName}.json`,
+            {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
 
         let styleExists = wsCheck.ok;
         let updateUrl = `${GEOSERVER_URL}/rest/workspaces/${ws}/styles/${targetStyleName}`;
 
         if (!styleExists) {
-            // Priority 2: Check global style
-            const globalCheck = await fetch(`${GEOSERVER_URL}/rest/styles/${targetStyleName}.json`, {
-                headers: { 'Authorization': AUTH_HEADER }
-            });
+            // Apply Default Style if not exists
+            const globalCheck = await fetch(`${GEOSERVER_URL}/rest/styles/${targetStyleName}.json`,
+                {
+                    headers: { 'Authorization': AUTH_HEADER }
+                });
+
             if (globalCheck.ok) {
                 styleExists = true;
                 updateUrl = `${GEOSERVER_URL}/rest/styles/${targetStyleName}`;
@@ -365,65 +178,72 @@ export const updateLayerStyle = async (fullLayerName, sldBody) => {
         }
 
         if (!styleExists) {
-            // Step 2: Create the style if it doesn't exist (target workspace)
-            const createResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/styles`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': AUTH_HEADER,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    style: {
-                        name: targetStyleName,
-                        filename: `${targetStyleName}.sld`
-                    }
-                })
-            });
-
-            if (!createResponse.ok) {
-                // Final fallback: Create globally if workspace fails
-                await fetch(`${GEOSERVER_URL}/rest/styles`, {
+            //  Create the style if it doesn't exist (target workspace)
+            const createResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/styles`,
+                {
                     method: 'POST',
-                    headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ style: { name: targetStyleName, filename: `${targetStyleName}.sld` } })
-                });
-                updateUrl = `${GEOSERVER_URL}/rest/styles/${targetStyleName}`;
-            }
-        }
-
-        // Step 3: PUT the SLD body
-        const putSldResponse = await fetch(updateUrl, {
-            method: 'PUT',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'application/vnd.ogc.sld+xml'
-            },
-            body: sldBody
-        });
-
-        if (!putSldResponse.ok) return false;
-
-        // Step 4: Ensure the layer is using this style
-        const layerInfoRes = await fetch(`${GEOSERVER_URL}/rest/layers/${layerName}.json`, {
-            headers: { 'Authorization': AUTH_HEADER }
-        });
-
-        if (layerInfoRes.ok) {
-            const layerData = await layerInfoRes.json();
-            if (layerData && layerData.layer.defaultStyle.name !== targetStyleName) {
-                // Update layer to use the new style
-                await fetch(`${GEOSERVER_URL}/rest/layers/${layerName}`, {
-                    method: 'PUT',
                     headers: {
                         'Authorization': AUTH_HEADER,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        layer: {
-                            defaultStyle: { name: targetStyleName }
+                        style:
+                        {
+                            name: targetStyleName,
+                            filename: `${targetStyleName}.sld`
                         }
                     })
                 });
+
+            if (!createResponse.ok) {
+                // Create globally if workspace fails
+                await fetch(`${GEOSERVER_URL}/rest/styles`,
+                    {
+                        method: 'POST',
+                        headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ style: { name: targetStyleName, filename: `${targetStyleName}.sld` } })
+                    });
+                updateUrl = `${GEOSERVER_URL}/rest/styles/${targetStyleName}`;
+            }
+        }
+
+        //PUT the SLD body
+        const putSldResponse = await fetch(updateUrl,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'application/vnd.ogc.sld+xml'
+                },
+                body: sldBody
+            });
+
+        if (!putSldResponse.ok) return false;
+
+        //Ensure the layer is using this style
+        const layerInfoRes = await fetch(`${GEOSERVER_URL}/rest/layers/${layerName}.json`,
+            {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+
+        //retrive Update Styles
+        if (layerInfoRes.ok) {
+            const layerData = await layerInfoRes.json();
+
+            if (layerData && layerData.layer.defaultStyle.name !== targetStyleName) {
+                await fetch(`${GEOSERVER_URL}/rest/layers/${layerName}`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': AUTH_HEADER,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            layer: {
+                                defaultStyle: { name: targetStyleName }
+                            }
+                        })
+                    });
             }
         }
 
@@ -434,6 +254,7 @@ export const updateLayerStyle = async (fullLayerName, sldBody) => {
         return false;
     }
 };
+
 
 export const getWMSSourceParams = (layerName) => {
     return {
@@ -447,23 +268,25 @@ export const getWMSSourceParams = (layerName) => {
     };
 };
 
+//Load Symbology to the Styles directory in geoserver
 export const uploadIcon = async (file, workspace) => {
     try {
-        // Upload to the workspace styles directory
         const url = `${GEOSERVER_URL}/rest/resource/workspaces/${workspace}/styles/${file.name}`;
-        const response = await fetch(url, {
-            method: 'PUT',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'application/octet-stream'
-            },
-            body: file
-        });
+        const response = await fetch(url,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'application/octet-stream'
+                },
+                body: file
+            });
 
         if (response.ok) {
             return file.name;
         }
-    } catch (err) {
+    }
+    catch (err) {
         console.error('Icon upload failed:', err);
     }
     return null;
@@ -471,19 +294,22 @@ export const uploadIcon = async (file, workspace) => {
 
 export const getFeaturesForAttributeTable = async (layerId, fullLayerName) => {
     try {
-        // WFS GetFeature request for the specified layer
-        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&maxFeatures=100000`;
+
+        let maxFeatures = 100000;
+        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&maxFeatures=${maxFeatures}`;
         const response = await fetch(url, { headers: { 'Authorization': AUTH_HEADER } });
         if (response.ok) {
             const data = await response.json();
             return data.features || [];
         }
-    } catch (err) {
+    }
+    catch (err) {
         console.error(`Failed to fetch features for attribute table (LayerID: ${layerId}):`, err);
     }
     return [];
 };
 
+//Gets Layer Attributes (Column Properties)
 export const getLayerAttributes = async (fullLayerName) => {
     try {
         const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=DescribeFeatureType&typeName=${fullLayerName}&outputFormat=application/json`;
@@ -494,12 +320,14 @@ export const getLayerAttributes = async (fullLayerName) => {
                 return data.featureTypes[0].properties.map(p => p.name);
             }
         }
-    } catch (err) {
+    }
+    catch (err) {
         console.error('Failed to fetch layer attributes:', err);
     }
     return [];
 };
 
+// Delete Feature By feature id (fid) for layer wise and metadata table
 export const deleteFeature = async (fullLayerName, feature) => {
     try {
         const fid = feature.id || (feature.properties && (feature.properties.id || feature.properties.fid));
@@ -509,69 +337,145 @@ export const deleteFeature = async (fullLayerName, feature) => {
             return false;
         }
 
-        // Construct WFS-T Delete XML
         const wfsTransactionXml = `
-<wfs:Transaction service="WFS" version="1.1.0"
-xmlns:wfs="http://www.opengis.net/wfs"
-xmlns:ogc="http://www.opengis.net/ogc"
-xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-<wfs:Delete typeName="${fullLayerName}"><ogc:Filter><ogc:FeatureId fid="${fid}"/></ogc:Filter></wfs:Delete>
-</wfs:Transaction>`.trim();
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Delete typeName="${fullLayerName}"><ogc:Filter><ogc:FeatureId fid="${fid}"/></ogc:Filter></wfs:Delete>
+        </wfs:Transaction>`.trim();
 
-        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-            method: 'POST',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'text/xml'
-            },
-            body: wfsTransactionXml
-        });
+        const response = await fetch(`${GEOSERVER_URL}/wfs`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'text/xml'
+                },
+                body: wfsTransactionXml
+            });
 
         if (response.ok) {
             const resultText = await response.text();
-            // Check for success in the XML response
             if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalDeleted>1</wfs:totalDeleted>')) {
                 return true;
-            } else if (resultText.includes('ExceptionText')) {
+            }
+            else if (resultText.includes('ExceptionText')) {
                 console.error('WFS-T Exception:', resultText);
                 return false;
             }
-            return true; // Assume success if no exception and ok status
+            return true;
         }
         return false;
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`Failed to delete feature via WFS-T (${fullLayerName}):`, error);
         return false;
     }
 };
 
-export const saveNewFeature = async (fullLayerName, properties) => {
-    try {
 
-        console.clear();
-        console.log("properties ", properties);
+// Add New Feature from Attribute Table
+export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown') => {
+    try {
+        if (!geometryFeature) {
+            console.error("No geometry feature provided for creation");
+            return false;
+        }
+
+        const geometry = geometryFeature.getGeometry().clone();
+
+        if (srid && srid !== '3857') {
+            try {
+                geometry.transform('EPSG:3857', `EPSG:${srid}`);
+                console.log(`Transformed geometry from EPSG:3857 to EPSG:${srid}`);
+            }
+            catch (err) {
+                console.error(`Failed to transform geometry to EPSG:${srid}`, err);
+            }
+        }
+
+        const coords = geometry.getCoordinates();
+        let gmlGeometry = '';
+        const type = geometry.getType();
+
+        if (type === 'Point') {
+            gmlGeometry = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
+        }
+        else if (type === 'LineString') {
+            gmlGeometry = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
+        }
+        else if (type === 'Polygon') {
+            const exterior = coords[0].map(c => c.join(' ')).join(' ');
+            let polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+            if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
+                gmlGeometry = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
+            } else {
+                gmlGeometry = polygonXml;
+            }
+        }
+        else if (type === 'MultiPolygon') {
+            console.warn("MultiPolygon auto-creation pending implementation, attempting simplistic fallback");
+        }
+
+        if (!gmlGeometry) {
+            console.error(`Unsupported geometry type for auto-creation: ${type}`);
+            return false;
+        }
+
+        // Extract workspace and layer name
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : ['feature', fullLayerName];
+
         let featureContentXml = '';
 
+        // Helper function to escape XML special characters
+        const escapeXml = (str) => {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        };
+
+        // Add Attributes identity columns
         for (const [key, value] of Object.entries(properties)) {
-            // Skip internal identifiers, private fields, and identity/auto-increment columns
-            // Omitting 'LayerId' allows the database to handle its own identity generation
+            const lowKey = key.toLowerCase();
             if (!key ||
                 key === 'id' ||
-                key.toLowerCase() === 'layerid' ||
-                key.toLowerCase() === 'fid' ||
-                key.toLowerCase() === 'ogc_fid' ||
+                lowKey === 'layerid' ||
+                lowKey === 'gid' ||
+                lowKey === 'objectid' ||
+                lowKey === 'fid' ||
+                lowKey === 'ogc_fid' ||
                 key.startsWith('_') ||
                 value === null ||
                 value === undefined ||
                 value === ''
             ) continue;
-            featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
+
+            if (lowKey.startsWith('st_')) {
+                console.log(`Skipping computed column: ${key}`);
+                continue;
+            }
+
+            // Skip geometry columns (they're added separately)
+            if (lowKey === 'geom' || lowKey === 'the_geom' || lowKey === 'geometry' || lowKey === 'wkb_geometry') {
+                continue;
+            }
+
+            // Escape XML special characters in the value
+            const escapedValue = escapeXml(value);
+            featureContentXml += `<${prefix}:${key}>${escapedValue}</${prefix}:${key}>`;
         }
 
-        // Use the exact targetNamespace discovered from GeoServer (gisweb)
-        // Previous assumed http-formatted URI was causing feature type not found errors
+        // Add Geometry
+        // Ensure geometryName matches what GeoServer expects (often 'geom' or 'the_geom').
+        featureContentXml += `<${prefix}:${geometryName}>${gmlGeometry}</${prefix}:${geometryName}>`;
+
+        // Use the exact namespace matching saveNewFeature — just the workspace prefix
         const namespaceUri = prefix;
 
         const wfsTransactionXml = `
@@ -589,48 +493,196 @@ export const saveNewFeature = async (fullLayerName, properties) => {
         </wfs:Insert>
         </wfs:Transaction>`.trim();
 
-        console.log('Save New Feature XML:', wfsTransactionXml);
-
-        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-            method: 'POST',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'text/xml'
-            },
-            body: wfsTransactionXml
-        });
+        const response = await fetch(`${GEOSERVER_URL}/wfs`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'text/xml'
+                },
+                body: wfsTransactionXml
+            });
 
         if (response.ok) {
             const resultText = await response.text();
-            console.log('Save New Feature Response:', resultText);
-
-            if (resultText.includes('ExceptionText')) {
-                console.error('WFS-T Create Exception:', resultText);
+            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>')) {
+                return true;
+            } else if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Insert Exception:', resultText);
                 return false;
             }
-
-            return resultText.includes('TransactionSummary') &&
-                (resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>') ||
-                    resultText.includes('totalInserted="1"'));
+            return true;
         }
         return false;
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`Failed to create feature via WFS-T (${fullLayerName}):`, error);
         return false;
     }
 };
 
+//Update Feature 
+export const updateFeature = async (fullLayerName, featureId, properties) => {
+    try {
+        if (!featureId) {
+            console.error("No Feature ID provided for update");
+            return false;
+        }
+
+        let propertyXml = '';
+        for (const [key, value] of Object.entries(properties)) {
+            if (key === 'id' || key === 'ogc_fid' || key === 'geometry' || key === '_feature' || key === 'isDirty' || key === 'objectid' || key === 'fid' || key === 'featid') continue;
+            propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
+        }
+
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0"
+        xmlns:wfs="http://www.opengis.net/wfs"
+        xmlns:ogc="http://www.opengis.net/ogc"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Update typeName="${fullLayerName}">${propertyXml}<ogc:Filter><ogc:FeatureId fid="${featureId}"/></ogc:Filter></wfs:Update>
+        </wfs:Transaction>`.trim();
+
+        const response = await fetch(`${GEOSERVER_URL}/wfs`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'text/xml'
+                },
+                body: wfsTransactionXml
+            });
+
+        if (response.ok) {
+            const resultText = await response.text();
+            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalUpdated>1</wfs:totalUpdated>')) {
+                return true;
+            } else if (resultText.includes('ExceptionText')) {
+                console.error('WFS-T Update Exception:', resultText);
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+    catch (error) {
+        console.error(`Failed to update feature via WFS-T (${fullLayerName}):`, error);
+        return false;
+    }
+};
+
+//Query Builder Filter
+export const QueryBuilderFilter = (conditions) => {
+    if (!conditions || conditions.length === 0) return null;
+
+    const validConditions = conditions.filter(c => c.field && c.value);
+
+    if (validConditions.length === 0)
+        return null;
+
+    let cqlParts = [];
+    validConditions.forEach((cond, index) => {
+        let formattedValue = cond.value;
+        if (cond.operator === 'LIKE' || cond.operator === 'ILIKE') {
+            formattedValue = `'%${cond.value}%'`;
+        }
+        else {
+            // Check if value is numeric
+            if (cond.value === '' || isNaN(cond.value)) {
+                formattedValue = `'${cond.value}'`;
+            }
+        }
+
+        const part = `${cond.field} ${cond.operator} ${formattedValue}`;
+
+        if (index > 0) {
+            cqlParts.push(` ${cond.logic} `);
+        }
+        cqlParts.push(part);
+    });
+
+    return cqlParts.join("");
+};
+
+
+// Layer Status For Layer Management
+export const fetchLayerStatuses = async () => {
+    const statuses = {};
+    try {
+        const restUrl = `${GEOSERVER_URL}/rest/layers.json`;
+        const restResponse = await fetch(restUrl,
+            {
+                headers:
+                {
+                    'Authorization': AUTH_HEADER,
+                    'Accept': 'application/json'
+                }
+            });
+
+        let configuredLayers = [];
+        if (restResponse.ok) {
+            const data = await restResponse.json();
+            if (data && data.layers && data.layers.layer) {
+                configuredLayers = data.layers.layer.map(l => l.name);
+            }
+        }
+        const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`;
+        const wfsResponse = await fetch(wfsUrl,
+            {
+                headers:
+                {
+                    'Authorization': AUTH_HEADER
+                }
+            });
+
+        let activeLayers = [];
+        if (wfsResponse.ok) {
+            const text = await wfsResponse.text();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(text, "text/xml");
+            const featureTypes = xmlDoc.getElementsByTagName("FeatureType");
+
+            for (let i = 0; i < featureTypes.length; i++) {
+                const nameNodes = featureTypes[i].getElementsByTagName("Name");
+                if (nameNodes.length > 0) {
+                    activeLayers.push(nameNodes[0].textContent);
+                }
+            }
+        }
+
+        configuredLayers.forEach(layerName => {
+
+            const normalizedLayerName = layerName.includes(':') ? layerName.split(':').pop() : layerName;
+            const isActive = activeLayers.some(al => {
+                const normalizedAl = al.includes(':') ? al.split(':').pop() : al;
+                return al === layerName || normalizedAl === normalizedLayerName;
+            });
+
+            if (isActive) {
+                statuses[layerName] = 'Valid Layer';
+            } else {
+                statuses[layerName] = 'Layer Error';
+            }
+        });
+
+    }
+    catch (err) {
+        console.error('Failed to fetch layer statuses:', err);
+    }
+    return statuses;
+};
+
+// Add New Layer Configuration for "Layer" metadata table 
 export const addNewLayerConfig = async (properties) => {
     try {
-        console.clear();
-        console.log("Saving New Layer Config:", properties);
 
         const fullLayerName = `${WORKSPACE}:Layer`;
         const prefix = WORKSPACE;
         let featureContentXml = '';
 
+        //Primary Key Ignore
         for (const [key, value] of Object.entries(properties)) {
-            // Explicitly exclude identity columns and empty values
             if (!key ||
                 key === 'id' ||
                 key.toLowerCase() === 'layerid' ||
@@ -681,184 +733,95 @@ export const addNewLayerConfig = async (properties) => {
                 return false;
             }
 
-            return resultText.includes('TransactionSummary') &&
-                (resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>') ||
-                    resultText.includes('totalInserted="1"'));
+            return resultText.includes('TransactionSummary') && (resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>') || resultText.includes('totalInserted="1"'));
         }
         return false;
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Failed to create specialized layer configuration:", error);
         return false;
     }
 };
 
-export const SaveNewAttribute = async (fullLayerName, properties, geometryFeature, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown') => {
+//Update Sequence In "Layer"
+export const saveSequence = async (sequenceList) => {
     try {
-        if (!geometryFeature) {
-            console.error("No geometry feature provided for creation");
-            return false;
-        }
+        const url = `${GEOSERVER_URL}/wfs`;
+        let tempUpdates = '';
+        let finalUpdates = '';
 
-        // Clone and transform geometry if needed
-        const geometry = geometryFeature.getGeometry().clone();
-
-        // Transform from Map Display Projection (EPSG:3857) to Layer Projection (e.g., EPSG:4326)
-        if (srid && srid !== '3857') {
-            try {
-                geometry.transform('EPSG:3857', `EPSG:${srid}`);
-                console.log(`Transformed geometry from EPSG:3857 to EPSG:${srid}`);
-            } catch (err) {
-                console.error(`Failed to transform geometry to EPSG:${srid}`, err);
-                // Fallback: proceed with original geometry, might fail on server
+        // Pass 1: Move to Temp Range reason Unique Index
+        sequenceList.forEach((item, index) => {
+            if (item.sequenceNumber === undefined || item.sequenceNumber === null) return;
+            const tempSeq = 100000 + index + Math.floor(Math.random() * 1000);
+            if (item.fid) {
+                tempUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${tempSeq}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:FeatureId fid="${item.fid}"/>
+                    </ogc:Filter>
+                </wfs:Update>`;
             }
-        }
-
-        // Convert OpenLayers Geometry to GML3 fragment
-        const coords = geometry.getCoordinates();
-        let gmlGeometry = '';
-        const type = geometry.getType();
-
-        if (type === 'Point') {
-            gmlGeometry = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
-        } else if (type === 'LineString') {
-            gmlGeometry = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
-        } else if (type === 'Polygon') {
-            // Polygons in GML are rings. First ring is exterior.
-            const exterior = coords[0].map(c => c.join(' ')).join(' ');
-            let polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
-
-            // Check if target layer expects MultiPolygon but we have a Polygon
-            if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
-                gmlGeometry = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
-            } else {
-                gmlGeometry = polygonXml;
+            else {
+                tempUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${tempSeq}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:PropertyIsEqualTo>
+                            <ogc:PropertyName>LayerName</ogc:PropertyName>
+                            <ogc:Literal>${item.layerId}</ogc:Literal>
+                        </ogc:PropertyIsEqualTo>
+                    </ogc:Filter>
+                </wfs:Update>`;
             }
-        } else if (type === 'MultiPolygon') {
-            // Simplified MultiPolygon support
-            // ...implementation can be expanded if needed...
-            console.warn("MultiPolygon auto-creation pending implementation, attempting simplistic fallback");
-        }
-
-        if (!gmlGeometry) {
-            console.error(`Unsupported geometry type for auto-creation: ${type}`);
-            return false;
-        }
-
-        // Extract workspace and layer name
-        const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : ['feature', fullLayerName];
-
-        // Construct Feature Content XML
-        // Unlike Update, Insert expects the actual feature structure: <prefix:LayerName><prefix:prop>val</prefix:prop></prefix:LayerName>
-        let featureContentXml = '';
-
-        // Helper function to escape XML special characters
-        const escapeXml = (str) => {
-            if (str === null || str === undefined) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&apos;');
-        };
-
-        // Add Attributes — match user request to send 0/empty for identity columns
-        for (const [key, value] of Object.entries(properties)) {
-            const lowKey = key.toLowerCase();
-
-            // Skip internal/identity columns
-            if (!key ||
-                key === 'id' ||
-                lowKey === 'layerid' ||
-                lowKey === 'gid' ||
-                lowKey === 'objectid' ||
-                lowKey === 'fid' ||
-                lowKey === 'ogc_fid' ||
-                key.startsWith('_') ||
-                value === null ||
-                value === undefined ||
-                value === '' // Skip empty strings to avoid type mismatch errors
-            ) continue;
-
-            // Skip computed/function columns (PostGIS functions)
-            if (lowKey.startsWith('st_')) {
-                console.log(`Skipping computed column: ${key}`);
-                continue;
-            }
-
-            // Skip geometry columns (they're added separately)
-            if (lowKey === 'geom' || lowKey === 'the_geom' || lowKey === 'geometry' || lowKey === 'wkb_geometry') {
-                continue;
-            }
-
-            // Escape XML special characters in the value
-            const escapedValue = escapeXml(value);
-            featureContentXml += `<${prefix}:${key}>${escapedValue}</${prefix}:${key}>`;
-        }
-
-        // Add Geometry
-        // Ensure geometryName matches what GeoServer expects (often 'geom' or 'the_geom').
-        featureContentXml += `<${prefix}:${geometryName}>${gmlGeometry}</${prefix}:${geometryName}>`;
-
-        // Use the exact namespace matching saveNewFeature — just the workspace prefix
-        const namespaceUri = prefix;
-
-        const wfsTransactionXml = `
-        <wfs:Transaction service="WFS" version="1.1.0"
-        xmlns:wfs="http://www.opengis.net/wfs"
-        xmlns:ogc="http://www.opengis.net/ogc"
-        xmlns:gml="http://www.opengis.net/gml"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:${prefix}="${namespaceUri}"
-        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-        <wfs:Insert>
-            <${fullLayerName}>
-                ${featureContentXml}
-            </${fullLayerName}>
-        </wfs:Insert>
-        </wfs:Transaction>`.trim();
-
-        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-            method: 'POST',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'text/xml'
-            },
-            body: wfsTransactionXml
         });
 
-        if (response.ok) {
-            const resultText = await response.text();
-            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalInserted>1</wfs:totalInserted>')) {
-                return true;
-            } else if (resultText.includes('ExceptionText')) {
-                console.error('WFS-T Insert Exception:', resultText);
-                return false;
+        // Pass 2: Then acutal Update Sequence Number
+        for (const item of sequenceList) {
+            if (item.sequenceNumber === undefined || item.sequenceNumber === null) continue;
+
+            const seqInt = parseInt(item.sequenceNumber, 10);
+            if (isNaN(seqInt)) continue;
+
+            if (item.fid) {
+                finalUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${seqInt}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:FeatureId fid="${item.fid}"/>
+                    </ogc:Filter>
+                </wfs:Update>`;
             }
-            return true;
+            else {
+                finalUpdates += `
+                <wfs:Update typeName="${WORKSPACE}:Layer">
+                    <wfs:Property>
+                        <wfs:Name>LayerSequenceNo</wfs:Name>
+                        <wfs:Value>${seqInt}</wfs:Value>
+                    </wfs:Property>
+                    <ogc:Filter>
+                        <ogc:PropertyIsEqualTo>
+                            <ogc:PropertyName>LayerName</ogc:PropertyName>
+                            <ogc:Literal>${item.layerId}</ogc:Literal>
+                        </ogc:PropertyIsEqualTo>
+                    </ogc:Filter>
+                </wfs:Update>`;
+            }
         }
-        return false;
-    } catch (error) {
-        console.error(`Failed to create feature via WFS-T (${fullLayerName}):`, error);
-        return false;
-    }
-};
 
-export const updateFeature = async (fullLayerName, featureId, properties) => {
-    try {
-        if (!featureId) {
-            console.error("No Feature ID provided for update");
-            return false;
-        }
+        const updates = tempUpdates + finalUpdates;
 
-        // Construct WFS-T Update XML
-        let propertyXml = '';
-        for (const [key, value] of Object.entries(properties)) {
-            // Skip internal properties if any
-            if (key === 'id' || key === 'ogc_fid' || key === 'geometry' || key === '_feature' || key === 'isDirty' || key === 'objectid' || key === 'fid' || key === 'featid') continue;
-
-            propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
-        }
+        if (!updates) return false;
 
         const wfsTransactionXml = `
         <wfs:Transaction service="WFS" version="1.1.0"
@@ -866,79 +829,44 @@ export const updateFeature = async (fullLayerName, featureId, properties) => {
         xmlns:ogc="http://www.opengis.net/ogc"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-        <wfs:Update typeName="${fullLayerName}">${propertyXml}<ogc:Filter><ogc:FeatureId fid="${featureId}"/></ogc:Filter></wfs:Update>
+            ${updates}
         </wfs:Transaction>`.trim();
 
-        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-            method: 'POST',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'text/xml'
-            },
-            body: wfsTransactionXml
-        });
+
+        const response = await fetch(url,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'text/xml'
+                },
+                body: wfsTransactionXml
+            });
 
         if (response.ok) {
             const resultText = await response.text();
-            if (resultText.includes('TransactionSummary') && resultText.includes('<wfs:totalUpdated>1</wfs:totalUpdated>')) {
-                return true;
-            } else if (resultText.includes('ExceptionText')) {
-                console.error('WFS-T Update Exception:', resultText);
+            if (resultText.includes('ExceptionText')) {
                 return false;
             }
-            return true;
+            return resultText.includes('TransactionSummary');
         }
         return false;
-    } catch (error) {
-        console.error(`Failed to update feature via WFS-T (${fullLayerName}):`, error);
+    }
+    catch (error) {
+        console.error("Failed to save layer sequences via WFS-T", error);
         return false;
     }
 };
 
-export const QueryBuilderFilter = (conditions) => {
-    if (!conditions || conditions.length === 0) return null;
-
-    const validConditions = conditions.filter(c => c.field && c.value);
-    if (validConditions.length === 0) return null;
-
-    let cqlParts = [];
-    validConditions.forEach((cond, index) => {
-        let formattedValue = cond.value;
-
-        // Handle LIKE/ILIKE wrapping
-        if (cond.operator === 'LIKE' || cond.operator === 'ILIKE') {
-            formattedValue = `'%${cond.value}%'`;
-        } else {
-            // Check if value is numeric
-            if (cond.value === '' || isNaN(cond.value)) {
-                formattedValue = `'${cond.value}'`;
-            }
-        }
-
-        const part = `${cond.field} ${cond.operator} ${formattedValue}`;
-
-        if (index > 0) {
-            cqlParts.push(` ${cond.logic} `);
-        }
-        cqlParts.push(part);
-    });
-
-    return cqlParts.join("");
-};
-
-/**
- * ELITE: Dynamic Layer Publishing
- * 1. Creates a new PostGIS table via GeoServer REST (FeatureType)
- * 2. Registers metadata in the application's Layer table
- */
 export const publishNewLayer = async (config) => {
     const { layerName, geometryType, srid = '4326', attributes = [] } = config;
 
     try {
-        // Step 1: Find the PostGIS DataStore name
-        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores.json`, {
-            headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
-        });
+        // Find the PostGIS DataStore name
+        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores.json`,
+            {
+                headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
+            });
 
         if (!dsRes.ok) throw new Error("Failed to find datastores in workspace");
         const dsData = await dsRes.json();
@@ -946,8 +874,9 @@ export const publishNewLayer = async (config) => {
 
         if (!dataStoreName) throw new Error("No PostGIS DataStore found in workspace. Please ensure one is configured.");
 
-        // Step 2: Create the FeatureType (and PostGIS Table)
-        const featureTypeBody = {
+        //Create the FeatureType (and PostGIS Table)
+        const featureTypeBody =
+        {
             featureType: {
                 name: layerName,
                 nativeName: layerName,
@@ -974,7 +903,8 @@ export const publishNewLayer = async (config) => {
 
         const ftRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${dataStoreName}/featuretypes`, {
             method: 'POST',
-            headers: {
+            headers:
+            {
                 'Authorization': AUTH_HEADER,
                 'Content-Type': 'application/json'
             },
@@ -986,11 +916,11 @@ export const publishNewLayer = async (config) => {
             throw new Error(`GeoServer creation failed: ${errorText}`);
         }
 
-        // Step 3: Register in application metadata (Layer table)
-        // We use our existing addNewLayerConfig which hits the WFS-T on the metadata layer
-        const metadata = {
+        // Add published layer infos to the metadata layer
+        const metadata =
+        {
             LayerName: layerName,
-            LayerSequenceNo: 0, // Will be re-ordered
+            LayerSequenceNo: 0,
             LayerVisibilityOnLoad: true,
             IsShowLayer: true,
             GeometryFieldName: 'geom',
@@ -1002,29 +932,20 @@ export const publishNewLayer = async (config) => {
         if (!registered) {
             console.warn("Layer published in GeoServer but metadata registration failed.");
         }
-
         return true;
-    } catch (err) {
+    }
+    catch (err) {
         console.error("Publishing error:", err);
         throw err;
     }
 };
 
-/**
- * ELITE: Batch Insert Features
- * Performs a single WFS-T Transaction with multiple Insert operations
- * @param {string} fullLayerName - Workspace:LayerName
- * @param {Array} features - Array of GeoJSON features
- * @param {string} geometryName - Name of the geometry field (default 'geom')
- * @param {string} srid - Target SRID
- */
+// Data Add On
 export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857') => {
     try {
         if (!features || features.length === 0) return true;
-
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
         let insertsXml = '';
-
         const escapeXml = (str) => {
             if (str === null || str === undefined) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -1032,15 +953,13 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 
         for (const feature of features) {
             let featureContentXml = '';
-
-            // 1. Process Properties
             for (const [key, value] of Object.entries(feature.properties || {})) {
                 const lowKey = key.toLowerCase();
                 if (['id', 'fid', 'ogc_fid', 'gid', 'objectid'].includes(lowKey) || key.startsWith('_') || value === null || value === undefined) continue;
                 featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
             }
 
-            // 2. Process Geometry
+            // Process Geometry
             const geom = feature.geometry;
             if (geom) {
                 let gmlGeom = '';
@@ -1081,30 +1000,26 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
             ${insertsXml}
         </wfs:Transaction>`.trim();
 
-        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-            method: 'POST',
-            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
-            body: wfsTransactionXml
-        });
+        const response = await fetch(`${GEOSERVER_URL}/wfs`,
+            {
+                method: 'POST',
+                headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
+                body: wfsTransactionXml
+            });
 
         if (response.ok) {
             const result = await response.text();
             return result.includes('TransactionSummary') && !result.includes('ExceptionText');
         }
         return false;
-    } catch (err) {
+    }
+    catch (err) {
         console.error("Batch insert failed:", err);
         return false;
     }
 };
 
-/**
- * ELITE: Batch Update Features by Property
- * Updates multiple features based on a matching property (Unique Key)
- * @param {string} fullLayerName - Workspace:LayerName
- * @param {Array} features - Array of objects containing properties to update
- * @param {string} matchingKey - The property name used to match existing features
- */
+//data Updation
 export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingKey) => {
     try {
         if (!features || features.length === 0) return true;
@@ -1119,17 +1034,11 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
             let propertyXml = '';
             for (const [key, value] of Object.entries(feature.properties || {})) {
                 const lowKey = key.toLowerCase();
-                // Skip internal/identity columns and the matching key itself in the Update body
-                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'wkb_geometry'].includes(lowKey) ||
-                    key === matchingKey ||
-                    key.startsWith('_') ||
-                    value === null ||
-                    value === undefined) continue;
-
+                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'wkb_geometry'].includes(lowKey) || key === matchingKey || key.startsWith('_') || value === null || value === undefined) continue;
                 propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
             }
 
-            if (!propertyXml) continue; // Nothing to update for this feature
+            if (!propertyXml) continue;
 
             updatesXml += `
             <wfs:Update typeName="${fullLayerName}">
@@ -1154,57 +1063,59 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
             ${updatesXml}
         </wfs:Transaction>`.trim();
 
-        const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-            method: 'POST',
-            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
-            body: wfsTransactionXml
-        });
+        const response = await fetch(`${GEOSERVER_URL}/wfs`,
+            {
+                method: 'POST',
+                headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
+                body: wfsTransactionXml
+            });
 
         if (response.ok) {
             const result = await response.text();
             return result.includes('TransactionSummary') && !result.includes('ExceptionText');
         }
         return false;
-    } catch (err) {
+    }
+    catch (err) {
         console.error("Batch update failed:", err);
         return false;
     }
 };
 
-/**
- * ELITE: Fetch Full GeoServer Layer Details
- * Retrieves all layers in the workspace along with their SRS and attributes
- */
+//Retrive GeoServer all Layer Configuration for Workspace
 export const fetchFullGeoServerDetails = async () => {
     try {
-        // 1. Get layers list
-        const listRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers.json`, {
-            headers: { 'Authorization': AUTH_HEADER }
-        });
+
+        const listRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers.json`,
+            {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+
         if (!listRes.ok) throw new Error("Could not fetch layers list");
         const listData = await listRes.json();
         const layers = listData.layers?.layer || [];
 
-        // 2. Fetch details for each layer concurrently
         const detailsPromises = layers.map(async (l) => {
             const layerUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${l.name}.json`;
             const detailRes = await fetch(layerUrl, {
                 headers: { 'Authorization': AUTH_HEADER }
             });
+
             if (!detailRes.ok) return null;
             const detailData = await detailRes.json();
 
             const resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${l.name}.json`;
-            const resourceRes = await fetch(resourceUrl, {
-                headers: { 'Authorization': AUTH_HEADER }
-            });
+            const resourceRes = await fetch(resourceUrl,
+                {
+                    headers: { 'Authorization': AUTH_HEADER }
+                });
+
             if (!resourceRes.ok) return null;
             const resourceData = await resourceRes.json();
 
-            // Extract what we need: Name, DataStore, SRS, Attributes
             const featureType = resourceData.featureType;
             return {
-                id: l.name, // Use name as ID for server-only view
+                id: l.name,
                 name: l.name,
                 fullPath: `${WORKSPACE}:${l.name}`,
                 srs: featureType.srs,
@@ -1219,15 +1130,14 @@ export const fetchFullGeoServerDetails = async () => {
 
         const allDetails = await Promise.all(detailsPromises);
         return allDetails.filter(Boolean);
+
     } catch (err) {
         console.error("Fetch full GeoServer details failed:", err);
         return [];
     }
 };
 
-/**
- * ELITE: Update GeoServer Layer Projection
- */
+// Update Project of Layer in Geoserver
 export const updateGeoServerLayerSRS = async (layerName, newSrid) => {
     try {
         const body = {
@@ -1237,42 +1147,41 @@ export const updateGeoServerLayerSRS = async (layerName, newSrid) => {
             }
         };
 
-        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': AUTH_HEADER,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
+        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': AUTH_HEADER,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
 
         return response.ok;
+
     } catch (err) {
         console.error("SRS update failed:", err);
         return false;
     }
 };
 
-/**
- * ELITE: Delete Layer from GeoServer
- * Removes both the Layer and the FeatureType
- */
+// Delete Acutal Layer From Geoserver
 export const deleteGeoServerLayerFull = async (layerName) => {
     try {
-        // 1. Delete the Layer
-        const layerDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${layerName}.json`, {
-            method: 'DELETE',
-            headers: { 'Authorization': AUTH_HEADER }
-        });
+        const layerDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${layerName}.json`,
+            {
+                method: 'DELETE',
+                headers: { 'Authorization': AUTH_HEADER }
+            });
 
-        // 2. Delete the FeatureType (recurse=true to clean up)
         const ftDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json?recurse=true`, {
             method: 'DELETE',
             headers: { 'Authorization': AUTH_HEADER }
         });
 
         return layerDel.ok || ftDel.ok;
-    } catch (err) {
+    }
+    catch (err) {
         console.error("Delete GeoServer layer failed:", err);
         return false;
     }

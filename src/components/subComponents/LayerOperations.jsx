@@ -994,25 +994,35 @@ const LayerOperations = ({
 
             case 'spatialjoin': {
                 return (
-                    <button
-                        onClick={() => onOpenSpatialJoin(layer.id)}
-                        style={{
-                            border: 'none',
-                            background: 'rgba(var(--color-primary-rgb), 0.1)',
-                            color: 'var(--color-primary)',
-                            padding: '4px 10px',
-                            borderRadius: '6px',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        <Zap size={12} /> Join
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            onClick={() => onOpenSpatialJoin(layer.id)}
+                            style={{
+                                border: 'none',
+                                background: 'rgba(var(--color-primary-rgb), 0.1)',
+                                color: 'var(--color-primary)',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <Zap size={12} /> Join
+                        </button>
+                        <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                            <input
+                                type="checkbox"
+                                checked={layer.visible}
+                                onChange={() => handleToggleGeoLayer(layer.id)}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
                 );
             }
 
@@ -1201,7 +1211,7 @@ const LayerOperations = ({
                             </button>
                         )}
                     </div>
-                    {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && serverLayers.length > 0 && (
+                    {(activeLayerTool === 'visibility' || activeLayerTool === 'info' || activeLayerTool === 'spatialjoin') && serverLayers.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '11px', fontWeight: 500 }}>ALL</span>
                             <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>

@@ -8,8 +8,6 @@ import TileLayer from 'ol/layer/Tile';
 import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
 import TileWMS from 'ol/source/TileWMS';
-import ImageWMS from 'ol/source/ImageWMS';
-import ImageLayer from 'ol/layer/Image';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { Draw, Modify, Snap, DragPan, DragZoom, DragBox } from 'ol/interaction';
@@ -23,7 +21,6 @@ import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
 import Graticule from 'ol/layer/Graticule';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import Overlay from 'ol/Overlay';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -44,37 +41,22 @@ import DataManipulationCard from '../subComponents/DataManipulationCard';
 import ServerInfoCard from '../subComponents/ServerInfoCard';
 import { getRenderPixel } from 'ol/render';
 
-import {
-  styleFunction,
-  highlightStyleFunction,
-  modifyStyle,
-  formatLength,
-  formatArea,
-  generateAnalysisSLD,
-  mergeAnalysisRules
-} from '../../utils/mapUtils';
+//Map Utils
+import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, formatArea, generateAnalysisSLD, mergeAnalysisRules } from '../../utils/mapUtils';
 
+
+// Service from Server.js
 import {
-  searchLocation,
-  getLayerAttributes,
-  getFeaturesForAttributeTable,
-  getGeoServerLayers,
-  getWMSSourceParams,
-  getLayerBBox,
-  getLayerStyle,
-  updateLayerStyle,
-  saveSequence,
-  deleteFeature,
-  updateFeature,
-  SaveNewAttribute,
-  saveNewFeature,
-  addNewLayerConfig,
-  publishNewLayer,
-  batchInsertFeatures,
-  batchUpdateFeaturesByProperty,
-  WORKSPACE
+  searchLocation, getLayerAttributes, getFeaturesForAttributeTable, getGeoServerLayers, getWMSSourceParams, getLayerBBox,
+  getLayerStyle, updateLayerStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
+  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE
 } from '../../services/Server';
+
+
+// Server Credentials
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
+
+// Cookie Helpers
 import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
 
@@ -106,17 +88,24 @@ function GISMap() {
   const [isLocked, setIsLocked] = useState(false);
   const [hasDrawings, setHasDrawings] = useState(false);
   const [hasMeasurements, setHasMeasurements] = useState(false);
+
+
   const [showDrawingLabels, setShowDrawingLabels] = useState(() => {
     const saved = localStorage.getItem('showDrawingLabels');
     return saved === null ? false : saved === 'true'; // Default to false
   });
+
+
   const [showAnalysisLabels, setShowAnalysisLabels] = useState(() => {
     const saved = localStorage.getItem('showAnalysisLabels');
     return saved === null ? false : saved === 'true'; // Default to false
   });
+
+
   const [measurementUnits, setMeasurementUnits] = useState(() => {
     return localStorage.getItem('measurementUnits') || 'kilometers'; // Default to kilometers
   });
+
   const measurementUnitsRef = useRef(measurementUnits);
   const showDrawingLabelsRef = useRef(showDrawingLabels);
   const showAnalysisLabelsRef = useRef(showAnalysisLabels);

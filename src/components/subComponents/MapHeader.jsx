@@ -1,44 +1,10 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
-import {
-    Map as MapIcon, Layers, PenTool, MapPin,
-    Moon, Sun, Trash2,
-    ArrowLeft,
-    Lock,
-    Unlock,
-    Wrench,
-    Printer,
-    Bookmark,
-    PanelRight,
-    LayersPlusIcon,
-    Earth,
-    ChevronsLeftRightEllipsis,
-    DraftingCompass,
-    MessageSquareCode,
-    Cog
-} from 'lucide-react';
-import { useState } from 'react';
+import { Map as MapIcon, Layers, PenTool, MapPin, Moon, Sun, Trash2, ArrowLeft, Lock, Unlock, Printer, Bookmark, DraftingCompass, Cog, MessageSquareCode } from 'lucide-react';
 
-const MapHeader = ({
-    activePanel,
-    setActivePanel,
-    setIsPanelMinimized,
-    toggleTheme,
-    theme,
-    handleClearDrawings,
-    handlePrintClick,
-    isLocked,
-    setIsLocked,
-    activeTool,
-    handleToolClick,
-    hasDrawings,
-    hasMeasurements,
-    onOpenLayerManagement,
-    onOpenLoadTempModal
-}) => {
+const MapHeader = ({ activePanel, setActivePanel, setIsPanelMinimized, toggleTheme, theme, handleClearDrawings, handlePrintClick, isLocked, setIsLocked, activeTool, handleToolClick, hasDrawings, hasMeasurements, onOpenLayerManagement, onOpenLoadTempModal }) => {
     return (
         <header className="header">
             <div className="header-content">
-                {/* Left Side: Back Button */}
                 <Tooltip.Root>
                     <Tooltip.Trigger asChild>
                         <button
@@ -59,7 +25,7 @@ const MapHeader = ({
                 </Tooltip.Root>
 
 
-                {/* Right Side: Title and Tools */}
+
                 <div className="header-right-group">
                     <div className="logo">
                         <div className="logo-text">
@@ -82,7 +48,8 @@ const MapHeader = ({
                                         onClick={() => {
                                             if (onOpenLayerManagement) {
                                                 onOpenLayerManagement();
-                                            } else {
+                                            }
+                                            else {
                                                 setActivePanel(activePanel === 'layermanagement' ? null : 'layermanagement');
                                                 setIsPanelMinimized(false);
                                             }
@@ -232,7 +199,7 @@ const MapHeader = ({
                             </Tooltip.Root>
 
 
-                            {/* <Tooltip.Root>
+                            <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
                                         className={`toolbar-button ${activePanel === 'assistant' ? 'active' : ''}`}
@@ -251,7 +218,8 @@ const MapHeader = ({
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
-                            </Tooltip.Root> */}
+                            </Tooltip.Root>
+
                             <div className="toolbar-divider" />
 
                             <Tooltip.Root>

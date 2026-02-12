@@ -99,7 +99,8 @@ const SpatialJoinCard = ({
         }
     };
 
-    const layerBOptions = allGeoServerLayers.filter(l => l.id !== layerA);
+    const visibleLayers = allGeoServerLayers.filter(l => l.visible);
+    const layerBOptions = visibleLayers.filter(l => l.id !== layerA);
     const attrsA = attributesMapA[layerA] || [];
     const attrsB = attributesMapB[layerB] || [];
 
@@ -256,7 +257,7 @@ const SpatialJoinCard = ({
                                                 }}
                                             >
                                                 <option value="">Select layer...</option>
-                                                {allGeoServerLayers.map(l => (
+                                                {visibleLayers.map(l => (
                                                     <option key={l.id} value={l.id}>{l.name}</option>
                                                 ))}
                                             </select>
