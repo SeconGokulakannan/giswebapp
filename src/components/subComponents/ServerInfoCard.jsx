@@ -1,25 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { X, Server, Trash2, Globe, List, BookOpen, Save, Loader2, Search, Database, ShieldAlert, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { fetchFullGeoServerDetails, updateGeoServerLayerSRS, deleteGeoServerLayerFull } from '../../services/Server';
+import { GetGeoServerAllLayerDetails, UpdateLayerProjection, DeleteLayerInGeoServer } from '../../services/Server';
 
 const ServerInfoCard = ({ isOpen, onClose }) => {
+
     const [layers, setLayers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedLayer, setSelectedLayer] = useState(null); // For attribute view
+    const [selectedLayer, setSelectedLayer] = useState(null);
     const [editingSrs, setEditingSrs] = useState({ name: '', value: '' });
 
     useEffect(() => {
         if (isOpen) {
-            handleFetchDetails();
+            GetLayerDetails();
         }
     }, [isOpen]);
 
-    const handleFetchDetails = async () => {
+    const GetLayerDetails = async () => {
         setIsLoading(true);
         try {
-            const data = await fetchFullGeoServerDetails();
+            const data = await GetGeoServerAllLayerDetails();
             setLayers(data);
         } catch (err) {
             toast.error("Failed to fetch GeoServer details");
@@ -28,15 +29,15 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
         }
     };
 
-    const handleUpdateSRS = async (layerName) => {
+    const UpdateProjection = async (layerName) => {
         if (!editingSrs.value) return;
         setIsLoading(true);
         try {
-            const success = await updateGeoServerLayerSRS(layerName, editingSrs.value);
+            const success = await UpdateLayerProjection(layerName, editingSrs.value);
             if (success) {
                 toast.success(`SRS updated for ${layerName}`);
                 setEditingSrs({ name: '', value: '' });
-                handleFetchDetails();
+                GetLayerDetails();
             } else {
                 toast.error("Update failed");
             }
@@ -47,15 +48,15 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
         }
     };
 
-    const handleDeleteLayer = async (layerName) => {
+    const DeleteLayer = async (layerName) => {
         if (!window.confirm(`Are you absolutely sure you want to delete "${layerName}" from GeoServer? This cannot be undone.`)) return;
 
         setIsLoading(true);
         try {
-            const success = await deleteGeoServerLayerFull(layerName);
+            const success = await DeleteLayerInGeoServer(layerName);
             if (success) {
                 toast.success(`${layerName} removed from server`);
-                handleFetchDetails();
+                GetLayerDetails();
             } else {
                 toast.error("Delete failed");
             }
@@ -167,7 +168,7 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
                                                             onChange={(e) => setEditingSrs({ ...editingSrs, value: e.target.value })}
                                                             style={{ width: '80px', height: '28px', fontSize: '0.75rem' }}
                                                         />
-                                                        <button onClick={() => handleUpdateSRS(layer.name)} style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '0 8px', cursor: 'pointer' }}><Save size={14} /></button>
+                                                        <button onClick={() => UpdateProjection(layer.name)} style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '0 8px', cursor: 'pointer' }}><Save size={14} /></button>
                                                         <button onClick={() => setEditingSrs({ name: '', value: '' })} style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '0 8px', cursor: 'pointer' }}><X size={14} /></button>
                                                     </div>
                                                 ) : (
@@ -200,7 +201,7 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
                                                     </button>
                                                     <button
                                                         title="Delete from Server"
-                                                        onClick={() => handleDeleteLayer(layer.name)}
+                                                        onClick={() => DeleteLayer(layer.name)}
                                                         className="action-icon-btn"
                                                         style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.05)' }}
                                                     >
@@ -221,7 +222,7 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
                     )}
                 </div>
 
-                {/* Attribute Inspector Modal */}
+                {/* Attribute Popup */}
                 {selectedLayer && (
                     <div className="elite-modal-overlay" style={{ zIndex: 10010, background: 'rgba(0,0,0,0.4)' }} onClick={() => setSelectedLayer(null)}>
                         <div className="elite-modal" onClick={e => e.stopPropagation()} style={{ width: '500px', maxHeight: '70vh' }}>

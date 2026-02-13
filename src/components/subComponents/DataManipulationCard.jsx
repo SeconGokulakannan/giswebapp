@@ -3,8 +3,9 @@ import { X, Upload, File, Database, Layers, Loader2, Info, CheckCircle2, Chevron
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
 import { getLayerAttributes } from '../../services/Server';
+import { batchInsertFeatures, batchUpdateFeaturesByProperty } from '../../services/Server';
 
-const DataManipulationCard = ({ isOpen, onClose, geoServerLayers, onManipulate }) => {
+const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     const [activeStep, setActiveStep] = useState(1); // 1: Upload & Select, 2: Map Attributes, 3: Finalize
     const [operation, setOperation] = useState('addon'); // 'addon' or 'update'
     const [targetLayerId, setTargetLayerId] = useState('');
@@ -128,7 +129,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers, onManipulate }
     const handleExecute = async () => {
         setIsProcessing(true);
         try {
-            await onManipulate({
+            await handleDataManipulation({
                 operation,
                 targetLayer,
                 sourceData,
@@ -146,6 +147,56 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers, onManipulate }
     if (!isOpen) return null;
 
     const fileCount = Object.values(uploadFiles).filter(Boolean).length;
+
+    //#region Data Manipulation
+    const handleDataManipulation = async (config) => {
+        const { operation, targetLayer, sourceData, mapping, matchingKey } = config;
+        const fullLayerName = targetLayer.fullName;
+
+        try {
+            toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'} for ${sourceData.features.length} features...`, { id: 'manipulate-toast' });
+            const mappedFeatures = sourceData.features.map(f => {
+                const newProps = {};
+                Object.entries(mapping).forEach(([destKey, srcKey]) => {
+                    if (srcKey) {
+                        newProps[destKey] = f.properties[srcKey];
+                    }
+                });
+                if (operation === 'update' && matchingKey && !newProps[matchingKey]) {
+                    newProps[matchingKey] = f.properties[matchingKey];
+                }
+
+                return {
+                    ...f,
+                    properties: newProps
+                };
+            });
+
+            let success = false;
+            if (operation === 'addon') {
+                success = await batchInsertFeatures(fullLayerName, mappedFeatures, 'geom', '4326');
+            } else {
+                success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey);
+            }
+
+            if (success) {
+                toast.success(`${operation === 'addon' ? 'Data Addon' : 'Data Update'} successful!`, { id: 'manipulate-toast' });
+                // const olLayer = operationalLayersRef.current[targetLayer.id];
+                // if (olLayer) {
+                //   olLayer.getSource().updateParams({ '_t': Date.now() });
+                // }
+                return true;
+            } else {
+                toast.error("Operation failed. Check server logs.", { id: 'manipulate-toast' });
+                return false;
+            }
+        } catch (err) {
+            console.error("Manual manipulation error:", err);
+            toast.error(`Fatal error: ${err.message}`, { id: 'manipulate-toast' });
+            return false;
+        }
+    };
+    //#endregion
 
     return (
         <div className="elite-modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>

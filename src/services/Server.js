@@ -1083,7 +1083,7 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
 };
 
 //Retrive GeoServer all Layer Configuration for Workspace
-export const fetchFullGeoServerDetails = async () => {
+export const GetGeoServerAllLayerDetails = async () => {
     try {
 
         const listRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers.json`,
@@ -1137,8 +1137,8 @@ export const fetchFullGeoServerDetails = async () => {
     }
 };
 
-// Update Project of Layer in Geoserver
-export const updateGeoServerLayerSRS = async (layerName, newSrid) => {
+// Update Projection of Layer in Geoserver
+export const UpdateLayerProjection = async (layerName, newSrid) => {
     try {
         const body = {
             featureType: {
@@ -1166,7 +1166,7 @@ export const updateGeoServerLayerSRS = async (layerName, newSrid) => {
 };
 
 // Delete Acutal Layer From Geoserver
-export const deleteGeoServerLayerFull = async (layerName) => {
+export const DeleteLayerInGeoServer = async (layerName) => {
     try {
         const layerDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${layerName}.json`,
             {

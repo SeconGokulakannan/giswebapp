@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
+import { batchInsertFeatures, publishNewLayer } from '../../services/Server';
 
-const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
+const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
     const [activeTab, setActiveTab] = useState('manual'); // 'manual' or 'upload'
     const [layerName, setLayerName] = useState('');
     const [geometryType, setGeometryType] = useState('Point');
@@ -46,6 +47,39 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
             setActiveTab('manual');
         }
     }, [isOpen]);
+
+
+    const handlePublishNewLayer = async (config) => {
+        try {
+            // Step 1: Create the Layer structure
+            const success = await publishNewLayer(config);
+            if (!success) return false;
+
+            // Step 2: If we have data (Shapefile upload), insert features
+            if (config.data && config.data.features && config.data.features.length > 0) {
+                toast.loading(`Importing ${config.data.features.length} features...`, { id: 'publish-toast' });
+
+                // Small delay to allow GeoServer to register the featuretype
+                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                const fullLayerName = `${WORKSPACE}:${config.layerName}`;
+                const insertSuccess = await batchInsertFeatures(fullLayerName, config.data.features, 'geom', config.srid || '4326');
+
+                if (insertSuccess) {
+                    toast.success(`Layer published with ${config.data.features.length} features!`, { id: 'publish-toast' });
+                } else {
+                    toast.error("Layer created but feature import failed.", { id: 'publish-toast' });
+                }
+            }
+
+            // Refresh layers list to show the newly published layer
+            handleLayerRefresh();
+            return true;
+        } catch (err) {
+            console.error("Publishing error in GISMap:", err);
+            return false;
+        }
+    };
 
     const hasData = () => {
         if (activeTab === 'manual') {
@@ -219,7 +253,7 @@ const CreateLayerCard = ({ isOpen, onClose, onPublish }) => {
                 finalData = { ...parsedData, features: filteredFeatures };
             }
 
-            await onPublish({
+            await handlePublishNewLayer({
                 layerName: layerName.trim(),
                 geometryType,
                 attributes: filteredAttributes,

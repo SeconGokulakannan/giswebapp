@@ -12,13 +12,7 @@ const getRandomColor = (exclude = null) => {
     return available[Math.floor(Math.random() * available.length)];
 };
 
-const SpatialJoinCard = ({
-    isOpen,
-    onClose,
-    allGeoServerLayers = [],
-    onPerformSpatialJoin,
-    onResetSpatialJoin,
-    targetLayerId
+const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], onPerformSpatialJoin, onResetSpatialJoin, targetLayerId
 }) => {
     const [isMinimized, setIsMinimized] = useState(false);
     const [layerA, setLayerA] = useState('');

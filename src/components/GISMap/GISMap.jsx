@@ -931,7 +931,7 @@ function GISMap() {
     toast.success("Analysis reset. Client-side layers removed.");
   };
 
-  // === Spatial Join Handlers ===
+  //#region Spatial Join Handlers
   const handlePerformSpatialJoin = async (config) => {
     const { layerA: layerAId, attrA, layerB: layerBId, attrB, colorA, colorB } = config;
     const layerAObj = geoServerLayers.find(l => l.id === layerAId);
@@ -1048,90 +1048,8 @@ function GISMap() {
     toast.success('Spatial join reset. Layers restored.');
   };
 
-  const handlePublishNewLayer = async (config) => {
-    try {
-      // Step 1: Create the Layer structure
-      const success = await publishNewLayer(config);
-      if (!success) return false;
+  //#endregion
 
-      // Step 2: If we have data (Shapefile upload), insert features
-      if (config.data && config.data.features && config.data.features.length > 0) {
-        toast.loading(`Importing ${config.data.features.length} features...`, { id: 'publish-toast' });
-
-        // Small delay to allow GeoServer to register the featuretype
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        const fullLayerName = `${WORKSPACE}:${config.layerName}`;
-        const insertSuccess = await batchInsertFeatures(fullLayerName, config.data.features, 'geom', config.srid || '4326');
-
-        if (insertSuccess) {
-          toast.success(`Layer published with ${config.data.features.length} features!`, { id: 'publish-toast' });
-        } else {
-          toast.error("Layer created but feature import failed.", { id: 'publish-toast' });
-        }
-      }
-
-      // Refresh layers list to show the newly published layer
-      handleFetchGeoServerLayers();
-      return true;
-    } catch (err) {
-      console.error("Publishing error in GISMap:", err);
-      return false;
-    }
-  };
-
-  const handleDataManipulation = async (config) => {
-    const { operation, targetLayer, sourceData, mapping, matchingKey } = config;
-    const fullLayerName = targetLayer.fullName;
-
-    try {
-      toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'} for ${sourceData.features.length} features...`, { id: 'manipulate-toast' });
-
-      // Transform source features to match target properties using the mapping
-      const mappedFeatures = sourceData.features.map(f => {
-        const newProps = {};
-        Object.entries(mapping).forEach(([destKey, srcKey]) => {
-          if (srcKey) {
-            newProps[destKey] = f.properties[srcKey];
-          }
-        });
-
-        // For Update, we MUST include the matching key value even if not explicitly mapped for update
-        if (operation === 'update' && matchingKey && !newProps[matchingKey]) {
-          newProps[matchingKey] = f.properties[matchingKey];
-        }
-
-        return {
-          ...f,
-          properties: newProps
-        };
-      });
-
-      let success = false;
-      if (operation === 'addon') {
-        success = await batchInsertFeatures(fullLayerName, mappedFeatures, 'geom', '4326');
-      } else {
-        success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey);
-      }
-
-      if (success) {
-        toast.success(`${operation === 'addon' ? 'Data Addon' : 'Data Update'} successful!`, { id: 'manipulate-toast' });
-        // Refresh map layer
-        const olLayer = operationalLayersRef.current[targetLayer.id];
-        if (olLayer) {
-          olLayer.getSource().updateParams({ '_t': Date.now() });
-        }
-        return true;
-      } else {
-        toast.error("Operation failed. Check server logs.", { id: 'manipulate-toast' });
-        return false;
-      }
-    } catch (err) {
-      console.error("Manual manipulation error:", err);
-      toast.error(`Fatal error: ${err.message}`, { id: 'manipulate-toast' });
-      return false;
-    }
-  };
 
   // Analysis Playback Loop
   useEffect(() => {
@@ -2665,7 +2583,7 @@ function GISMap() {
           <CreateLayerCard
             isOpen={showCreateLayerModal}
             onClose={() => setShowCreateLayerModal(false)}
-            onPublish={handlePublishNewLayer}
+            handleLayerRefresh={handleFetchGeoServerLayers}
           />
 
           <LayerManagementCard
@@ -2699,7 +2617,6 @@ function GISMap() {
             isOpen={showDataManipulationModal}
             onClose={() => setShowDataManipulationModal(false)}
             geoServerLayers={geoServerLayers}
-            onManipulate={handleDataManipulation}
           />
 
           <ServerInfoCard
