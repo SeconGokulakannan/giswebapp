@@ -4,7 +4,7 @@ import { LineString, Point } from 'ol/geom';
 
 /* Elite Color System */
 const COLORS = {
-    primary: '#3b82f6',     // Electric Blue
+    primary: '#3b82f6ff',     // Electric Blue
     primaryGlow: 'rgba(59, 130, 246, 0.4)',
     accent: '#10b981',      // Emerald Green
     accentGlow: 'rgba(16, 185, 129, 0.3)',
@@ -174,16 +174,7 @@ export const formatArea = function (geometry, unitKey = 'metric') {
     return Math.round(value * 100) / 100 + ' ' + unit;
 };
 
-/**
- * Elite Style Function with Animation Support
- * @param {Feature} feature Map feature
- * @param {boolean} segments Show segment lengths
- * @param {string} drawType Current interaction type
- * @param {string} tip Interaction hint
- * @param {number} offset Animation dash offset
- * @param {string} units Measurement units (standard key)
- * @param {boolean} showLabels Whether to display measurement labels (for drawing tools)
- */
+//Elite Style Function with Animation Support
 export const styleFunction = (feature, segments, drawType, tip, offset = 0, units = 'metric', showLabels = true) => {
     const styles = [];
     const geometry = feature.getGeometry();
@@ -279,11 +270,8 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
     return styles;
 };
 
-/**
- * Animated Highlight Style for Selected Features
- * @param {Feature} feature The selected feature
- * @param {number} offset Animation dash offset
- */
+
+//Animated Highlight Style for Selected Features
 export const highlightStyleFunction = (feature, offset = 0) => {
     const geometry = feature.getGeometry();
     if (!geometry) return [];
@@ -355,23 +343,9 @@ export const modifyStyle = new Style({
     }),
 });
 
-/**
- * Generates an SLD XML string for dynamic attribute analysis.
- * @param {string} layerName Full layer name (workspace:name)
- * @param {string} property Attribute name to filter on
- * @param {Array} mappings List of {value, color} objects
- * @returns {string} SLD XML
- */
-/**
- * Generates a compact SLD Rule fragment for a single attribute value mapping.
- * Minified to avoid URI length issues with WMS requests.
- * @param {string} property - Attribute name
- * @param {string} value - Value to filter on
- * @param {string} color - Color for styling
- * @param {string} operator - Comparison operator (=, !=, >, <, >=, <=, LIKE)
- */
+
+//Generates an SLD XML string for dynamic attribute analysis.
 export const generateSingleRule = (property, value, color, operator = '=') => {
-    // Map operators to OGC filter element names
     const operatorMap = {
         '=': 'PropertyIsEqualTo',
         '!=': 'PropertyIsNotEqualTo',
@@ -383,22 +357,17 @@ export const generateSingleRule = (property, value, color, operator = '=') => {
     };
 
     const filterElement = operatorMap[operator] || 'PropertyIsEqualTo';
-
-    // Generate compact filter based on operator type (no whitespace)
     let filterContent;
     if (operator === 'LIKE') {
         filterContent = `<ogc:Filter><ogc:PropertyIsLike wildCard="%" singleChar="_" escapeChar="\\"><ogc:PropertyName>${property}</ogc:PropertyName><ogc:Literal>%${value}%</ogc:Literal></ogc:PropertyIsLike></ogc:Filter>`;
-    } else {
+    }
+    else {
         filterContent = `<ogc:Filter><ogc:${filterElement}><ogc:PropertyName>${property}</ogc:PropertyName><ogc:Literal>${value}</ogc:Literal></ogc:${filterElement}></ogc:Filter>`;
     }
-
-    // Return compact rule (no whitespace/newlines)
     return `<Rule xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc"><Name>${operator}${value}</Name>${filterContent}<PolygonSymbolizer><Fill><CssParameter name="fill">${color}</CssParameter><CssParameter name="fill-opacity">0.7</CssParameter></Fill><Stroke><CssParameter name="stroke">#fff</CssParameter><CssParameter name="stroke-width">1</CssParameter></Stroke></PolygonSymbolizer><LineSymbolizer><Stroke><CssParameter name="stroke">${color}</CssParameter><CssParameter name="stroke-width">3</CssParameter></Stroke></LineSymbolizer><PointSymbolizer><Graphic><Mark><WellKnownName>circle</WellKnownName><Fill><CssParameter name="fill">${color}</CssParameter></Fill><Stroke><CssParameter name="stroke">#fff</CssParameter><CssParameter name="stroke-width">1</CssParameter></Stroke></Mark><Size>12</Size></Graphic></PointSymbolizer></Rule>`;
 };
 
-/**
- * Merges analysis rules into an existing SLD body.
- */
+//Merges analysis rules into an existing SLD body.
 export const mergeAnalysisRules = (originalSld, property, mappings) => {
     try {
         const parser = new DOMParser();
@@ -445,17 +414,9 @@ export const mergeAnalysisRules = (originalSld, property, mappings) => {
     }
 };
 
-/**
- * Generates a compact SLD XML string for dynamic attribute analysis.
- * Minified to avoid URI length issues with WMS requests.
- * @param {string} layerName Full layer name (workspace:name)
- * @param {string} property Attribute name to filter on
- * @param {Array} mappings List of {value, color, operator} objects
- * @returns {string} SLD XML
- */
+//Generates a compact SLD XML string for dynamic attribute analysis.
+//Minified to avoid URI length issues with WMS requests.
 export const generateAnalysisSLD = (layerName, property, mappings) => {
     const rules = mappings.map(m => generateSingleRule(property, m.value, m.color, m.operator || '=')).join('');
-
-    // Compact SLD (no whitespace)
     return `<?xml version="1.0" encoding="UTF-8"?><StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><NamedLayer><Name>${layerName}</Name><UserStyle><FeatureTypeStyle>${rules}<Rule><ElseFilter/><PolygonSymbolizer><Fill><CssParameter name="fill">#ccc</CssParameter><CssParameter name="fill-opacity">0.2</CssParameter></Fill><Stroke><CssParameter name="stroke">#999</CssParameter><CssParameter name="stroke-width">0.5</CssParameter></Stroke></PolygonSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>`;
 };

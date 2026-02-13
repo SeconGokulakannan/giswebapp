@@ -55,7 +55,6 @@ import {
 
 // Server Credentials
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
-
 // Cookie Helpers
 import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
