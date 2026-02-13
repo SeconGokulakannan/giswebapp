@@ -552,6 +552,9 @@ function GISMap() {
     ));
   };
 
+
+
+  //#region Zoom / Highlight / 
   const handleZoomToLayer = async (layerId) => {
     if (!mapInstanceRef.current) return;
     const layer = [...geoServerLayers, ...localVectorLayers].find(l => l.id === layerId);
@@ -594,6 +597,7 @@ function GISMap() {
       console.error('Zoom error:', err);
     }
   };
+
 
   const handleHighlightLayer = async (layerId) => {
     if (!mapInstanceRef.current) return;
@@ -654,6 +658,8 @@ function GISMap() {
       console.error('Highlight error:', err);
     }
   };
+
+  //#endregion
 
   const handleUpdateLayerStyle = async (layerId, fullLayerName, sldBody) => {
     const success = await updateLayerStyle(fullLayerName, sldBody);
