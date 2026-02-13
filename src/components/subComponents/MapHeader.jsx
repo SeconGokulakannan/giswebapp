@@ -199,7 +199,7 @@ const MapHeader = ({ activePanel, setActivePanel, setIsPanelMinimized, toggleThe
                             </Tooltip.Root>
 
 
-                            <Tooltip.Root>
+                            {/* <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
                                         className={`toolbar-button ${activePanel === 'assistant' ? 'active' : ''}`}
@@ -218,7 +218,7 @@ const MapHeader = ({ activePanel, setActivePanel, setIsPanelMinimized, toggleThe
                                         <Tooltip.Arrow className="TooltipArrow" />
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
-                            </Tooltip.Root>
+                            </Tooltip.Root> */}
 
                             <div className="toolbar-divider" />
 

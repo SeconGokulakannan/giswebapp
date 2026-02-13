@@ -3,47 +3,33 @@ import { fetchLayerStatuses } from '../../services/Server';
 import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-const LayerManagementCard = ({
-    isOpen,
-    onClose,
-    data,
-    isLoading,
-    onDeleteFeature,
-    onUpdateFeatures,
-    onSaveNewFeature,
-    onRefresh,
-    onOpenLoadTempModal,
-    onOpenCreateLayer,
-    onOpenDataManipulation,
-    onOpenServerInfo
-}) => {
+const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature, onUpdateFeatures, onSaveNewFeature, onRefresh, onOpenLoadTempModal, onOpenCreateLayer, onOpenDataManipulation, onOpenServerInfo }) => {
+
     const [layerStatuses, setLayerStatuses] = useState({});
     const [pendingChanges, setPendingChanges] = useState({});
     const [newRows, setNewRows] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
 
-    // Clear local state when new data is received (to sync with server)
+
+    const loadLayers = async () => {
+        const statusMap = await fetchLayerStatuses();
+        setLayerStatuses(statusMap || {});
+    };
+
     useEffect(() => {
         setPendingChanges({});
         setNewRows({});
         setSelectedIds([]);
-
-        const loadLayers = async () => {
-            const statusMap = await fetchLayerStatuses();
-            setLayerStatuses(statusMap || {});
-        };
         loadLayers();
     }, [data]);
 
-    // Handle internal refresh that clears stale local edits
-    const handleInternalRefresh = () => {
+    const RefreshGridData = () => {
         setPendingChanges({});
         setNewRows({});
         setSelectedIds([]);
         if (onRefresh) onRefresh();
     };
 
-    // Dynamically detect attribute keys from the data source
     const attributeKeys = useMemo(() => {
         if (!data || data.length === 0) {
             return ['LayerId', 'LayerName', 'LayerSequenceNo', 'IsShowLayer', 'LayerVisibilityOnLoad', 'GeometryType', 'GeometryFieldName', 'AttributeTableName', 'AttributeTableSchema', 'SRId', 'GeoServerStatus'];
@@ -75,7 +61,7 @@ const LayerManagementCard = ({
         return [...newItems, ...rows];
     }, [data, pendingChanges, newRows]);
 
-    const handleUpdateField = (id, field, value, isNew = false) => {
+    const UpdateLayerConfig = (id, field, value, isNew = false) => {
         if (isNew) {
             setNewRows(prev => ({
                 ...prev,
@@ -89,7 +75,7 @@ const LayerManagementCard = ({
         }
     };
 
-    const handleSave = async () => {
+    const SaveLayerMetaData = async () => {
         let successCount = 0;
         const layerFullName = 'gisweb:Layer';
 
@@ -106,7 +92,8 @@ const LayerManagementCard = ({
                         delete next[id];
                         return next;
                     });
-                } else {
+                }
+                else {
                     failureCount++;
                 }
             }
@@ -127,7 +114,7 @@ const LayerManagementCard = ({
         if (onRefresh) onRefresh();
     };
 
-    const handleAddRow = () => {
+    const AddNewLayerConfig = () => {
         const newId = `new-${Date.now()}`;
         const initialRow = {};
         attributeKeys.forEach(key => {
@@ -140,7 +127,7 @@ const LayerManagementCard = ({
         setNewRows(prev => ({ ...prev, [newId]: initialRow }));
     };
 
-    const handleDelete = async () => {
+    const DeleteLayerConfig = async () => {
         if (selectedIds.length === 0) return;
         const layerFullName = 'gisweb:Layer';
         if (window.confirm(`Delete ${selectedIds.length} items?`)) {
@@ -183,6 +170,7 @@ const LayerManagementCard = ({
                     <button className="elite-modal-close" onClick={onClose}><X size={20} /></button>
                 </div>
 
+                {/* Header */}
                 <div style={{ padding: '12px 20px', background: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
@@ -197,20 +185,21 @@ const LayerManagementCard = ({
                         <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)' }}>
                             <Server size={14} />&nbsp;Server Info
                         </button>
-                        <button className="elite-btn secondary" onClick={handleAddRow} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
+                        <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
                             <Plus size={14} />&nbsp;Add Layer Config
                         </button>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         {selectedIds.length > 0 && (
-                            <button className="elite-btn danger" onClick={handleDelete} style={{ padding: '6px 12px' }}>
+                            <button className="elite-btn danger" onClick={DeleteLayerConfig} style={{ padding: '6px 12px' }}>
                                 <Trash2 size={14} />&nbsp;Delete ({selectedIds.length})
                             </button>
                         )}
-                        <button className="action-icon-btn" onClick={handleInternalRefresh}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} /></button>
+                        <button className="elite-btn primary" onClick={RefreshGridData} style={{ alignItems: 'center', gap: '6px' }}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Refresh</button>
                     </div>
                 </div>
 
+                {/* Grid */}
                 <div style={{ flex: 1, overflow: 'auto' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '12px', padding: '10px 20px', background: 'var(--color-bg-secondary)', position: 'sticky', top: 0, zIndex: 10, minWidth: 'fit-content' }}>
                         <div />
@@ -230,8 +219,8 @@ const LayerManagementCard = ({
                                         const status = layerStatuses[config.current['LayerName']] || 'Un-Available';
                                         return <div key={key} style={{ textAlign: 'center' }}><span style={{ padding: '2px 8px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', fontSize: '0.75rem' }}>{status}</span></div>;
                                     }
-                                    if (typeof value === 'boolean') return <div key={key} style={{ display: 'flex', justifyContent: 'center' }}><input type="checkbox" checked={!!value} onChange={(e) => handleUpdateField(config.id, key, e.target.checked, config.isNew)} /></div>;
-                                    return <input key={key} className="row-input" value={value ?? ''} onChange={(e) => handleUpdateField(config.id, key, e.target.value, config.isNew)} style={{ width: '100%', padding: '4px', textAlign: 'center' }} />;
+                                    if (typeof value === 'boolean') return <div key={key} style={{ display: 'flex', justifyContent: 'center' }}><input type="checkbox" checked={!!value} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.checked, config.isNew)} /></div>;
+                                    return <input key={key} className="row-input" value={value ?? ''} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.value, config.isNew)} style={{ width: '100%', padding: '4px', textAlign: 'center' }} />;
                                 })}
                                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                                     {config.isDirty && <AlertCircle size={16} color="var(--color-primary)" />}
@@ -241,11 +230,12 @@ const LayerManagementCard = ({
                     </div>
                 </div>
 
+                {/* Footer */}
                 <div className="elite-modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '0.8rem' }}>{allConfigs.length} Layers</span>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="elite-btn secondary" onClick={onClose}>Close</button>
-                        {(Object.keys(pendingChanges).length > 0 || Object.keys(newRows).length > 0) && <button className="elite-btn primary" onClick={handleSave}>Apply Changes</button>}
+                        {(Object.keys(pendingChanges).length > 0 || Object.keys(newRows).length > 0) && <button className="elite-btn primary" onClick={SaveLayerMetaData}>Apply Changes</button>}
                     </div>
                 </div>
             </div>

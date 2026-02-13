@@ -2,14 +2,7 @@ import React from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Plus, Minus, LayoutGrid, Maximize, LocateFixed, Navigation } from 'lucide-react';
 
-const MapSidebar = ({
-    handleZoomIn,
-    handleZoomOut,
-    showGrid,
-    setShowGrid,
-    handleFullscreen,
-    handleLocateMe
-}) => {
+const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handleFullscreen, handleLocateMe }) => {
     return (
         <div className="elite-sidebar">
             <div className="sidebar-section">

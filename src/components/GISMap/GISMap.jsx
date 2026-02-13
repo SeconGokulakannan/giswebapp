@@ -19,7 +19,6 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import { LineString, Point } from 'ol/geom';
 import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
-import Graticule from 'ol/layer/Graticule';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -42,8 +41,7 @@ import ServerInfoCard from '../subComponents/ServerInfoCard';
 import { getRenderPixel } from 'ol/render';
 
 //Map Utils
-import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, formatArea, generateAnalysisSLD, mergeAnalysisRules } from '../../utils/mapUtils';
-
+import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, formatArea, generateAnalysisSLD, mergeAnalysisRules, mapGridStyles } from '../../utils/mapUtils';
 
 // Service from Server.js
 import {
@@ -52,7 +50,6 @@ import {
   batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE
 } from '../../services/Server';
 
-
 // Server Credentials
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 // Cookie Helpers
@@ -60,6 +57,9 @@ import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelp
 
 
 function GISMap() {
+
+
+  //map refs
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const drawInteractionRef = useRef(null);
@@ -67,26 +67,36 @@ function GISMap() {
   const vectorLayerRef = useRef(null);
   const selectionSourceRef = useRef(null);
   const selectionLayerRef = useRef(null);
-  const graticuleRef = useRef(null);
 
+
+  //map states
   const [coordinates, setCoordinates] = useState({ lon: 0, lat: 0 });
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(2);
+  const [scale, setScale] = useState('0 km');
+
+
+
+  //map tools
   const [activeTool, setActiveTool] = useState(null);
   const [baseLayer, setBaseLayer] = useState('osm');
   const [measurementValue, setMeasurementValue] = useState('');
   const [activePanel, setActivePanel] = useState(null);
-  const [theme, setTheme] = useState('light');
   const [isPanelMinimized, setIsPanelMinimized] = useState(false);
-  const [scale, setScale] = useState('0 km');
-  const [gotoLat, setGotoLat] = useState('');
-  const [gotoLon, setGotoLon] = useState('');
+
+
   const [isDrawingVisible, setIsDrawingVisible] = useState(true);
-  const [showGrid, setShowGrid] = useState(false);
   const [isMeasuring, setIsMeasuring] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
   const [hasDrawings, setHasDrawings] = useState(false);
   const [hasMeasurements, setHasMeasurements] = useState(false);
+
+
+  //Map Directions
+  const [gotoLat, setGotoLat] = useState('');
+  const [gotoLon, setGotoLon] = useState('');
+
+  // Map Lock 
+  const [isLocked, setIsLocked] = useState(false);
 
 
   const [showDrawingLabels, setShowDrawingLabels] = useState(() => {
@@ -140,11 +150,7 @@ function GISMap() {
   const isHighlightAnimatingRef = useRef(isHighlightAnimating);
   const [availableDrawings, setAvailableDrawings] = useState([]); // ELITE: For adding attributes
 
-  // Layer Management State
-  const [showLayerManagement, setShowLayerManagement] = useState(false);
-  const [layerManagementData, setLayerManagementData] = useState([]);
-  const [isLayerManagementLoading, setIsLayerManagementLoading] = useState(false);
-  const [localVectorLayers, setLocalVectorLayers] = useState([]); // Client-side GeoJSON layers
+  const [localVectorLayers, setLocalVectorLayers] = useState([]);
   const localVectorLayersRef = useRef(localVectorLayers);
   const [showLoadTempModal, setShowLoadTempModal] = useState(false);
 
@@ -717,7 +723,12 @@ function GISMap() {
     }
   };
 
-  // Layer Management Handlers
+  //#region Layer Management
+  const [showLayerManagement, setShowLayerManagement] = useState(false);
+  const [layerManagementData, setLayerManagementData] = useState([]);
+  const [isLayerManagementLoading, setIsLayerManagementLoading] = useState(false);
+
+
   const handleOpenLayerManagement = async () => {
     setShowLayerManagement(true);
     handleRefreshLayerManagement();
@@ -734,6 +745,8 @@ function GISMap() {
       setIsLayerManagementLoading(false);
     }
   };
+
+  //#endregion
 
 
 
@@ -1243,22 +1256,8 @@ function GISMap() {
     }
   }, [activePanel]);
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
-    }
-  }, []);
 
-  // Toggle theme
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    setTimeout(saveWorkspace, 0); // Fast save preference
-  };
+
 
   // Update feature status based on vector source
   const updateFeatureStatus = (source) => {
@@ -1443,17 +1442,7 @@ function GISMap() {
       visible: false,
     });
 
-    const graticule = new Graticule({
-      strokeStyle: new Stroke({
-        color: 'rgba(52, 125, 235, 0.4)',
-        width: 1,
-        lineDash: [0.5, 4],
-      }),
-      showLabels: true,
-      wrapX: true,
-      visible: false,
-    });
-    graticuleRef.current = graticule;
+
 
     // Load saved view state
     const savedView = JSON.parse(localStorage.getItem('gis_view') || 'null');
@@ -1462,7 +1451,7 @@ function GISMap() {
       target: mapRef.current,
       layers: [
         osmLayer, satelliteLayer, terrainLayer, darkLayer, lightLayer, streetLayer,
-        graticule, vectorLayer, selectionLayer
+        mapGridStyles, vectorLayer, selectionLayer
       ],
       view: new View({
         center: savedView ? savedView.center : fromLonLat([0, 20]),
@@ -1816,12 +1805,7 @@ function GISMap() {
     };
   }, [featureInfoCoordinate]);
 
-  // Sync Graticule Visibility
-  useEffect(() => {
-    if (graticuleRef.current) {
-      graticuleRef.current.setVisible(showGrid);
-    }
-  }, [showGrid]);
+
 
   useEffect(() => {
     if (!mapInstanceRef.current) return;
@@ -2106,48 +2090,7 @@ function GISMap() {
     removeInteractions();
   };
 
-  const handleMeasureClick = (type) => {
-    removeInteractions(); // Reset current operations
-    if (activeTool === type) {
-      setActiveTool(null);
-    } else {
-      setActiveTool(type);
-      addMeasureInteraction(type);
-    }
-  };
-
-  const handleClearDrawings = () => {
-    if (vectorSourceRef.current) {
-      vectorSourceRef.current.clear();
-      setMeasurementValue('');
-      setHasDrawings(false);
-      setHasMeasurements(false);
-    }
-  };
-
-  const handleZoomIn = () => {
-    if (mapInstanceRef.current) {
-      const view = mapInstanceRef.current.getView();
-      view.animate({ zoom: view.getZoom() + 1, duration: 250 });
-    }
-  };
-
-  const handleZoomOut = () => {
-    if (mapInstanceRef.current) {
-      const view = mapInstanceRef.current.getView();
-      view.animate({ zoom: view.getZoom() - 1, duration: 250 });
-    }
-  };
-
-  const handleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  };
-
-  const handleSearch = async (query) => {
+  async function handleSearch(query) {
     if (!mapInstanceRef.current || !query) return;
 
     const result = await searchLocation(query);
@@ -2169,7 +2112,56 @@ function GISMap() {
     return false;
   };
 
-  const handleLocateMe = () => {
+  const handleMeasureClick = (type) => {
+    removeInteractions(); // Reset current operations
+    if (activeTool === type) {
+      setActiveTool(null);
+    } else {
+      setActiveTool(type);
+      addMeasureInteraction(type);
+    }
+  };
+
+
+  //#region  Side Panel Actions
+
+  const mapGridRef = useRef(null);
+  const [showGrid, setShowGrid] = useState(false);
+
+  function handleZoomIn() {
+    if (mapInstanceRef.current) {
+      const view = mapInstanceRef.current.getView();
+      view.animate({ zoom: view.getZoom() + 1, duration: 250 });
+    }
+  };
+
+  function handleZoomOut() {
+    if (mapInstanceRef.current) {
+      const view = mapInstanceRef.current.getView();
+      view.animate({ zoom: view.getZoom() - 1, duration: 250 });
+    }
+  };
+
+
+
+  useEffect(() => {
+
+    mapGridRef.current = mapGridStyles;
+    if (mapGridRef.current) {
+      mapGridRef.current.setVisible(showGrid);
+    }
+  }, [showGrid]);
+
+  function handleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    }
+    else {
+      document.exitFullscreen();
+    }
+  };
+
+  function handleLocateMe() {
     if (!mapInstanceRef.current) return;
 
     if ('geolocation' in navigator) {
@@ -2223,12 +2215,26 @@ function GISMap() {
     }
   };
 
-  const handlePrintClick = () => {
+  //#endregion
+
+  //#region Clear Map
+  const handleClearDrawings = () => {
+    if (vectorSourceRef.current) {
+      vectorSourceRef.current.clear();
+      setMeasurementValue('');
+      setHasDrawings(false);
+      setHasMeasurements(false);
+    }
+  };
+  //#endregion
+
+  //#region Print Map
+  function handlePrintClick() {
     setActivePanel(activePanel === 'print' ? null : 'print');
     setIsPanelMinimized(false);
   };
 
-  const handleExportMap = async () => {
+  async function handleExportMap() {
     if (!mapRef.current) return;
 
     try {
@@ -2289,15 +2295,39 @@ function GISMap() {
       toast.error('Failed to generate export. Please try again.');
     }
   };
+  //#endregion
+
+  //#region Theme Changes
+
+  const [theme, setTheme] = useState('light');
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    setTimeout(saveWorkspace, 0);
+  };
+
+  //#endregion
 
   return (
     <Tooltip.Provider delayDuration={300}>
       <div className="app">
+
+
         <MapHeader
           activePanel={activePanel}
           setActivePanel={(panel) => {
             setActivePanel(panel);
-            // Only deactivate tools if explicitly switching to a different non-tool panel region
             if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
               setActiveTool(null);
               removeInteractions();
@@ -2679,14 +2709,6 @@ function GISMap() {
 
           <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
         </div>
-
-        {/* Measurement Badge - Hidden per user request */}
-        {/* {measurementValue && (
-          <div className={`measurement-badge ${isMeasuring ? 'measuring' : 'complete'}`}>
-            <Ruler size={16} />
-            <span>{measurementValue}</span>
-          </div>
-        )} */}
 
       </div>
     </Tooltip.Provider>
