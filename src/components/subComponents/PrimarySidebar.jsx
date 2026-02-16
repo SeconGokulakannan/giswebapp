@@ -13,7 +13,8 @@ import {
     DraftingCompass,
     Cog,
     Menu,
-    Settings2
+    Settings2,
+    Trash
 } from 'lucide-react';
 
 const PrimarySidebar = ({
@@ -42,7 +43,7 @@ const PrimarySidebar = ({
                 { id: 'tools', label: 'Drawing', icon: PenTool, color: '#f59e0b' },
                 { id: 'utility_tools', label: 'Analysis', icon: DraftingCompass, color: '#8b5cf6' },
                 { id: 'location', label: 'Location', icon: MapPin, color: '#ef4444' },
-                { id: 'bookmarks', label: 'Bookmarks', icon: Bookmark, color: '#ec4899' },
+                { id: 'bookmarks', label: 'Saved', icon: Bookmark, color: '#ec4899' },
             ]
         }
     ];
@@ -57,6 +58,28 @@ const PrimarySidebar = ({
             </div>
 
             <nav className="sidebar-nav">
+
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button
+                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
+                            onClick={onOpenLayerManagement}
+                        >
+                            <div className="active-pillar" />
+                            <div className="item-icon-wrapper">
+                                <Cog size={22} strokeWidth={1.5} />
+                            </div>
+                            <span className="item-label">Server</span>
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            Layer Management
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+
                 {navSections.map((section, sIdx) => (
                     <div key={section.title} className="nav-section">
                         {sIdx > 0 && <div className="section-divider" />}
@@ -94,26 +117,26 @@ const PrimarySidebar = ({
 
                 <div className="section-divider" />
 
+
+
                 <Tooltip.Root>
                     <Tooltip.Trigger asChild>
-                        <button
-                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
-                            onClick={onOpenLayerManagement}
-                        >
+                        <button className="sidebar-nav-item" onClick={handleClearDrawings}>
                             <div className="active-pillar" />
                             <div className="item-icon-wrapper">
-                                <Cog size={22} strokeWidth={1.5} />
+                                <Trash size={22} strokeWidth={1.5} />
                             </div>
-                            <span className="item-label">Settings</span>
+                            <span className="item-label">Clear</span>
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
                         <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Layer Management
+                            Clear Map
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
                     </Tooltip.Portal>
                 </Tooltip.Root>
+
             </nav>
 
             <div className="sidebar-footer">
@@ -146,19 +169,7 @@ const PrimarySidebar = ({
                         </Tooltip.Portal>
                     </Tooltip.Root>
 
-                    <Tooltip.Root>
-                        <Tooltip.Trigger asChild>
-                            <button className="sidebar-footer-btn danger" onClick={handleClearDrawings}>
-                                <Trash2 size={20} />
-                            </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                            <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                                Clear Map
-                                <Tooltip.Arrow className="TooltipArrow" />
-                            </Tooltip.Content>
-                        </Tooltip.Portal>
-                    </Tooltip.Root>
+
                 </div>
             </div>
         </div>
