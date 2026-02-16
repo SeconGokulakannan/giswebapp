@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
-import { batchInsertFeatures, publishNewLayer } from '../../services/Server';
+import { batchInsertFeatures, publishNewLayer, WORKSPACE, reloadGeoServer } from '../../services/Server';
 
 const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
     const [activeTab, setActiveTab] = useState('manual'); // 'manual' or 'upload'
@@ -49,6 +49,36 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
     }, [isOpen]);
 
 
+    // Helper function to verify layer is ready for WFS-T operations
+    const verifyLayerReady = async (fullLayerName, maxAttempts = 8) => {
+        console.log(`Verifying layer ${fullLayerName} is ready...`);
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const response = await fetch(
+                    `/geoserver/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&maxFeatures=1&outputFormat=application/json`,
+                    { headers: { 'Authorization': 'Basic ' + btoa('admin:geoserver') } }
+                );
+                console.log(`Attempt ${attempt}/${maxAttempts}: Response status ${response.status}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log(`✓ Layer ${fullLayerName} is ready after ${attempt} attempt(s)`);
+                    return true;
+                } else {
+                    const errorText = await response.text();
+                    console.log(`Attempt ${attempt} failed:`, errorText.substring(0, 200));
+                }
+            } catch (err) {
+                console.log(`Layer verification attempt ${attempt}/${maxAttempts} failed:`, err.message);
+            }
+            // Wait 2 seconds between attempts
+            if (attempt < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+        console.error(`✗ Layer ${fullLayerName} not ready after ${maxAttempts} attempts`);
+        return false;
+    };
+
     const handlePublishNewLayer = async (config) => {
         try {
             // Step 1: Create the Layer structure
@@ -57,18 +87,30 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
 
             // Step 2: If we have data (Shapefile upload), insert features
             if (config.data && config.data.features && config.data.features.length > 0) {
-                toast.loading(`Importing ${config.data.features.length} features...`, { id: 'publish-toast' });
-
-                // Small delay to allow GeoServer to register the featuretype
-                await new Promise(resolve => setTimeout(resolve, 1500));
-
                 const fullLayerName = `${WORKSPACE}:${config.layerName}`;
-                const insertSuccess = await batchInsertFeatures(fullLayerName, config.data.features, 'geom', config.srid || '4326');
+
+                toast.loading(`Reloading GeoServer configuration...`, { id: 'publish-toast' });
+                // Reload GeoServer to force it to recognize the new layer
+                await reloadGeoServer();
+
+                // Force WFS capabilities refresh to clear metadata cache
+                try {
+                    await fetch(`/geoserver/wfs?request=GetCapabilities&version=1.1.0`, {
+                        headers: { 'Authorization': 'Basic ' + btoa('admin:geoserver') }
+                    });
+                } catch (e) { console.log("Capabilities refresh ignored"); }
+
+                toast.loading(`Waiting for layer registration...`, { id: 'publish-toast' });
+                // Wait 5 seconds after reload
+                await new Promise(resolve => setTimeout(resolve, 5000));
+
+                toast.loading(`Importing ${config.data.features.length} features...`, { id: 'publish-toast' });
+                const insertSuccess = await batchInsertFeatures(fullLayerName, config.data.features, 'geom', config.srid || '4326', geometryType);
 
                 if (insertSuccess) {
                     toast.success(`Layer published with ${config.data.features.length} features!`, { id: 'publish-toast' });
                 } else {
-                    toast.error("Layer created but feature import failed.", { id: 'publish-toast' });
+                    toast.error("Layer created but feature import failed. Check console for details.", { id: 'publish-toast' });
                 }
             }
 
@@ -77,6 +119,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
             return true;
         } catch (err) {
             console.error("Publishing error in GISMap:", err);
+            toast.error(`Publishing failed: ${err.message}`, { id: 'publish-toast' });
             return false;
         }
     };
@@ -183,6 +226,11 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                     const props = firstFeature.properties;
                     const deducedAttrs = Object.keys(props).map(key => {
                         const val = props[key];
+                        const lowKey = key.trim().toLowerCase();
+
+                        // Check if this is a geometry column to ignore
+                        const isGeom = ['geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey);
+
                         let type = 'String';
                         if (typeof val === 'number') {
                             type = Number.isInteger(val) ? 'Integer' : 'Double';
@@ -194,7 +242,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                             sourceName: key,
                             type: type,
                             originalType: type,
-                            ignored: false
+                            ignored: isGeom // Auto-ignore geometry columns
                         };
                     });
                     setAttributes(deducedAttrs);
@@ -244,25 +292,35 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                 const filteredFeatures = parsedData.features.map(f => {
                     const newProps = {};
                     filteredAttributes.forEach(attr => {
-                        // Use sourceName (original key in DBF) to target the value
+                        // Use sourceName (original key in DBF) to get the value
                         const sourceKey = attr.sourceName || attr.name;
-                        newProps[attr.name] = f.properties[sourceKey];
+                        // Only include if the property exists in the source data
+                        if (f.properties.hasOwnProperty(sourceKey)) {
+                            newProps[attr.name] = f.properties[sourceKey];
+                        }
                     });
                     return { ...f, properties: newProps };
                 });
                 finalData = { ...parsedData, features: filteredFeatures };
+
+                // Log for debugging
+                console.log('Schema attributes:', filteredAttributes.map(a => a.name));
+                console.log('Sample feature properties:', filteredFeatures[0]?.properties);
             }
 
-            await handlePublishNewLayer({
+            const published = await handlePublishNewLayer({
                 layerName: layerName.trim(),
                 geometryType,
                 attributes: filteredAttributes,
                 srid: '4326',
                 data: activeTab === 'upload' ? finalData : null
             });
-            toast.success(activeTab === 'upload' ? "Layer published with data!" : "Layer created and published successfully!");
-            onClose();
-            resetState();
+
+            if (published) {
+                toast.success(activeTab === 'upload' ? "Layer published with data!" : "Layer created and published successfully!");
+                onClose();
+                resetState();
+            }
         } catch (err) {
             toast.error(`Failed to publish layer: ${err.message}`);
         } finally {

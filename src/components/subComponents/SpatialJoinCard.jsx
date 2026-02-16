@@ -26,6 +26,8 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
     const [isFetchingA, setIsFetchingA] = useState(false);
     const [isFetchingB, setIsFetchingB] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
+    const [joinType, setJoinType] = useState('union'); // 'union', 'left', 'right'
+    const [matchColor, setMatchColor] = useState(() => getRandomColor());
 
     // Set Layer A when targetLayerId changes or on open
     useEffect(() => {
@@ -108,7 +110,7 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
         setIsJoining(true);
         try {
             await onPerformSpatialJoin({
-                layerA, attrA, layerB, attrB, colorA, colorB
+                layerA, attrA, layerB, attrB, colorA, colorB, joinType, matchColor
             });
         } catch (err) {
             console.error('Spatial join failed:', err);
@@ -223,6 +225,32 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
 
                         {allGeoServerLayers.length >= 2 && (
                             <>
+                                {/* Join Type Selection */}
+                                <div style={{
+                                    background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
+                                    padding: '14px', borderRadius: '12px',
+                                    border: '1px solid var(--color-border)',
+                                    display: 'flex', flexDirection: 'column', gap: '8px'
+                                }}>
+                                    <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        JOIN TYPE
+                                    </label>
+                                    <select
+                                        value={joinType}
+                                        onChange={(e) => setJoinType(e.target.value)}
+                                        style={{
+                                            width: '100%', height: '34px',
+                                            background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
+                                            borderRadius: '8px', color: 'var(--color-text-primary)',
+                                            fontSize: '12px', padding: '0 8px', outline: 'none', fontWeight: '600'
+                                        }}
+                                    >
+                                        <option value="union">Union Join</option>
+                                        <option value="left">Left Join</option>
+                                        <option value="right">Right Join</option>
+                                    </select>
+                                </div>
+
                                 {/* Layer A */}
                                 <div style={{
                                     background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
@@ -283,39 +311,41 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                                             )}
                                         </div>
                                     </div>
-                                    {/* Color Picker */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                                        <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
-                                        <div style={{
-                                            width: '28px', height: '28px', borderRadius: '8px',
-                                            background: colorA, position: 'relative', overflow: 'hidden',
-                                            border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
-                                        }}>
-                                            <input
-                                                type="color"
-                                                value={colorA}
-                                                onChange={(e) => setColorA(e.target.value)}
-                                                style={{
-                                                    position: 'absolute', top: '-5px', left: '-5px',
-                                                    width: '50px', height: '50px', border: 'none',
-                                                    cursor: 'pointer', background: 'none'
-                                                }}
-                                            />
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                            {PRESET_COLORS.slice(0, 6).map(c => (
-                                                <button
-                                                    key={c}
-                                                    onClick={() => setColorA(c)}
+                                    {/* Color Picker - Only show if not Union Join */}
+                                    {joinType !== 'union' && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
+                                            <div style={{
+                                                width: '28px', height: '28px', borderRadius: '8px',
+                                                background: colorA, position: 'relative', overflow: 'hidden',
+                                                border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
+                                            }}>
+                                                <input
+                                                    type="color"
+                                                    value={colorA}
+                                                    onChange={(e) => setColorA(e.target.value)}
                                                     style={{
-                                                        width: '18px', height: '18px', borderRadius: '4px',
-                                                        background: c, border: colorA === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
-                                                        cursor: 'pointer', padding: 0, transition: 'all 0.15s'
+                                                        position: 'absolute', top: '-5px', left: '-5px',
+                                                        width: '50px', height: '50px', border: 'none',
+                                                        cursor: 'pointer', background: 'none'
                                                     }}
                                                 />
-                                            ))}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                {PRESET_COLORS.slice(0, 6).map(c => (
+                                                    <button
+                                                        key={c}
+                                                        onClick={() => setColorA(c)}
+                                                        style={{
+                                                            width: '18px', height: '18px', borderRadius: '4px',
+                                                            background: c, border: colorA === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
+                                                            cursor: 'pointer', padding: 0, transition: 'all 0.15s'
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
 
                                 {/* VS Divider */}
@@ -390,40 +420,93 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                                             )}
                                         </div>
                                     </div>
-                                    {/* Color Picker */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                                        <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
-                                        <div style={{
-                                            width: '28px', height: '28px', borderRadius: '8px',
-                                            background: colorB, position: 'relative', overflow: 'hidden',
-                                            border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
-                                        }}>
-                                            <input
-                                                type="color"
-                                                value={colorB}
-                                                onChange={(e) => setColorB(e.target.value)}
-                                                style={{
-                                                    position: 'absolute', top: '-5px', left: '-5px',
-                                                    width: '50px', height: '50px', border: 'none',
-                                                    cursor: 'pointer', background: 'none'
-                                                }}
-                                            />
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                            {PRESET_COLORS.slice(0, 6).map(c => (
-                                                <button
-                                                    key={c}
-                                                    onClick={() => setColorB(c)}
+                                    {/* Color Picker - Only show if not Union Join */}
+                                    {joinType !== 'union' && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
+                                            <div style={{
+                                                width: '28px', height: '28px', borderRadius: '8px',
+                                                background: colorB, position: 'relative', overflow: 'hidden',
+                                                border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
+                                            }}>
+                                                <input
+                                                    type="color"
+                                                    value={colorB}
+                                                    onChange={(e) => setColorB(e.target.value)}
                                                     style={{
-                                                        width: '18px', height: '18px', borderRadius: '4px',
-                                                        background: c, border: colorB === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
-                                                        cursor: 'pointer', padding: 0, transition: 'all 0.15s'
+                                                        position: 'absolute', top: '-5px', left: '-5px',
+                                                        width: '50px', height: '50px', border: 'none',
+                                                        cursor: 'pointer', background: 'none'
                                                     }}
                                                 />
-                                            ))}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                {PRESET_COLORS.slice(0, 6).map(c => (
+                                                    <button
+                                                        key={c}
+                                                        onClick={() => setColorB(c)}
+                                                        style={{
+                                                            width: '18px', height: '18px', borderRadius: '4px',
+                                                            background: c, border: colorB === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
+                                                            cursor: 'pointer', padding: 0, transition: 'all 0.15s'
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Features Pattern - Only show for Union Join */}
+                                {joinType === 'union' && (
+                                    <div style={{
+                                        background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
+                                        padding: '14px', borderRadius: '12px',
+                                        border: `2px solid ${matchColor}30`
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                            <div style={{
+                                                width: '10px', height: '10px', borderRadius: '50%',
+                                                background: matchColor, flexShrink: 0
+                                            }} />
+                                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                FEATURES PATTERN
+                                            </label>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
+                                            <div style={{
+                                                width: '28px', height: '28px', borderRadius: '8px',
+                                                background: matchColor, position: 'relative', overflow: 'hidden',
+                                                border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
+                                            }}>
+                                                <input
+                                                    type="color"
+                                                    value={matchColor}
+                                                    onChange={(e) => setMatchColor(e.target.value)}
+                                                    style={{
+                                                        position: 'absolute', top: '-5px', left: '-5px',
+                                                        width: '50px', height: '50px', border: 'none',
+                                                        cursor: 'pointer', background: 'none'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                {PRESET_COLORS.slice(0, 6).map(c => (
+                                                    <button
+                                                        key={c}
+                                                        onClick={() => setMatchColor(c)}
+                                                        style={{
+                                                            width: '18px', height: '18px', borderRadius: '4px',
+                                                            background: c, border: matchColor === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
+                                                            cursor: 'pointer', padding: 0, transition: 'all 0.15s'
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* Action Buttons */}
                                 <div style={{ display: 'flex', gap: '12px' }}>

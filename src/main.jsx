@@ -7,6 +7,17 @@ import { Toaster } from 'react-hot-toast'
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <GISMap />
-    <Toaster position="top-right" reverseOrder={false} />
+    <Toaster
+      position="top-right"
+      reverseOrder={false}
+      toastOptions={{
+        style: {
+          zIndex: 10000,
+        },
+      }}
+      containerStyle={{
+        zIndex: 10000,
+      }}
+    />
   </StrictMode>,
 )

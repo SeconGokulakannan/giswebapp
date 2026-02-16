@@ -695,6 +695,21 @@ function GISMap() {
     }
   };
 
+  const handleApplyMultiLayerFilters = (filterMap) => {
+    // filterMap: { layerId: cqlFilter }
+    setGeoServerLayers(prev => prev.map(l => {
+      if (filterMap.hasOwnProperty(l.id)) {
+        return { ...l, cqlFilter: filterMap[l.id] };
+      }
+      return l;
+    }));
+
+    // Update queryingLayer if its ID is in the map
+    if (queryingLayer && filterMap.hasOwnProperty(queryingLayer.id)) {
+      setQueryingLayer(prev => ({ ...prev, cqlFilter: filterMap[queryingLayer.id] }));
+    }
+  };
+
   // ELITE: Save New Attribute (WFS-T Insert)
   const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId, geometryName, srid, targetGeometryType) => {
     // specific feature from ID
@@ -946,7 +961,7 @@ function GISMap() {
 
   //#region Spatial Join Handlers
   const handlePerformSpatialJoin = async (config) => {
-    const { layerA: layerAId, attrA, layerB: layerBId, attrB, colorA, colorB } = config;
+    const { layerA: layerAId, attrA, layerB: layerBId, attrB, colorA, colorB, joinType, matchColor } = config;
     const layerAObj = geoServerLayers.find(l => l.id === layerAId);
     const layerBObj = geoServerLayers.find(l => l.id === layerBId);
     if (!layerAObj || !layerBObj || !mapInstanceRef.current) return;
@@ -985,31 +1000,34 @@ function GISMap() {
       });
 
       // 4. Style function factory
-      const createStyleFn = (attrName, matchSet, matchColor) => (feature) => {
+      const createStyleFn = (attrName, matchSet, matchColor, unmatchColor = null, showAll = false) => (feature) => {
         const val = String(feature.get(attrName) ?? '');
         const isMatch = matchSet.has(val);
-        if (isMatch) {
-          return [
-            new Style({
-              fill: new Fill({ color: matchColor + 'b3' }),
-              stroke: new Stroke({ color: '#fff', width: 1.5 }),
-              image: new CircleStyle({
-                radius: 6,
-                fill: new Fill({ color: matchColor }),
-                stroke: new Stroke({ color: '#fff', width: 1 })
-              })
+
+        if (!isMatch && !showAll) return [];
+
+        const color = isMatch ? matchColor : unmatchColor;
+        if (!color) return [];
+
+        return [
+          new Style({
+            fill: new Fill({ color: color + 'b3' }),
+            stroke: new Stroke({ color: '#fff', width: 1.5 }),
+            image: new CircleStyle({
+              radius: 6,
+              fill: new Fill({ color: color }),
+              stroke: new Stroke({ color: '#fff', width: 1 })
             })
-          ];
-        }
-        return [];
+          })
+        ];
       };
 
       // 5. Create vector layers
-      const addJoinLayer = (geojson, layerId, attrName, matchSet, matchColor) => {
+      const addJoinLayer = (geojson, layerId, attrName, matchSet, matchColor, unmatchColor, showAll) => {
         const source = new VectorSource({ features: new GeoJSON().readFeatures(geojson) });
         const vectorLayer = new VectorLayer({
           source,
-          style: createStyleFn(attrName, matchSet, matchColor),
+          style: createStyleFn(attrName, matchSet, matchColor, unmatchColor, showAll),
           zIndex: 1001,
           properties: { id: `spatialjoin-${layerId}`, isSpatialJoin: true }
         });
@@ -1022,10 +1040,23 @@ function GISMap() {
         spatialJoinVectorLayersRef.current[layerId] = vectorLayer;
       };
 
-      // Layer A: highlight features whose attrA values exist in Layer B's attrB values
-      addJoinLayer(geojsonA, layerAId, attrA, valuesB, colorA);
-      // Layer B: highlight features whose attrB values exist in Layer A's attrA values
-      addJoinLayer(geojsonB, layerBId, attrB, valuesA, colorB);
+      // Cleanup previous spatial join vector layers first
+      Object.keys(spatialJoinVectorLayersRef.current).forEach(lid => {
+        const olLayer = spatialJoinVectorLayersRef.current[lid];
+        if (olLayer) mapInstanceRef.current.removeLayer(olLayer);
+      });
+      spatialJoinVectorLayersRef.current = {};
+
+      if (joinType === 'union') {
+        // Union: Show only Target matching features in matchColor
+        addJoinLayer(geojsonA, layerAId, attrA, valuesB, matchColor, null, false);
+      } else if (joinType === 'left') {
+        // Left Join: All Target features. Matches = Source color, Unmatches = Target color
+        addJoinLayer(geojsonA, layerAId, attrA, valuesB, colorB, colorA, true);
+      } else if (joinType === 'right') {
+        // Right Join: All Source features. Matches = Target color, Unmatches = Source color
+        addJoinLayer(geojsonB, layerBId, attrB, valuesA, colorA, colorB, true);
+      }
 
       const matchCount = [...valuesA].filter(v => valuesB.has(v)).length;
       toast.success(`Spatial join complete! ${matchCount} matching value(s) found.`, { id: 'spatialjoin-toast' });

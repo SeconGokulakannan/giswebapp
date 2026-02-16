@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fetchLayerStatuses } from '../../services/Server';
+import { fetchLayerStatuses, WORKSPACE } from '../../services/Server';
 import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -77,7 +77,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     const SaveLayerMetaData = async () => {
         let successCount = 0;
-        const layerFullName = 'gisweb:Layer';
+        const layerFullName = `${WORKSPACE}:Layer`;
 
         const newRowIds = Object.keys(newRows);
         if (newRowIds.length > 0) {
@@ -129,7 +129,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     const DeleteLayerConfig = async () => {
         if (selectedIds.length === 0) return;
-        const layerFullName = 'gisweb:Layer';
+        const layerFullName = `${WORKSPACE}:Layer`;
         if (window.confirm(`Delete ${selectedIds.length} items?`)) {
             for (const id of selectedIds) {
                 const config = allConfigs.find(c => c.id == id);
@@ -151,7 +151,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     return (
         <div className="layer-management-overlay" onClick={onClose}>
             <div className="elite-modal layer-management-card" onClick={e => e.stopPropagation()} style={{
-                width: 'min(1600px, 98vw)', height: '85vh', display: 'flex', flexDirection: 'column'
+                width: 'min(1600px, 98vw)', display: 'flex', flexDirection: 'column'
             }}>
                 <div className="elite-modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

@@ -20,6 +20,8 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     // Mapping State
     const [mapping, setMapping] = useState({}); // { destAttr: sourceAttr }
     const [matchingKey, setMatchingKey] = useState(''); // For 'update' operation
+    const [targetGeometryName, setTargetGeometryName] = useState('geom');
+    const [targetGeometryType, setTargetGeometryType] = useState('Unknown');
 
     const fileInputRef = useRef(null);
 
@@ -37,6 +39,8 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
             setDestAttributes([]);
             setMapping({});
             setMatchingKey('');
+            setTargetGeometryName('geom');
+            setTargetGeometryType('Unknown');
         }
     }, [isOpen]);
 
@@ -99,18 +103,33 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
             // Load destination attributes
             setIsProcessing(true);
             try {
-                const attrs = await getLayerAttributes(targetLayer.fullName);
-                setDestAttributes(attrs);
+                // Fetch detailed attributes to distinguish geometry column
+                const detailedAttrs = await getLayerAttributes(targetLayer.fullName, true);
+
+                // Identify the geometry column name (usually 'geom' or 'the_geom')
+                const geomAttr = detailedAttrs.find(a => a.isGeometry);
+                const actualGeomName = geomAttr ? geomAttr.name : 'geom';
+                const actualGeomType = geomAttr ? geomAttr.geometryType : 'Unknown';
+
+                // Filter out the geometry column from the mapping list to avoid confusion/conflicts
+                const regularAttrs = detailedAttrs
+                    .filter(a => !a.isGeometry)
+                    .map(a => a.name);
+
+                setDestAttributes(regularAttrs);
+                setTargetGeometryName(actualGeomName);
+                setTargetGeometryType(actualGeomType);
 
                 // Auto-map based on exact name match
                 const initialMapping = {};
-                attrs.forEach(dest => {
+                regularAttrs.forEach(dest => {
                     const match = sourceAttributes.find(src => src.toLowerCase() === dest.toLowerCase());
                     if (match) initialMapping[dest] = match;
                 });
                 setMapping(initialMapping);
                 setActiveStep(2);
             } catch (err) {
+                console.error("Mapping error:", err);
                 toast.error("Failed to load target layer attributes.");
             } finally {
                 setIsProcessing(false);
@@ -174,7 +193,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
             let success = false;
             if (operation === 'addon') {
-                success = await batchInsertFeatures(fullLayerName, mappedFeatures, 'geom', '4326');
+                success = await batchInsertFeatures(fullLayerName, mappedFeatures, targetGeometryName, '4326', targetGeometryType);
             } else {
                 success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey);
             }

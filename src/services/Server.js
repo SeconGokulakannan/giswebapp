@@ -2,6 +2,29 @@ import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from './ServerCredentials';
 export { WORKSPACE };
 import axios from 'axios';
 
+// Force GeoServer to reload its configuration
+export const reloadGeoServer = async () => {
+    try {
+        const response = await fetch(`${GEOSERVER_URL}/rest/reload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            return true;
+        } else {
+            console.warn('GeoServer reload returned status:', response.status);
+            return false;
+        }
+    } catch (err) {
+        console.error('GeoServer reload failed:', err);
+        return false;
+    }
+};
+
 
 export const searchLocation = async (query) => {
     if (!query) return null;
@@ -317,10 +340,27 @@ export const getLayerAttributes = async (fullLayerName, includeDetails = false) 
         if (response.ok) {
             const data = await response.json();
             if (data.featureTypes && data.featureTypes.length > 0) {
+                const props = data.featureTypes[0].properties || [];
+
                 if (includeDetails) {
-                    return data.featureTypes[0].properties;
+                    return props.map(p => {
+                        const isGeom = p.type.startsWith('gml:') || p.type.includes('PropertyType') || p.name.toLowerCase() === 'geom' || p.name.toLowerCase() === 'the_geom' || p.name.toLowerCase() === 'geometry';
+                        let geomType = 'Unknown';
+                        if (isGeom && p.type.includes('PropertyType')) {
+                            // Extract 'MultiPolygon' from 'gml:MultiPolygonPropertyType'
+                            geomType = p.type.split(':')[1].replace('PropertyType', '');
+                        }
+                        return {
+                            name: p.name,
+                            type: p.type,
+                            isGeometry: isGeom,
+                            geometryType: geomType
+                        };
+                    });
                 }
-                return data.featureTypes[0].properties.map(p => p.name);
+
+                // Return just names, but filter out common internal/geometry identifiers if not detailed
+                return props.map(p => p.name);
             }
         }
     }
@@ -392,7 +432,6 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
         if (srid && srid !== '3857') {
             try {
                 geometry.transform('EPSG:3857', `EPSG:${srid}`);
-                console.log(`Transformed geometry from EPSG:3857 to EPSG:${srid}`);
             }
             catch (err) {
                 console.error(`Failed to transform geometry to EPSG:${srid}`, err);
@@ -460,7 +499,6 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
             ) continue;
 
             if (lowKey.startsWith('st_')) {
-                console.log(`Skipping computed column: ${key}`);
                 continue;
             }
 
@@ -716,8 +754,6 @@ export const addNewLayerConfig = async (properties) => {
         </wfs:Insert>
         </wfs:Transaction>`.trim();
 
-        console.log('addNewLayerConfig XML:', wfsTransactionXml);
-
         const response = await fetch(`${GEOSERVER_URL}/wfs`, {
             method: 'POST',
             headers: {
@@ -729,8 +765,6 @@ export const addNewLayerConfig = async (properties) => {
 
         if (response.ok) {
             const resultText = await response.text();
-            console.log('addNewLayerConfig Response:', resultText);
-
             if (resultText.includes('ExceptionText')) {
                 console.error('WFS-T Create Exception (Layer):', resultText);
                 return false;
@@ -878,6 +912,28 @@ export const publishNewLayer = async (config) => {
         if (!dataStoreName) throw new Error("No PostGIS DataStore found in workspace. Please ensure one is configured.");
 
         //Create the FeatureType (and PostGIS Table)
+        // Compute attributes
+        const computedAttributes = [
+            {
+                name: 'geom',
+                binding: `org.locationtech.jts.geom.${geometryType}`,
+                nillable: true
+            },
+            ...attributes
+                .filter(attr => {
+                    const lowName = (attr.name || '').trim().toLowerCase();
+                    return !['geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowName);
+                })
+                .map(attr => ({
+                    name: attr.name,
+                    binding: attr.type === 'String' ? 'java.lang.String' :
+                        attr.type === 'Integer' ? 'java.lang.Integer' :
+                            attr.type === 'Boolean' ? 'java.lang.Boolean' : 'java.lang.Double',
+                    nillable: true
+                }))
+        ];
+
+        //Create the FeatureType (and PostGIS Table)
         const featureTypeBody =
         {
             featureType: {
@@ -886,20 +942,7 @@ export const publishNewLayer = async (config) => {
                 title: layerName,
                 srs: `EPSG:${srid}`,
                 attributes: {
-                    attribute: [
-                        {
-                            name: 'geom',
-                            binding: `org.locationtech.jts.geom.${geometryType}`,
-                            nillable: true
-                        },
-                        ...attributes.map(attr => ({
-                            name: attr.name,
-                            binding: attr.type === 'String' ? 'java.lang.String' :
-                                attr.type === 'Integer' ? 'java.lang.Integer' :
-                                    attr.type === 'Boolean' ? 'java.lang.Boolean' : 'java.lang.Double',
-                            nillable: true
-                        }))
-                    ]
+                    attribute: computedAttributes
                 }
             }
         };
@@ -944,7 +987,7 @@ export const publishNewLayer = async (config) => {
 };
 
 // Data Add On
-export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857') => {
+export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown') => {
     try {
         if (!features || features.length === 0) return true;
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
@@ -956,41 +999,67 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 
         for (const feature of features) {
             let featureContentXml = '';
-            for (const [key, value] of Object.entries(feature.properties || {})) {
-                const lowKey = key.toLowerCase();
-                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid'].includes(lowKey) || key.startsWith('_') || value === null || value === undefined) continue;
-                featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
-            }
 
-            // Process Geometry
+            // 1. Process Geometry FIRST (Standard WFS schema often expects geometry first)
             const geom = feature.geometry;
             if (geom) {
                 let gmlGeom = '';
                 const type = geom.type;
                 const coords = geom.coordinates;
 
-                if (type === 'Point') {
-                    gmlGeom = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
-                } else if (type === 'LineString') {
-                    gmlGeom = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
-                } else if (type === 'Polygon') {
-                    const ring = coords[0].map(c => c.join(' ')).join(' ');
-                    gmlGeom = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
-                } else if (type === 'MultiPolygon') {
-                    let polygonsXml = '';
-                    coords.forEach(poly => {
-                        const ring = poly[0].map(c => c.join(' ')).join(' ');
-                        polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:polygonMember>`;
-                    });
-                    gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}">${polygonsXml}</gml:MultiPolygon>`;
-                }
+                if (coords && Array.isArray(coords) && coords.length > 0) {
+                    if (type === 'Point') {
+                        gmlGeom = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
+                    } else if (type === 'LineString') {
+                        gmlGeom = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
+                    } else if (type === 'Polygon') {
+                        const ring = coords[0].map(c => c.join(' ')).join(' ');
+                        const polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
 
-                if (gmlGeom) {
-                    featureContentXml += `<${prefix}:${geometryName}>${gmlGeom}</${prefix}:${geometryName}>`;
+                        // Promotion to MultiPolygon if target requires it
+                        if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
+                            gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
+                        } else {
+                            gmlGeom = polygonXml;
+                        }
+                    } else if (type === 'MultiPolygon') {
+                        let polygonsXml = '';
+                        coords.forEach(poly => {
+                            const ring = poly[0].map(c => c.join(' ')).join(' ');
+                            polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:polygonMember>`;
+                        });
+                        gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}">${polygonsXml}</gml:MultiPolygon>`;
+                    }
+
+                    if (gmlGeom) {
+                        featureContentXml += `<${prefix}:${geometryName}>${gmlGeom}</${prefix}:${geometryName}>`;
+                    }
                 }
             }
 
-            insertsXml += `<wfs:Insert><${fullLayerName}>${featureContentXml}</${fullLayerName}></wfs:Insert>`;
+            // 2. Process properties
+            for (const [key, value] of Object.entries(feature.properties || {})) {
+                const lowKey = key.trim().toLowerCase();
+                const lowGeomName = (geometryName || '').trim().toLowerCase();
+                // Skip system/internal/geometry columns
+                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
+                    lowKey === lowGeomName ||
+                    key.startsWith('_') ||
+                    value === null ||
+                    value === undefined) continue;
+
+                featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
+            }
+
+            // Build the complete feature XML
+            const featureXml = `<${fullLayerName}>${featureContentXml}</${fullLayerName}>`;
+            insertsXml += `<wfs:Insert>${featureXml}</wfs:Insert>`;
+        }
+
+        // Check if we have any features to insert
+        if (!insertsXml) {
+            console.warn('No valid features to insert after processing');
+            return false;
         }
 
         const wfsTransactionXml = `
@@ -1003,16 +1072,34 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
             ${insertsXml}
         </wfs:Transaction>`.trim();
 
+
         const response = await fetch(`${GEOSERVER_URL}/wfs`,
             {
                 method: 'POST',
-                headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
+                headers: {
+                    'Content-Type': 'application/xml',
+                    'Authorization': AUTH_HEADER
+                },
                 body: wfsTransactionXml
             });
 
         if (response.ok) {
             const result = await response.text();
-            return result.includes('TransactionSummary') && !result.includes('ExceptionText');
+            const hasException = result.includes('ExceptionText');
+            const hasSuccess = result.includes('TransactionSummary');
+
+            if (hasException) {
+                console.error('WFS-T Insert Exception Response:', result);
+            }
+
+            if (!hasSuccess) {
+                console.error('WFS-T response missing TransactionSummary:', result);
+            }
+
+            return hasSuccess && !hasException;
+        } else {
+            const errorText = await response.text();
+            console.error(`Batch insert HTTP error (${response.status}):`, errorText);
         }
         return false;
     }
@@ -1028,6 +1115,11 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
         if (!features || features.length === 0) return true;
 
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
+        const escapeXml = (str) => {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+        };
+
         let updatesXml = '';
 
         for (const feature of features) {
@@ -1036,9 +1128,15 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
 
             let propertyXml = '';
             for (const [key, value] of Object.entries(feature.properties || {})) {
-                const lowKey = key.toLowerCase();
-                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'wkb_geometry'].includes(lowKey) || key === matchingKey || key.startsWith('_') || value === null || value === undefined) continue;
-                propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${value}</wfs:Value></wfs:Property>`;
+                const lowKey = key.trim().toLowerCase();
+                // Skip system/internal/geometry columns
+                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
+                    key === matchingKey ||
+                    key.startsWith('_') ||
+                    value === null ||
+                    value === undefined) continue;
+
+                propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${escapeXml(value)}</wfs:Value></wfs:Property>`;
             }
 
             if (!propertyXml) continue;
@@ -1049,7 +1147,7 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
                 <ogc:Filter>
                     <ogc:PropertyIsEqualTo>
                         <ogc:PropertyName>${matchingKey}</ogc:PropertyName>
-                        <ogc:Literal>${keyValue}</ogc:Literal>
+                        <ogc:Literal>${escapeXml(keyValue)}</ogc:Literal>
                     </ogc:PropertyIsEqualTo>
                 </ogc:Filter>
             </wfs:Update>`;
@@ -1062,6 +1160,7 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
         xmlns:wfs="http://www.opengis.net/wfs"
         xmlns:ogc="http://www.opengis.net/ogc"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:${prefix}="${prefix}"
         xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
             ${updatesXml}
         </wfs:Transaction>`.trim();
