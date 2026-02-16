@@ -588,21 +588,36 @@ function GISMap() {
       if (layer.isLocal) {
         const olLayer = operationalLayersRef.current[layer.id];
         if (olLayer) {
-          const extent = olLayer.getSource().getExtent();
-          mapInstanceRef.current.getView().fit(extent, {
-            padding: [50, 50, 50, 50],
-            duration: 1000
-          });
+          const source = olLayer.getSource();
+          const extent = source.getExtent();
+
+          // Check if extent is valid (not infinite and not empty)
+          if (extent && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
+            // Check for empty extent (minX == maxX && minY == maxY can happen for single point, but generally we want valid numbers)
+            mapInstanceRef.current.getView().fit(extent, {
+              padding: [50, 50, 50, 50],
+              duration: 1000,
+              maxZoom: 16
+            });
+          } else {
+            toast.error('Cannot zoom: Layer has no features or invalid extent.');
+          }
         }
         return;
       }
       const bbox = await getLayerBBox(layer.fullName);
-      if (bbox) {
+      if (bbox && bbox.every(val => isFinite(val))) {
         // [minx, miny, maxx, maxy] - OpenLayers expects [minx, miny, maxx, maxy]
         // Transform coordinates to map projection
         const p1 = fromLonLat([bbox[0], bbox[1]]);
         const p2 = fromLonLat([bbox[2], bbox[3]]);
         const extent = [p1[0], p1[1], p2[0], p2[1]];
+
+        // Double check transformed extent
+        if (extent.some(val => !isFinite(val))) {
+          toast.error('Invalid layer extent.');
+          return;
+        }
 
         mapInstanceRef.current.getView().fit(extent, {
           padding: [50, 50, 50, 50],
@@ -610,11 +625,11 @@ function GISMap() {
           duration: 1000
         });
       } else {
-        // setMapIsZooming(false); // This state doesn't exist, removed.
         toast.error('Layer extent not available.');
       }
     } catch (err) {
       console.error('Zoom error:', err);
+      toast.error('Failed to zoom to layer.');
     }
   };
 
@@ -652,26 +667,32 @@ function GISMap() {
         // Local vector layer: read extent from OL source directly
         const olLayer = operationalLayersRef.current[layerId];
         if (olLayer) {
-          const extent = olLayer.getSource().getExtent();
-          mapInstanceRef.current.getView().fit(extent, {
-            padding: [50, 50, 50, 50],
-            maxZoom: 14,
-            duration: 800
-          });
+          const source = olLayer.getSource();
+          const extent = source.getExtent();
+
+          if (extent && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
+            mapInstanceRef.current.getView().fit(extent, {
+              padding: [50, 50, 50, 50],
+              maxZoom: 14,
+              duration: 800
+            });
+          }
         }
       } else {
         const bbox = await getLayerBBox(layer.fullName);
-        if (bbox) {
+        if (bbox && bbox.every(val => isFinite(val))) {
           // Pan to the layer
           const p1 = fromLonLat([bbox[0], bbox[1]]);
           const p2 = fromLonLat([bbox[2], bbox[3]]);
           const extent = [p1[0], p1[1], p2[0], p2[1]];
 
-          mapInstanceRef.current.getView().fit(extent, {
-            padding: [50, 50, 50, 50],
-            maxZoom: 14,
-            duration: 800
-          });
+          if (!extent.some(val => !isFinite(val))) {
+            mapInstanceRef.current.getView().fit(extent, {
+              padding: [50, 50, 50, 50],
+              maxZoom: 14,
+              duration: 800
+            });
+          }
         }
       }
     } catch (err) {
@@ -2310,6 +2331,8 @@ function GISMap() {
             onOpenLayerManagement={handleOpenLayerManagement}
             layoutMode={layoutMode}
             onToggleLayout={toggleLayoutMode}
+            isLocked={isLocked}
+            setIsLocked={setIsLocked}
           />
         )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { X, Upload, FileJson, Loader2, Info, Plus, Trash2, CheckCircle2, AlertCircle, Layers, File } from 'lucide-react';
+import { X, Upload, FileJson, Loader2, Info, Plus, Trash2, CheckCircle2, AlertCircle, Layers, File, ArrowUp } from 'lucide-react';
 import { parseShp, parseDbf, combine } from 'shpjs';
 import toast from 'react-hot-toast';
 
@@ -231,8 +231,8 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                         </div>
                         <div>
                             <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Load Temporary Layers</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '1px' }}>
-                                Upload shapefiles to add as session layers
+                            <div style={{ fontSize: '0.7rem', marginTop: '1px' }}>
+                                Temporary layers vanish on refresh
                             </div>
                         </div>
                     </div>
@@ -399,10 +399,10 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                                         ) : (
                                             <div>
                                                 <Upload size={22} style={{ opacity: 0.3, marginBottom: '6px' }} />
-                                                <p style={{ fontSize: '0.78rem', margin: '0 0 2px', opacity: 0.7 }}>
+                                                <p style={{ fontSize: '0.88rem', margin: '0 0 2px' }}>
                                                     Click or drag & drop shapefile components
                                                 </p>
-                                                <p style={{ fontSize: '0.65rem', opacity: 0.4, margin: 0 }}>
+                                                <p style={{ fontSize: '0.75rem', margin: 0 }}>
                                                     .shp, .prj  (required) &bull; .dbf, .shx(optional)
                                                 </p>
                                             </div>
@@ -435,10 +435,10 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                     {/* Add Another */}
                     {!isProcessing && (
                         <button onClick={addEntry} style={{
-                            width: '100%',
+                            width: 'auto',
                             border: '1.5px dashed var(--color-border)',
                             background: 'transparent',
-                            color: 'var(--color-text-muted)',
+
                             padding: '10px',
                             borderRadius: '10px',
                             cursor: 'pointer',
@@ -449,7 +449,8 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                             fontSize: '0.8rem',
                             fontWeight: 500,
                             transition: 'all 0.2s ease',
-                            marginBottom: '14px'
+                            marginBottom: '14px',
+                            justifySelf: 'flex-end'
                         }}
                             onMouseOver={e => {
                                 e.currentTarget.style.borderColor = 'var(--color-primary)';
@@ -467,25 +468,7 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                         </button>
                     )}
 
-                    {/* Info */}
-                    <div style={{
-                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(168, 85, 247, 0.04))',
-                        border: '1px solid rgba(59, 130, 246, 0.12)',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        gap: '10px',
-                        alignItems: 'flex-start'
-                    }}>
-                        <Info size={15} style={{ color: '#3b82f6', flexShrink: 0, marginTop: '1px' }} />
-                        <p style={{
-                            margin: 0, fontSize: '0.72rem', lineHeight: 1.5,
-                            color: 'var(--color-text-muted)'
-                        }}>
-                            Temporary layers are session-only. They will be lost when you refresh the page.
-                            Upload multiple layers at once for efficiency.
-                        </p>
-                    </div>
+
                 </div>
 
                 {/* Footer */}
@@ -511,13 +494,13 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                         {isProcessing ? (
                             <Loader2 size={15} className="animate-spin" />
                         ) : (
-                            <Upload size={15} />
+                            <ArrowUp size={15} />
                         )}
                         {isProcessing ? 'Processing...' : `Load ${pendingCount} Layer${pendingCount !== 1 ? 's' : ''}`}
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

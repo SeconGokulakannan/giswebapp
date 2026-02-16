@@ -14,7 +14,10 @@ import {
     Cog,
     Menu,
     Settings2,
-    Eraser
+    Eraser,
+    Lock,
+    Unlock,
+    Navigation
 } from 'lucide-react';
 
 const PrimarySidebar = ({
@@ -25,7 +28,10 @@ const PrimarySidebar = ({
     theme,
     handleClearDrawings,
     onOpenLayerManagement,
-    onToggleLayout
+    onToggleLayout,
+    isLocked,
+    setIsLocked,
+    handlePrintClick
 }) => {
 
     // Grouped Navigation for a more professional hierarchy
@@ -50,14 +56,49 @@ const PrimarySidebar = ({
 
     return (
         <div className="primary-sidebar">
-            <div className="sidebar-header">
-                <div className="brand-icon-wrapper">
-                    <div className="brand-accent-glow" />
-                    <Settings2 size={24} className="brand-icon" />
-                </div>
-            </div>
 
             <nav className="sidebar-nav">
+
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button
+                            className={`sidebar-nav-item`}>
+                            <div className="active-pillar" />
+                            <div className="item-icon-wrapper">
+                                <Navigation size={22} />
+                            </div>
+                            <span className="item-label">GIS</span>
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            GIS
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button
+                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
+                            onClick={onOpenLayerManagement}
+                        >
+                            <div className="active-pillar" />
+                            <div className="item-icon-wrapper">
+                                <Cog size={22} />
+                            </div>
+                            <span className="item-label">Server</span>
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            Layer Management
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+
                 {navSections.map((section, sIdx) => (
                     <div key={section.title} className="nav-section">
                         {sIdx > 0 && <div className="section-divider" />}
@@ -93,24 +134,26 @@ const PrimarySidebar = ({
                     </div>
                 ))}
 
+
+
                 <div className="section-divider" />
 
                 <Tooltip.Root>
                     <Tooltip.Trigger asChild>
                         <button
-                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
-                            onClick={onOpenLayerManagement}
+                            className={`sidebar-nav-item ${isLocked ? 'active' : ''}`}
+                            onClick={() => setIsLocked(!isLocked)}
                         >
                             <div className="active-pillar" />
                             <div className="item-icon-wrapper">
-                                <Cog size={22} strokeWidth={1.5} />
+                                {isLocked ? <Lock size={22} strokeWidth={1.5} /> : <Unlock size={22} strokeWidth={1.5} />}
                             </div>
-                            <span className="item-label">Settings</span>
+                            <span className="item-label">{isLocked ? "Unlock" : "Lock"}</span>
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
                         <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Layer Management
+                            {isLocked ? "Unlock Map" : "Lock Map"}
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
                     </Tooltip.Portal>
@@ -118,16 +161,17 @@ const PrimarySidebar = ({
 
                 <Tooltip.Root>
                     <Tooltip.Trigger asChild>
-                        <button
-                            className={`toolbar-button ${isLocked ? 'active warning' : ''}`}
-                            onClick={() => setIsLocked(!isLocked)}
-                        >
-                            {isLocked ? <Lock size={20} /> : <Unlock size={20} />}
+                        <button className="sidebar-nav-item" onClick={handlePrintClick}>
+                            <div className="active-pillar" />
+                            <div className="item-icon-wrapper">
+                                <Printer size={22} strokeWidth={1.5} />
+                            </div>
+                            <span className="item-label">Print</span>
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" sideOffset={8}>
-                            {isLocked ? "Unlock Map" : "Lock Map"}
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            Export Map
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
                     </Tooltip.Portal>
@@ -150,39 +194,40 @@ const PrimarySidebar = ({
                         </Tooltip.Content>
                     </Tooltip.Portal>
                 </Tooltip.Root>
+
+                <div className="section-divider" />
+
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button className="sidebar-nav-item" onClick={onToggleLayout}>
+                            <Settings2 size={20} />
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            Top Bar Mode
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button className="sidebar-nav-item" onClick={toggleTheme}>
+                            {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            {theme === 'light' ? 'Dark' : 'Light'} Mode
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+
+
+
             </nav>
-
-            <div className="sidebar-footer">
-                <div className="footer-actions">
-                    <Tooltip.Root>
-                        <Tooltip.Trigger asChild>
-                            <button className="sidebar-footer-btn" onClick={onToggleLayout}>
-                                <Menu size={20} />
-                            </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                            <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                                Top Bar Mode
-                                <Tooltip.Arrow className="TooltipArrow" />
-                            </Tooltip.Content>
-                        </Tooltip.Portal>
-                    </Tooltip.Root>
-
-                    <Tooltip.Root>
-                        <Tooltip.Trigger asChild>
-                            <button className="sidebar-footer-btn" onClick={toggleTheme}>
-                                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-                            </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                            <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                                {theme === 'light' ? 'Dark' : 'Light'} Mode
-                                <Tooltip.Arrow className="TooltipArrow" />
-                            </Tooltip.Content>
-                        </Tooltip.Portal>
-                    </Tooltip.Root>
-                </div>
-            </div>
         </div>
     );
 };

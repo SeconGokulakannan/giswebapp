@@ -713,7 +713,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                                 color: '#ef4444'
                             }}
                         >
-                            <RotateCcw size={14} />&nbsp;Discard
+                            <RotateCcw size={14} />Discard
                         </button>
                     )}
                     <button

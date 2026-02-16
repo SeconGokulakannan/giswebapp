@@ -174,28 +174,28 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                 <div style={{ padding: '12px 20px', background: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
-                            <Globe size={14} />&nbsp;Add Acting Layer
+                            <Globe size={14} />Add Acting Layer
                         </button>
                         <button className="elite-btn primary" onClick={onOpenCreateLayer} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #06b6d4, #3b82f6)' }}>
-                            <LayersPlus size={14} />&nbsp;Publish New Layer
+                            <LayersPlus size={14} />Publish New Layer
                         </button>
                         <button className="elite-btn primary" onClick={onOpenDataManipulation} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #f59e0b, #3b82f6)' }}>
-                            <ArrowRightLeft size={14} />&nbsp;Data Manipulation
+                            <ArrowRightLeft size={14} />Data Manipulation
                         </button>
                         <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)' }}>
-                            <Server size={14} />&nbsp;Server Info
+                            <Server size={14} />Server Info
                         </button>
                         <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
-                            <Plus size={14} />&nbsp;Add Layer Config
+                            <Plus size={14} />Add Layer Config
                         </button>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         {selectedIds.length > 0 && (
                             <button className="elite-btn danger" onClick={DeleteLayerConfig} style={{ padding: '6px 12px' }}>
-                                <Trash2 size={14} />&nbsp;Delete ({selectedIds.length})
+                                <Trash2 size={14} />Delete ({selectedIds.length})
                             </button>
                         )}
-                        <button className="elite-btn primary" onClick={RefreshGridData} style={{ alignItems: 'center', gap: '6px' }}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Refresh</button>
+                        <button className="elite-btn primary" onClick={RefreshGridData} style={{ gap: '6px' }}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Refresh</button>
                     </div>
                 </div>
 
