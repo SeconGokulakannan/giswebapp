@@ -12,7 +12,8 @@ import {
     MessageSquareCode,
     FileJson,
     MessageSquareShare,
-    SquaresSubtract
+    SquaresSubtract,
+    Combine
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -992,39 +993,17 @@ const LayerOperations = ({
                 );
             }
 
-            case 'spatialjoin': {
+            case 'spatialjoin':
                 return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button
-                            onClick={() => onOpenSpatialJoin(layer.id)}
-                            style={{
-                                border: 'none',
-                                background: 'rgba(var(--color-primary-rgb), 0.1)',
-                                color: 'var(--color-primary)',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            <Zap size={12} /> Join
-                        </button>
-                        <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
-                            <input
-                                type="checkbox"
-                                checked={layer.visible}
-                                onChange={() => handleToggleGeoLayer(layer.id)}
-                            />
-                            <span className="toggle-slider"></span>
-                        </label>
-                    </div>
+                    <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                        <input
+                            type="checkbox"
+                            checked={layer.visible}
+                            onChange={() => handleToggleGeoLayer(layer.id)}
+                        />
+                        <span className="toggle-slider"></span>
+                    </label>
                 );
-            }
 
             default:
                 return null;
@@ -1600,6 +1579,37 @@ const LayerOperations = ({
                         ));
                     })()}
                 </div>
+
+                {activeLayerTool === 'spatialjoin' && (
+                    <div style={{ padding: '16px', display: 'flex', justifyContent: 'center' }}>
+                        <button
+                            className="elite-button premium-join-btn"
+                            onClick={() => onOpenSpatialJoin(null)}
+                            style={{
+                                width: '100%',
+                                gap: '12px',
+                                padding: '14px',
+                                background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '12px',
+                                fontWeight: '700',
+                                fontSize: '14px',
+                                letterSpacing: '0.5px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 8px 16px -4px rgba(var(--color-primary-rgb), 0.3)',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                cursor: 'pointer',
+                                textTransform: 'uppercase'
+                            }}
+                        >
+                            <Combine size={20} />
+                            Spatial Join
+                        </button>
+                    </div>
+                )}
 
                 {/* TEMPORARY LAYERS SECTION - Moved to Bottom */}
                 {tempLayers.length > 0 && (

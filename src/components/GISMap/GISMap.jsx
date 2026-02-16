@@ -994,12 +994,7 @@ function GISMap() {
             })
           ];
         }
-        return [
-          new Style({
-            fill: new Fill({ color: 'rgba(204, 204, 204, 0.15)' }),
-            stroke: new Stroke({ color: 'rgba(153, 153, 153, 0.3)', width: 0.5 })
-          })
-        ];
+        return [];
       };
 
       // 5. Create vector layers

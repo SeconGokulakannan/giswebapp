@@ -30,6 +30,7 @@ const AnalysisCard = ({
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [attributes, setAttributes] = useState([]);
+    const [attributeDetails, setAttributeDetails] = useState([]);
     const [uniqueDates, setUniqueDates] = useState([]);
     const [isMinimized, setIsMinimized] = useState(false);
 
@@ -63,15 +64,13 @@ const AnalysisCard = ({
 
     const fetchAttributes = async () => {
         if (!activeLayer) return;
-        // setIsFetchingAttributes(true);
         try {
-            const attrs = await getLayerAttributes(activeLayer.fullName);
-            setAttributes(attrs || []);
+            const details = await getLayerAttributes(activeLayer.fullName, true);
+            setAttributeDetails(details || []);
+            const names = (details || []).map(p => p.name);
+            setAttributes(names);
         } catch (error) {
             console.error("Error fetching attributes:", error);
-            // toast.error("Failed to fetch layer attributes.");
-        } finally {
-            // setIsFetchingAttributes(false);
         }
     };
 
@@ -387,7 +386,36 @@ const AnalysisCard = ({
                                         <input
                                             type="checkbox"
                                             checked={isPeriodic}
-                                            onChange={(e) => setIsPeriodic(e.target.checked)}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                if (checked) {
+                                                    const dateAttrs = attributeDetails.filter(attr =>
+                                                        /date|time|year|timestamp/i.test(attr.localType || attr.type || '') ||
+                                                        /date|time|year|timestamp/i.test(attr.name)
+                                                    );
+                                                    if (dateAttrs.length === 0) {
+                                                        toast.error("No Attribute found with date");
+                                                        return;
+                                                    }
+                                                    // Default to first date attr if none selected
+                                                    if (!dateProperty) setDateProperty(dateAttrs[0].name);
+                                                }
+                                                setIsPeriodic(checked);
+
+                                                // If turned off and analysis already running/configured, re-run without periodic
+                                                if (!checked && selectedProperty) {
+                                                    onRunAnalysis({
+                                                        layerId: selectedLayerId,
+                                                        property: selectedProperty,
+                                                        mappings,
+                                                        isPeriodic: false,
+                                                        dateProperty,
+                                                        startDate,
+                                                        endDate,
+                                                        filteredDates: []
+                                                    });
+                                                }
+                                            }}
                                         />
                                         <span className="toggle-slider"></span>
                                     </label>
@@ -400,12 +428,19 @@ const AnalysisCard = ({
                                             <select
                                                 value={dateProperty}
                                                 onChange={(e) => setDateProperty(e.target.value)}
-                                                style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', fontSize: '12px' }}
+                                                className="elite-input"
+                                                style={{ width: '100%', fontSize: '13px' }}
                                             >
-                                                <option value="">Select Date...</option>
-                                                {attributes.map(attr => (
-                                                    <option key={attr} value={attr}>{attr}</option>
-                                                ))}
+                                                <option value="">Select Date Field...</option>
+                                                {attributeDetails
+                                                    .filter(attr =>
+                                                        /date|time|year|timestamp/i.test(attr.localType || attr.type || '') ||
+                                                        /date|time|year|timestamp/i.test(attr.name)
+                                                    )
+                                                    .map(attr => (
+                                                        <option key={attr.name} value={attr.name}>{attr.name}</option>
+                                                    ))
+                                                }
                                             </select>
                                         </div>
 

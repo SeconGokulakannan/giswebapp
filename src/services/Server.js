@@ -310,13 +310,16 @@ export const getFeaturesForAttributeTable = async (layerId, fullLayerName) => {
 };
 
 //Gets Layer Attributes (Column Properties)
-export const getLayerAttributes = async (fullLayerName) => {
+export const getLayerAttributes = async (fullLayerName, includeDetails = false) => {
     try {
         const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=DescribeFeatureType&typeName=${fullLayerName}&outputFormat=application/json`;
         const response = await fetch(url);
         if (response.ok) {
             const data = await response.json();
             if (data.featureTypes && data.featureTypes.length > 0) {
+                if (includeDetails) {
+                    return data.featureTypes[0].properties;
+                }
                 return data.featureTypes[0].properties.map(p => p.name);
             }
         }
