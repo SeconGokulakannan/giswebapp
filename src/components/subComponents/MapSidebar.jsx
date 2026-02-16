@@ -2,7 +2,16 @@ import React from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Plus, Minus, LayoutGrid, Maximize, LocateFixed, Navigation } from 'lucide-react';
 
-const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handleFullscreen, handleLocateMe }) => {
+const MapSidebar = ({
+    handleZoomIn,
+    handleZoomOut,
+    showGrid,
+    setShowGrid,
+    handleFullscreen,
+    handleLocateMe,
+    layoutMode
+}) => {
+    const tooltipSide = layoutMode === 'sidebar' ? 'left' : 'right';
     return (
         <div className="elite-sidebar">
             <div className="sidebar-section">
@@ -13,7 +22,7 @@ const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handle
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={12}>
+                        <Tooltip.Content className="TooltipContent" side={tooltipSide} sideOffset={12}>
                             Zoom In
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
@@ -27,7 +36,7 @@ const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handle
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={12}>
+                        <Tooltip.Content className="TooltipContent" side={tooltipSide} sideOffset={12}>
                             Zoom Out
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
@@ -48,7 +57,7 @@ const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handle
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={12}>
+                        <Tooltip.Content className="TooltipContent" side={tooltipSide} sideOffset={12}>
                             {showGrid ? 'Hide' : 'Show'} Grid
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
@@ -62,7 +71,7 @@ const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handle
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={12}>
+                        <Tooltip.Content className="TooltipContent" side={tooltipSide} sideOffset={12}>
                             My Location
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>
@@ -76,7 +85,7 @@ const MapSidebar = ({ handleZoomIn, handleZoomOut, showGrid, setShowGrid, handle
                         </button>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={12}>
+                        <Tooltip.Content className="TooltipContent" side={tooltipSide} sideOffset={12}>
                             Fullscreen
                             <Tooltip.Arrow className="TooltipArrow" />
                         </Tooltip.Content>

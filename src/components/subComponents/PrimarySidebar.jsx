@@ -7,14 +7,14 @@ import {
     MapPin,
     Moon,
     Sun,
-    Trash2,
+    Trash,
     Printer,
     Bookmark,
     DraftingCompass,
     Cog,
     Menu,
     Settings2,
-    Trash
+    Eraser
 } from 'lucide-react';
 
 const PrimarySidebar = ({
@@ -43,7 +43,7 @@ const PrimarySidebar = ({
                 { id: 'tools', label: 'Drawing', icon: PenTool, color: '#f59e0b' },
                 { id: 'utility_tools', label: 'Analysis', icon: DraftingCompass, color: '#8b5cf6' },
                 { id: 'location', label: 'Location', icon: MapPin, color: '#ef4444' },
-                { id: 'bookmarks', label: 'Saved', icon: Bookmark, color: '#ec4899' },
+                { id: 'bookmarks', label: 'Bookmarks', icon: Bookmark, color: '#ec4899' },
             ]
         }
     ];
@@ -58,28 +58,6 @@ const PrimarySidebar = ({
             </div>
 
             <nav className="sidebar-nav">
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button
-                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
-                            onClick={onOpenLayerManagement}
-                        >
-                            <div className="active-pillar" />
-                            <div className="item-icon-wrapper">
-                                <Cog size={22} strokeWidth={1.5} />
-                            </div>
-                            <span className="item-label">Server</span>
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Layer Management
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
                 {navSections.map((section, sIdx) => (
                     <div key={section.title} className="nav-section">
                         {sIdx > 0 && <div className="section-divider" />}
@@ -117,14 +95,50 @@ const PrimarySidebar = ({
 
                 <div className="section-divider" />
 
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button
+                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
+                            onClick={onOpenLayerManagement}
+                        >
+                            <div className="active-pillar" />
+                            <div className="item-icon-wrapper">
+                                <Cog size={22} strokeWidth={1.5} />
+                            </div>
+                            <span className="item-label">Settings</span>
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
+                            Layer Management
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
 
+                <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                        <button
+                            className={`toolbar-button ${isLocked ? 'active warning' : ''}`}
+                            onClick={() => setIsLocked(!isLocked)}
+                        >
+                            {isLocked ? <Lock size={20} /> : <Unlock size={20} />}
+                        </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content className="TooltipContent" sideOffset={8}>
+                            {isLocked ? "Unlock Map" : "Lock Map"}
+                            <Tooltip.Arrow className="TooltipArrow" />
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
 
                 <Tooltip.Root>
                     <Tooltip.Trigger asChild>
                         <button className="sidebar-nav-item" onClick={handleClearDrawings}>
                             <div className="active-pillar" />
                             <div className="item-icon-wrapper">
-                                <Trash size={22} strokeWidth={1.5} />
+                                <Eraser size={22} strokeWidth={1.5} />
                             </div>
                             <span className="item-label">Clear</span>
                         </button>
@@ -136,7 +150,6 @@ const PrimarySidebar = ({
                         </Tooltip.Content>
                     </Tooltip.Portal>
                 </Tooltip.Root>
-
             </nav>
 
             <div className="sidebar-footer">
@@ -168,8 +181,6 @@ const PrimarySidebar = ({
                             </Tooltip.Content>
                         </Tooltip.Portal>
                     </Tooltip.Root>
-
-
                 </div>
             </div>
         </div>

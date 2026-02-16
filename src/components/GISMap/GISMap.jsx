@@ -2365,6 +2365,7 @@ function GISMap() {
               </div>
             )}
 
+            {/* Map Sidebar (Map Controls) */}
             <MapSidebar
               handleZoomIn={handleZoomIn}
               handleZoomOut={handleZoomOut}
@@ -2372,6 +2373,7 @@ function GISMap() {
               setShowGrid={setShowGrid}
               handleFullscreen={handleFullscreen}
               handleLocateMe={handleLocateMe}
+              layoutMode={layoutMode}
             />
 
             <MapPanel
