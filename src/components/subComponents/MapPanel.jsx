@@ -118,6 +118,7 @@ const MapPanel = ({
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer, queryingLayer,
     handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds, swipePosition, setSwipePosition,
     analysisLayerIds, handleToggleAnalysisLayer,
+    spatialJoinLayerIds, handleToggleSpatialJoinLayer,
     bookmarks, handleAddBookmark, handleDeleteBookmark, handleNavigateToBookmark,
     selectedQueryLayerIds, setSelectedQueryLayerIds,
     setShowSpatialJoin,
@@ -302,6 +303,8 @@ const MapPanel = ({
                         setSwipePosition={setSwipePosition}
                         analysisLayerIds={analysisLayerIds}
                         handleToggleAnalysisLayer={handleToggleAnalysisLayer}
+                        spatialJoinLayerIds={spatialJoinLayerIds}
+                        handleToggleSpatialJoinLayer={handleToggleSpatialJoinLayer}
                         selectedQueryLayerIds={selectedQueryLayerIds}
                         setSelectedQueryLayerIds={setSelectedQueryLayerIds}
                         setShowSpatialJoin={setShowSpatialJoin}

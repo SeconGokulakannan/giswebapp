@@ -162,6 +162,7 @@ function GISMap() {
   // Spatial Join State
   const [showSpatialJoin, setShowSpatialJoin] = useState(false);
   const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
+  const [spatialJoinLayerIds, setSpatialJoinLayerIds] = useState([]);
   const [showCreateLayerModal, setShowCreateLayerModal] = useState(false);
   const [showDataManipulationModal, setShowDataManipulationModal] = useState(false);
   const [showServerInfoModal, setShowServerInfoModal] = useState(false);
@@ -171,6 +172,12 @@ function GISMap() {
   const handleOpenSpatialJoin = (layerId) => {
     setActiveSpatialJoinLayerId(layerId);
     setShowSpatialJoin(true);
+  };
+
+  const handleToggleSpatialJoinLayer = (layerId) => {
+    setSpatialJoinLayerIds(prev =>
+      prev.includes(layerId) ? prev.filter(id => id !== layerId) : [...prev, layerId]
+    );
   };
 
   // Analysis State
@@ -2377,6 +2384,8 @@ function GISMap() {
             setSwipePosition={setSwipePosition}
             analysisLayerIds={analysisLayerIds}
             handleToggleAnalysisLayer={handleToggleAnalysisLayer}
+            spatialJoinLayerIds={spatialJoinLayerIds}
+            handleToggleSpatialJoinLayer={handleToggleSpatialJoinLayer}
             bookmarks={bookmarks}
             handleAddBookmark={handleAddBookmark}
             handleDeleteBookmark={handleDeleteBookmark}
@@ -2576,6 +2585,7 @@ function GISMap() {
             isOpen={showSpatialJoin}
             onClose={() => setShowSpatialJoin(false)}
             allGeoServerLayers={geoServerLayers}
+            selectedLayerIds={spatialJoinLayerIds}
             onPerformSpatialJoin={handlePerformSpatialJoin}
             onResetSpatialJoin={handleResetSpatialJoin}
             targetLayerId={activeSpatialJoinLayerId}

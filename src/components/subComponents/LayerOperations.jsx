@@ -28,6 +28,7 @@ const LayerOperations = ({
     handleApplyLayerFilter, setShowQueryBuilder, setQueryingLayer,
     queryingLayer, handleToggleSwipe, handleToggleSwipeAll, swipeLayerIds,
     swipePosition, setSwipePosition, analysisLayerIds, handleToggleAnalysisLayer,
+    spatialJoinLayerIds, handleToggleSpatialJoinLayer,
     selectedQueryLayerIds, setSelectedQueryLayerIds,
     setShowSpatialJoin,
     onOpenSpatialJoin
@@ -998,8 +999,8 @@ const LayerOperations = ({
                     <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
                         <input
                             type="checkbox"
-                            checked={layer.visible}
-                            onChange={() => handleToggleGeoLayer(layer.id)}
+                            checked={spatialJoinLayerIds.includes(layer.id)}
+                            onChange={() => handleToggleSpatialJoinLayer(layer.id)}
                         />
                         <span className="toggle-slider"></span>
                     </label>

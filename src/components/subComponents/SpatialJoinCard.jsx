@@ -12,7 +12,7 @@ const getRandomColor = (exclude = null) => {
     return available[Math.floor(Math.random() * available.length)];
 };
 
-const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], onPerformSpatialJoin, onResetSpatialJoin, targetLayerId
+const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLayerIds = [], onPerformSpatialJoin, onResetSpatialJoin, targetLayerId
 }) => {
     const [isMinimized, setIsMinimized] = useState(false);
     const [layerA, setLayerA] = useState('');
@@ -93,8 +93,9 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], onPerformSp
         }
     };
 
-    const visibleLayers = allGeoServerLayers.filter(l => l.visible);
-    const layerBOptions = visibleLayers.filter(l => l.id !== layerA);
+    const selectedLayers = allGeoServerLayers.filter(l => (selectedLayerIds || []).includes(l.id));
+    const layerAOptions = selectedLayers;
+    const layerBOptions = selectedLayers.filter(l => l.id !== layerA);
     const attrsA = attributesMapA[layerA] || [];
     const attrsB = attributesMapB[layerB] || [];
 
@@ -251,7 +252,7 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], onPerformSp
                                                 }}
                                             >
                                                 <option value="">Select layer...</option>
-                                                {visibleLayers.map(l => (
+                                                {layerAOptions.map(l => (
                                                     <option key={l.id} value={l.id}>{l.name}</option>
                                                 ))}
                                             </select>
