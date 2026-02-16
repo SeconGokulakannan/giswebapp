@@ -19,6 +19,7 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import { LineString, Point } from 'ol/geom';
 import { defaults as defaultControls } from 'ol/control';
 import GeoJSON from 'ol/format/GeoJSON';
+import { isEmpty } from 'ol/extent';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -592,44 +593,42 @@ function GISMap() {
           const extent = source.getExtent();
 
           // Check if extent is valid (not infinite and not empty)
-          if (extent && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
-            // Check for empty extent (minX == maxX && minY == maxY can happen for single point, but generally we want valid numbers)
+          if (extent && !isEmpty(extent) && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
+            // Check for empty extent
             mapInstanceRef.current.getView().fit(extent, {
               padding: [50, 50, 50, 50],
               duration: 1000,
               maxZoom: 16
             });
           } else {
-            toast.error('Cannot zoom: Layer has no features or invalid extent.');
+            toast.error('Cannot zoom: Layer is empty or has invalid extent.');
           }
         }
         return;
       }
       const bbox = await getLayerBBox(layer.fullName);
       if (bbox && bbox.every(val => isFinite(val))) {
-        // [minx, miny, maxx, maxy] - OpenLayers expects [minx, miny, maxx, maxy]
-        // Transform coordinates to map projection
+        // [minx, miny, maxx, maxy]
         const p1 = fromLonLat([bbox[0], bbox[1]]);
         const p2 = fromLonLat([bbox[2], bbox[3]]);
         const extent = [p1[0], p1[1], p2[0], p2[1]];
 
         // Double check transformed extent
-        if (extent.some(val => !isFinite(val))) {
-          toast.error('Invalid layer extent.');
-          return;
+        if (!isEmpty(extent) && !extent.some(val => !isFinite(val))) {
+          mapInstanceRef.current.getView().fit(extent, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 16,
+            duration: 1000
+          });
+        } else {
+          toast.error('Invalid layer extent (empty or infinite).');
         }
-
-        mapInstanceRef.current.getView().fit(extent, {
-          padding: [50, 50, 50, 50],
-          maxZoom: 16,
-          duration: 1000
-        });
       } else {
         toast.error('Layer extent not available.');
       }
     } catch (err) {
       console.error('Zoom error:', err);
-      toast.error('Failed to zoom to layer.');
+      toast.error(`Zoom failed: ${err.message}`);
     }
   };
 
@@ -670,7 +669,7 @@ function GISMap() {
           const source = olLayer.getSource();
           const extent = source.getExtent();
 
-          if (extent && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
+          if (extent && !isEmpty(extent) && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
             mapInstanceRef.current.getView().fit(extent, {
               padding: [50, 50, 50, 50],
               maxZoom: 14,
@@ -686,7 +685,7 @@ function GISMap() {
           const p2 = fromLonLat([bbox[2], bbox[3]]);
           const extent = [p1[0], p1[1], p2[0], p2[1]];
 
-          if (!extent.some(val => !isFinite(val))) {
+          if (!isEmpty(extent) && !extent.some(val => !isFinite(val))) {
             mapInstanceRef.current.getView().fit(extent, {
               padding: [50, 50, 50, 50],
               maxZoom: 14,

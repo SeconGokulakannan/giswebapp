@@ -127,7 +127,7 @@ export const getLayerBBox = async (fullLayerName) => {
 
         if (info && info.latLonBoundingBox) {
             const bbox = info.latLonBoundingBox;
-            return [bbox.minx, bbox.miny, bbox.maxx, bbox.maxy];
+            return [parseFloat(bbox.minx), parseFloat(bbox.miny), parseFloat(bbox.maxx), parseFloat(bbox.maxy)];
         }
     }
     catch (err) {
