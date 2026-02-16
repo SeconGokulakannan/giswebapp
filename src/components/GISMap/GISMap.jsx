@@ -25,6 +25,7 @@ import html2canvas from 'html2canvas';
 
 // Sub-components
 import MapHeader from '../subComponents/MapHeader';
+import PrimarySidebar from '../subComponents/PrimarySidebar';
 import MapSidebar from '../subComponents/MapSidebar';
 import MapPanel from '../subComponents/MapPanel';
 import MapStatusBar from '../subComponents/MapStatusBar';
@@ -97,6 +98,18 @@ function GISMap() {
 
   // Map Lock 
   const [isLocked, setIsLocked] = useState(false);
+  const [layoutMode, setLayoutMode] = useState(() => {
+    return localStorage.getItem('gis-layout-mode') || 'sidebar';
+  });
+
+  const toggleLayoutMode = () => {
+    const newMode = layoutMode === 'sidebar' ? 'topbar' : 'sidebar';
+    setLayoutMode(newMode);
+    localStorage.setItem('gis-layout-mode', newMode);
+
+    // Reset panels when switching layouts to avoid positioning jitters
+    setActivePanel(null);
+  };
 
 
   const [showDrawingLabels, setShowDrawingLabels] = useState(() => {
@@ -2278,68 +2291,9 @@ function GISMap() {
 
   return (
     <Tooltip.Provider delayDuration={300}>
-      <div className="app">
-
-
-        <MapHeader
-          activePanel={activePanel}
-          setActivePanel={(panel) => {
-            setActivePanel(panel);
-            if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
-              setActiveTool(null);
-              removeInteractions();
-            }
-          }}
-          setIsPanelMinimized={setIsPanelMinimized}
-          toggleTheme={toggleTheme}
-          theme={theme}
-          handleClearDrawings={handleClearDrawings}
-          handlePrintClick={handlePrintClick}
-          isLocked={isLocked}
-          setIsLocked={setIsLocked}
-          activeTool={activeTool}
-          handleToolClick={handleToolClick}
-          hasDrawings={hasDrawings}
-          hasMeasurements={hasMeasurements}
-          onOpenLayerManagement={handleOpenLayerManagement}
-          onOpenLoadTempModal={() => setShowLoadTempModal(true)}
-        />
-
-        {/* Map Container */}
-        <div className="map-container">
-          <div ref={mapRef} className="map" />
-          {activeTool === 'ZoomBox' && (
-            <div
-              style={{
-                position: 'absolute',
-                left: mousePosition.x + 15,
-                top: mousePosition.y + 15,
-                background: 'rgba(0, 0, 0, 0.7)',
-                color: 'white',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                pointerEvents: 'none',
-                fontSize: '12px',
-                whiteSpace: 'nowrap',
-                zIndex: 1000,
-                backdropFilter: 'blur(4px)',
-                border: '1px solid rgba(255,255,255,0.2)'
-              }}
-            >
-              Drag to zoom
-            </div>
-          )}
-
-          <MapSidebar
-            handleZoomIn={handleZoomIn}
-            handleZoomOut={handleZoomOut}
-            showGrid={showGrid}
-            setShowGrid={setShowGrid}
-            handleFullscreen={handleFullscreen}
-            handleLocateMe={handleLocateMe}
-          />
-
-          <MapPanel
+      <div className={`app-shell layout-${layoutMode}`}>
+        {layoutMode === 'sidebar' && (
+          <PrimarySidebar
             activePanel={activePanel}
             setActivePanel={(panel) => {
               setActivePanel(panel);
@@ -2347,328 +2301,409 @@ function GISMap() {
                 setActiveTool(null);
                 removeInteractions();
               }
-              if (panel === null) {
-                setActiveLayerTool(null);
+            }}
+            setIsPanelMinimized={setIsPanelMinimized}
+            toggleTheme={toggleTheme}
+            theme={theme}
+            handleClearDrawings={handleClearDrawings}
+            handlePrintClick={handlePrintClick}
+            onOpenLayerManagement={handleOpenLayerManagement}
+            layoutMode={layoutMode}
+            onToggleLayout={toggleLayoutMode}
+          />
+        )}
+
+        <div className="main-content">
+          <MapHeader
+            onOpenLayerManagement={handleOpenLayerManagement}
+            layoutMode={layoutMode}
+            onToggleLayout={toggleLayoutMode}
+            activePanel={activePanel}
+            setActivePanel={(panel) => {
+              setActivePanel(panel);
+              if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
+                setActiveTool(null);
+                removeInteractions();
               }
             }}
-            isPanelMinimized={isPanelMinimized}
             setIsPanelMinimized={setIsPanelMinimized}
-            baseLayer={baseLayer}
-            setBaseLayer={setBaseLayer}
-            isDrawingVisible={isDrawingVisible}
-            setIsDrawingVisible={setIsDrawingVisible}
+            toggleTheme={toggleTheme}
+            theme={theme}
+            handleClearDrawings={handleClearDrawings}
+            handlePrintClick={handlePrintClick}
+            isLocked={isLocked}
+            setIsLocked={setIsLocked}
             activeTool={activeTool}
             handleToolClick={handleToolClick}
-            handleMeasureClick={handleMeasureClick}
-            gotoLat={gotoLat}
-            setGotoLat={setGotoLat}
-            gotoLon={gotoLon}
-            setGotoLon={setGotoLon}
-            handleGoToLocation={handleGoToLocation}
-            handleSearch={handleSearch}
-            measurementUnits={measurementUnits}
-            setMeasurementUnits={setMeasurementUnits}
-            showDrawingLabels={showDrawingLabels}
-            setShowDrawingLabels={setShowDrawingLabels}
-            showAnalysisLabels={showAnalysisLabels}
-            setShowAnalysisLabels={setShowAnalysisLabels}
-            handleClearDrawings={handleClearDrawings}
-            resetTools={resetTools}
-            printTitle={printTitle}
-            setPrintTitle={setPrintTitle}
-            printSubtitle={printSubtitle}
-            setPrintSubtitle={setPrintSubtitle}
-            printFileName={printFileName}
-            setPrintFileName={setPrintFileName}
-            exportFormat={exportFormat}
-            setExportFormat={setExportFormat}
-            handleExportMap={handleExportMap}
-            geoServerLayers={geoServerLayers}
-            handleToggleGeoLayer={handleToggleGeoLayer}
-            handleLayerOpacityChange={handleLayerOpacityChange}
-            handleZoomToLayer={handleZoomToLayer}
-            handleHighlightLayer={handleHighlightLayer}
-            handleToggleAllLayers={handleToggleAllLayers}
-            activeLayerTool={activeLayerTool}
-            setActiveLayerTool={setActiveLayerTool}
-            handleToggleLayerQuery={handleToggleLayerQuery}
-            activeHighlightLayerId={activeHighlightLayerId}
-            isHighlightAnimating={isHighlightAnimating}
-            handleUpdateLayerStyle={handleUpdateLayerStyle}
-            infoSelectionMode={infoSelectionMode}
-            setInfoSelectionMode={setInfoSelectionMode}
-            saveSequence={saveSequence}
-            refreshLayers={handleFetchGeoServerLayers}
-            selectedAttributeLayerId={selectedAttributeLayerId}
-            setSelectedAttributeLayerId={setSelectedAttributeLayerId}
-            showAttributeTable={showAttributeTable}
-            setShowAttributeTable={setShowAttributeTable}
-            GetLayerAttributes={getLayerAttributes}
-            handleApplyLayerFilter={handleApplyLayerFilter}
-            setShowQueryBuilder={setShowQueryBuilder}
-            setQueryingLayer={setQueryingLayer}
-            queryingLayer={queryingLayer}
-            handleToggleSwipe={handleToggleSwipe}
-            handleToggleSwipeAll={handleToggleSwipeAll}
-            swipeLayerIds={swipeLayerIds}
-            swipePosition={swipePosition}
-            setSwipePosition={setSwipePosition}
-            analysisLayerIds={analysisLayerIds}
-            handleToggleAnalysisLayer={handleToggleAnalysisLayer}
-            spatialJoinLayerIds={spatialJoinLayerIds}
-            handleToggleSpatialJoinLayer={handleToggleSpatialJoinLayer}
-            bookmarks={bookmarks}
-            handleAddBookmark={handleAddBookmark}
-            handleDeleteBookmark={handleDeleteBookmark}
-            handleNavigateToBookmark={handleNavigateToBookmark}
-            selectedQueryLayerIds={selectedQueryLayerIds}
-            setSelectedQueryLayerIds={setSelectedQueryLayerIds}
-            setShowSpatialJoin={setShowSpatialJoin}
-            onOpenSpatialJoin={handleOpenSpatialJoin}
-            allAvailableLayers={[...geoServerLayers, ...localVectorLayers]}
+            hasDrawings={hasDrawings}
+            hasMeasurements={hasMeasurements}
+            onOpenLoadTempModal={() => setShowLoadTempModal(true)}
           />
 
-          {/* Define allLayers for easy lookup */}
-          {(() => {
-            const allLayers = [...geoServerLayers, ...localVectorLayers];
-            const activeAttributeLayer = allLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId);
+          {/* Map Container */}
+          <div className="map-container">
+            <div ref={mapRef} className="map" />
+            {activeTool === 'ZoomBox' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: mousePosition.x + 15,
+                  top: mousePosition.y + 15,
+                  background: 'rgba(0, 0, 0, 0.7)',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  pointerEvents: 'none',
+                  fontSize: '12px',
+                  whiteSpace: 'nowrap',
+                  zIndex: 1000,
+                  backdropFilter: 'blur(4px)',
+                  border: '1px solid rgba(255,255,255,0.2)'
+                }}
+              >
+                Drag to zoom
+              </div>
+            )}
 
-            return (
-              <>
-                {/* Feature Info Card - Positioned at clicked location */}
-                {featureInfoResult && featureInfoResult.length > 0 && featureInfoCoordinate && mapInstanceRef.current && (() => {
-                  const pixel = mapInstanceRef.current.getPixelFromCoordinate(featureInfoCoordinate);
-                  if (!pixel) return null;
-                  return (
-                    <FeatureInfoCard
-                      featureInfo={featureInfoResult}
+            <MapSidebar
+              handleZoomIn={handleZoomIn}
+              handleZoomOut={handleZoomOut}
+              showGrid={showGrid}
+              setShowGrid={setShowGrid}
+              handleFullscreen={handleFullscreen}
+              handleLocateMe={handleLocateMe}
+            />
+
+            <MapPanel
+              activePanel={activePanel}
+              setActivePanel={(panel) => {
+                setActivePanel(panel);
+                if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
+                  setActiveTool(null);
+                  removeInteractions();
+                }
+                if (panel === null) {
+                  setActiveLayerTool(null);
+                }
+              }}
+              isPanelMinimized={isPanelMinimized}
+              setIsPanelMinimized={setIsPanelMinimized}
+              baseLayer={baseLayer}
+              setBaseLayer={setBaseLayer}
+              isDrawingVisible={isDrawingVisible}
+              setIsDrawingVisible={setIsDrawingVisible}
+              activeTool={activeTool}
+              handleToolClick={handleToolClick}
+              handleMeasureClick={handleMeasureClick}
+              gotoLat={gotoLat}
+              setGotoLat={setGotoLat}
+              gotoLon={gotoLon}
+              setGotoLon={setGotoLon}
+              handleGoToLocation={handleGoToLocation}
+              handleSearch={handleSearch}
+              measurementUnits={measurementUnits}
+              setMeasurementUnits={setMeasurementUnits}
+              showDrawingLabels={showDrawingLabels}
+              setShowDrawingLabels={setShowDrawingLabels}
+              showAnalysisLabels={showAnalysisLabels}
+              setShowAnalysisLabels={setShowAnalysisLabels}
+              handleClearDrawings={handleClearDrawings}
+              resetTools={resetTools}
+              printTitle={printTitle}
+              setPrintTitle={setPrintTitle}
+              printSubtitle={printSubtitle}
+              setPrintSubtitle={setPrintSubtitle}
+              printFileName={printFileName}
+              setPrintFileName={setPrintFileName}
+              exportFormat={exportFormat}
+              setExportFormat={setExportFormat}
+              handleExportMap={handleExportMap}
+              geoServerLayers={geoServerLayers}
+              handleToggleGeoLayer={handleToggleGeoLayer}
+              handleLayerOpacityChange={handleLayerOpacityChange}
+              handleZoomToLayer={handleZoomToLayer}
+              handleHighlightLayer={handleHighlightLayer}
+              handleToggleAllLayers={handleToggleAllLayers}
+              activeLayerTool={activeLayerTool}
+              setActiveLayerTool={setActiveLayerTool}
+              handleToggleLayerQuery={handleToggleLayerQuery}
+              activeHighlightLayerId={activeHighlightLayerId}
+              isHighlightAnimating={isHighlightAnimating}
+              handleUpdateLayerStyle={handleUpdateLayerStyle}
+              infoSelectionMode={infoSelectionMode}
+              setInfoSelectionMode={setInfoSelectionMode}
+              saveSequence={saveSequence}
+              refreshLayers={handleFetchGeoServerLayers}
+              selectedAttributeLayerId={selectedAttributeLayerId}
+              setSelectedAttributeLayerId={setSelectedAttributeLayerId}
+              showAttributeTable={showAttributeTable}
+              setShowAttributeTable={setShowAttributeTable}
+              GetLayerAttributes={getLayerAttributes}
+              handleApplyLayerFilter={handleApplyLayerFilter}
+              setShowQueryBuilder={setShowQueryBuilder}
+              setQueryingLayer={setQueryingLayer}
+              queryingLayer={queryingLayer}
+              handleToggleSwipe={handleToggleSwipe}
+              handleToggleSwipeAll={handleToggleSwipeAll}
+              swipeLayerIds={swipeLayerIds}
+              swipePosition={swipePosition}
+              setSwipePosition={setSwipePosition}
+              analysisLayerIds={analysisLayerIds}
+              handleToggleAnalysisLayer={handleToggleAnalysisLayer}
+              spatialJoinLayerIds={spatialJoinLayerIds}
+              handleToggleSpatialJoinLayer={handleToggleSpatialJoinLayer}
+              bookmarks={bookmarks}
+              handleAddBookmark={handleAddBookmark}
+              handleDeleteBookmark={handleDeleteBookmark}
+              handleNavigateToBookmark={handleNavigateToBookmark}
+              selectedQueryLayerIds={selectedQueryLayerIds}
+              setSelectedQueryLayerIds={setSelectedQueryLayerIds}
+              setShowSpatialJoin={setShowSpatialJoin}
+              onOpenSpatialJoin={handleOpenSpatialJoin}
+              allAvailableLayers={[...geoServerLayers, ...localVectorLayers]}
+            />
+
+            {/* Define allLayers for easy lookup */}
+            {(() => {
+              const allLayers = [...geoServerLayers, ...localVectorLayers];
+              const activeAttributeLayer = allLayers.find(l => l.id === selectedAttributeLayerId || l.layerId === selectedAttributeLayerId);
+
+              return (
+                <>
+                  {/* Feature Info Card - Positioned at clicked location */}
+                  {featureInfoResult && featureInfoResult.length > 0 && featureInfoCoordinate && mapInstanceRef.current && (() => {
+                    const pixel = mapInstanceRef.current.getPixelFromCoordinate(featureInfoCoordinate);
+                    if (!pixel) return null;
+                    return (
+                      <FeatureInfoCard
+                        featureInfo={featureInfoResult}
+                        onClose={() => {
+                          setFeatureInfoResult(null);
+                          setFeatureInfoCoordinate(null);
+                          if (selectionSourceRef.current) selectionSourceRef.current.clear();
+                        }}
+                        style={{
+                          position: 'absolute',
+                          left: pixel[0],
+                          top: pixel[1],
+                          transform: 'translate(-18px, -100%) translateY(-10px)',
+                          zIndex: 1000
+                        }}
+                      />
+                    );
+                  })()}
+
+                  <LoadTempLayerModal
+                    isOpen={showLoadTempModal}
+                    onClose={() => setShowLoadTempModal(false)}
+                    onLayerLoaded={handleAddLocalVectorLayer}
+                    existingNames={allLayers.map(l => l.name)}
+                  />
+
+                  {/* Attribute Table Card */}
+                  {showAttributeTable && selectedAttributeLayerId && activeAttributeLayer && (
+                    <AttributeTableCard
+                      isOpen={showAttributeTable}
                       onClose={() => {
-                        setFeatureInfoResult(null);
-                        setFeatureInfoCoordinate(null);
-                        if (selectionSourceRef.current) selectionSourceRef.current.clear();
-                      }}
-                      style={{
-                        position: 'absolute',
-                        left: pixel[0],
-                        top: pixel[1],
-                        transform: 'translate(-18px, -100%) translateY(-10px)',
-                        zIndex: 1000
-                      }}
-                    />
-                  );
-                })()}
-
-                <LoadTempLayerModal
-                  isOpen={showLoadTempModal}
-                  onClose={() => setShowLoadTempModal(false)}
-                  onLayerLoaded={handleAddLocalVectorLayer}
-                  existingNames={allLayers.map(l => l.name)}
-                />
-
-                {/* Attribute Table Card */}
-                {showAttributeTable && selectedAttributeLayerId && activeAttributeLayer && (
-                  <AttributeTableCard
-                    isOpen={showAttributeTable}
-                    onClose={() => {
-                      // Clear highlights when closing table
-                      if (selectionSourceRef.current) {
-                        selectionSourceRef.current.clear();
-                      }
-                      setShowAttributeTable(false);
-                      setSelectedAttributeLayerId(null);
-                    }}
-                    layerName={activeAttributeLayer.name || 'Unknown Layer'}
-                    layerFullName={activeAttributeLayer.fullName}
-                    layerId={selectedAttributeLayerId}
-                    data={attributeTableData}
-                    isLoading={isAttributeTableLoading}
-                    isReadOnly={activeAttributeLayer.isLocal}
-                    onHighlightFeatures={(features) => {
-                      if (!features || features.length === 0) return;
-
-                      // Clear previous highlights
-                      if (selectionSourceRef.current) {
-                        selectionSourceRef.current.clear();
-                      }
-
-                      // Parse and add features to selection layer
-                      const geoJsonFormat = new GeoJSON();
-                      features.forEach(feature => {
-                        try {
-                          // Parse the GeoJSON feature
-                          const olFeature = geoJsonFormat.readFeature(feature, {
-                            dataProjection: 'EPSG:4326',
-                            featureProjection: 'EPSG:3857'
-                          });
-
-                          // Add to selection source for highlighting
-                          if (selectionSourceRef.current) {
-                            selectionSourceRef.current.addFeature(olFeature);
-                          }
-                        } catch (error) {
-                          console.error('Error parsing feature for highlight:', error, feature);
+                        // Clear highlights when closing table
+                        if (selectionSourceRef.current) {
+                          selectionSourceRef.current.clear();
                         }
-                      });
+                        setShowAttributeTable(false);
+                        setSelectedAttributeLayerId(null);
+                      }}
+                      layerName={activeAttributeLayer.name || 'Unknown Layer'}
+                      layerFullName={activeAttributeLayer.fullName}
+                      layerId={selectedAttributeLayerId}
+                      data={attributeTableData}
+                      isLoading={isAttributeTableLoading}
+                      isReadOnly={activeAttributeLayer.isLocal}
+                      onHighlightFeatures={(features) => {
+                        if (!features || features.length === 0) return;
 
-                      // Zoom to highlighted features
-                      if (selectionSourceRef.current && selectionSourceRef.current.getFeatures().length > 0) {
-                        const extent = selectionSourceRef.current.getExtent();
-                        mapInstanceRef.current.getView().fit(extent, {
-                          padding: [50, 50, 50, 50],
-                          duration: 500,
-                          maxZoom: 18
+                        // Clear previous highlights
+                        if (selectionSourceRef.current) {
+                          selectionSourceRef.current.clear();
+                        }
+
+                        // Parse and add features to selection layer
+                        const geoJsonFormat = new GeoJSON();
+                        features.forEach(feature => {
+                          try {
+                            // Parse the GeoJSON feature
+                            const olFeature = geoJsonFormat.readFeature(feature, {
+                              dataProjection: 'EPSG:4326',
+                              featureProjection: 'EPSG:3857'
+                            });
+
+                            // Add to selection source for highlighting
+                            if (selectionSourceRef.current) {
+                              selectionSourceRef.current.addFeature(olFeature);
+                            }
+                          } catch (error) {
+                            console.error('Error parsing feature for highlight:', error, feature);
+                          }
                         });
 
-                        toast.success(`Highlighted ${features.length} feature(s) on map`);
-                      }
-                    }}
-                    onClearHighlights={() => {
-                      // Clear highlights when Stop button is clicked
-                      if (selectionSourceRef.current) {
-                        selectionSourceRef.current.clear();
-                      }
-                    }}
-                    onDeleteFeature={async (fullLayerName, feature) => {
-                      const success = await deleteFeature(fullLayerName, feature);
-                      if (success) {
-                        toast.success("Feature deleted successfully");
-                        // Refresh the table data using the current layer ID
-                        const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
-                        if (activeLayer) {
-                          const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
-                          setAttributeTableData(data);
+                        // Zoom to highlighted features
+                        if (selectionSourceRef.current && selectionSourceRef.current.getFeatures().length > 0) {
+                          const extent = selectionSourceRef.current.getExtent();
+                          mapInstanceRef.current.getView().fit(extent, {
+                            padding: [50, 50, 50, 50],
+                            duration: 500,
+                            maxZoom: 18
+                          });
+
+                          toast.success(`Highlighted ${features.length} feature(s) on map`);
                         }
-                      } else {
-                        toast.error("Failed to delete feature. Ensure WFS-T is enabled on GeoServer.");
-                      }
-                    }}
-                    onUpdateFeatures={async (fullLayerName, changes) => {
-                      let successCount = 0;
-                      let failCount = 0;
-                      const rowIds = Object.keys(changes);
+                      }}
+                      onClearHighlights={() => {
+                        // Clear highlights when Stop button is clicked
+                        if (selectionSourceRef.current) {
+                          selectionSourceRef.current.clear();
+                        }
+                      }}
+                      onDeleteFeature={async (fullLayerName, feature) => {
+                        const success = await deleteFeature(fullLayerName, feature);
+                        if (success) {
+                          toast.success("Feature deleted successfully");
+                          // Refresh the table data using the current layer ID
+                          const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+                          if (activeLayer) {
+                            const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+                            setAttributeTableData(data);
+                          }
+                        } else {
+                          toast.error("Failed to delete feature. Ensure WFS-T is enabled on GeoServer.");
+                        }
+                      }}
+                      onUpdateFeatures={async (fullLayerName, changes) => {
+                        let successCount = 0;
+                        let failCount = 0;
+                        const rowIds = Object.keys(changes);
 
-                      toast.loading(`Saving changes to ${rowIds.length} row(s)...`, { id: 'save-toast' });
+                        toast.loading(`Saving changes to ${rowIds.length} row(s)...`, { id: 'save-toast' });
 
-                      for (const rowId of rowIds) {
-                        const success = await updateFeature(fullLayerName, rowId, changes[rowId]);
-                        if (success) successCount++;
-                        else failCount++;
-                      }
+                        for (const rowId of rowIds) {
+                          const success = await updateFeature(fullLayerName, rowId, changes[rowId]);
+                          if (success) successCount++;
+                          else failCount++;
+                        }
 
-                      if (successCount > 0) {
-                        toast.success(`Successfully updated ${successCount} feature(s)`, { id: 'save-toast' });
-                        // Refresh data
-                        const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
-                        if (activeLayer) {
-                          const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
-                          setAttributeTableData(data);
+                        if (successCount > 0) {
+                          toast.success(`Successfully updated ${successCount} feature(s)`, { id: 'save-toast' });
+                          // Refresh data
+                          const activeLayer = geoServerLayers.find(l => l.fullName === fullLayerName);
+                          if (activeLayer) {
+                            const data = await getFeaturesForAttributeTable(activeLayer.layerId || activeLayer.id, fullLayerName);
+                            setAttributeTableData(data);
+                            return true;
+                          }
                           return true;
                         }
-                        return true;
-                      }
 
-                      if (failCount > 0) {
-                        toast.error(`Failed to update ${failCount} feature(s)`, { id: 'save-toast' });
-                      }
-                      return false;
-                    }}
-                    isMinimized={isAttributeTableMinimized}
-                    onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
-                    drawings={availableDrawings}
-                    onSaveNewAttribute={handleSaveNewAttribute}
-                    geometryName={activeAttributeLayer.geometryFieldName}
-                    geometryType={activeAttributeLayer.geometryType}
-                    srid={activeAttributeLayer.srid}
-                  />
-                )}
-              </>
-            );
-          })()}
+                        if (failCount > 0) {
+                          toast.error(`Failed to update ${failCount} feature(s)`, { id: 'save-toast' });
+                        }
+                        return false;
+                      }}
+                      isMinimized={isAttributeTableMinimized}
+                      onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
+                      drawings={availableDrawings}
+                      onSaveNewAttribute={handleSaveNewAttribute}
+                      geometryName={activeAttributeLayer.geometryFieldName}
+                      geometryType={activeAttributeLayer.geometryType}
+                      srid={activeAttributeLayer.srid}
+                    />
+                  )}
+                </>
+              );
+            })()}
 
-          <AnalysisCard
-            isOpen={activeLayerTool === 'analysis' && analysisLayerIds.length > 0}
-            onClose={() => setActiveLayerTool(null)}
-            visibleLayers={geoServerLayers.filter(l => analysisLayerIds.includes(l.id))}
-            onRunAnalysis={handleRunAnalysis}
-            onUpdateStyle={handleUpdateLayerStyle}
-            onReset={handleResetAnalysis}
-            isPlaying={isAnalysisPlaying}
-            currentFrameIndex={analysisFrameIndex}
-            onPlaybackToggle={() => setIsAnalysisPlaying(!isAnalysisPlaying)}
-            onFrameChange={(index) => setAnalysisFrameIndex(index)}
-          />
+            <AnalysisCard
+              isOpen={activeLayerTool === 'analysis' && analysisLayerIds.length > 0}
+              onClose={() => setActiveLayerTool(null)}
+              visibleLayers={geoServerLayers.filter(l => analysisLayerIds.includes(l.id))}
+              onRunAnalysis={handleRunAnalysis}
+              onUpdateStyle={handleUpdateLayerStyle}
+              onReset={handleResetAnalysis}
+              isPlaying={isAnalysisPlaying}
+              currentFrameIndex={analysisFrameIndex}
+              onPlaybackToggle={() => setIsAnalysisPlaying(!isAnalysisPlaying)}
+              onFrameChange={(index) => setAnalysisFrameIndex(index)}
+            />
 
 
-          <QueryBuilderCard
-            isOpen={showQueryBuilder}
-            onClose={() => {
-              setShowQueryBuilder(false);
-              setQueryingLayer(null);
-            }}
-            activeLayer={queryingLayer}
-            availableLayers={geoServerLayers}
-            handleApplyLayerFilter={handleApplyLayerFilter}
-            selectedLayerIds={selectedQueryLayerIds}
-            setSelectedLayerIds={setSelectedQueryLayerIds}
-          />
+            <QueryBuilderCard
+              isOpen={showQueryBuilder}
+              onClose={() => {
+                setShowQueryBuilder(false);
+                setQueryingLayer(null);
+              }}
+              activeLayer={queryingLayer}
+              availableLayers={geoServerLayers}
+              handleApplyLayerFilter={handleApplyLayerFilter}
+              selectedLayerIds={selectedQueryLayerIds}
+              setSelectedLayerIds={setSelectedQueryLayerIds}
+            />
 
-          <SpatialJoinCard
-            isOpen={showSpatialJoin}
-            onClose={() => setShowSpatialJoin(false)}
-            allGeoServerLayers={geoServerLayers}
-            selectedLayerIds={spatialJoinLayerIds}
-            onPerformSpatialJoin={handlePerformSpatialJoin}
-            onResetSpatialJoin={handleResetSpatialJoin}
-            targetLayerId={activeSpatialJoinLayerId}
-          />
+            <SpatialJoinCard
+              isOpen={showSpatialJoin}
+              onClose={() => setShowSpatialJoin(false)}
+              allGeoServerLayers={geoServerLayers}
+              selectedLayerIds={spatialJoinLayerIds}
+              onPerformSpatialJoin={handlePerformSpatialJoin}
+              onResetSpatialJoin={handleResetSpatialJoin}
+              targetLayerId={activeSpatialJoinLayerId}
+            />
 
-          <CreateLayerCard
-            isOpen={showCreateLayerModal}
-            onClose={() => setShowCreateLayerModal(false)}
-            handleLayerRefresh={handleFetchGeoServerLayers}
-          />
+            <CreateLayerCard
+              isOpen={showCreateLayerModal}
+              onClose={() => setShowCreateLayerModal(false)}
+              handleLayerRefresh={handleFetchGeoServerLayers}
+            />
 
-          <LayerManagementCard
-            isOpen={showLayerManagement}
-            onClose={() => setShowLayerManagement(false)}
-            data={layerManagementData}
-            isLoading={isLayerManagementLoading}
-            onDeleteFeature={handleDeleteLayerMetadata}
-            onUpdateFeatures={handleUpdateLayerMetadata}
-            onSaveNewFeature={handleSaveNewLayerMetadata}
-            onRefresh={handleRefreshLayerManagement}
-            onOpenLoadTempModal={() => {
-              setShowLayerManagement(false);
-              setShowLoadTempModal(true);
-            }}
-            onOpenCreateLayer={() => {
-              setShowLayerManagement(false);
-              setShowCreateLayerModal(true);
-            }}
-            onOpenDataManipulation={() => {
-              setShowLayerManagement(false);
-              setShowDataManipulationModal(true);
-            }}
-            onOpenServerInfo={() => {
-              setShowLayerManagement(false);
-              setShowServerInfoModal(true);
-            }}
-          />
+            <LayerManagementCard
+              isOpen={showLayerManagement}
+              onClose={() => setShowLayerManagement(false)}
+              data={layerManagementData}
+              isLoading={isLayerManagementLoading}
+              onDeleteFeature={handleDeleteLayerMetadata}
+              onUpdateFeatures={handleUpdateLayerMetadata}
+              onSaveNewFeature={handleSaveNewLayerMetadata}
+              onRefresh={handleRefreshLayerManagement}
+              onOpenLoadTempModal={() => {
+                setShowLayerManagement(false);
+                setShowLoadTempModal(true);
+              }}
+              onOpenCreateLayer={() => {
+                setShowLayerManagement(false);
+                setShowCreateLayerModal(true);
+              }}
+              onOpenDataManipulation={() => {
+                setShowLayerManagement(false);
+                setShowDataManipulationModal(true);
+              }}
+              onOpenServerInfo={() => {
+                setShowLayerManagement(false);
+                setShowServerInfoModal(true);
+              }}
+            />
 
-          <DataManipulationCard
-            isOpen={showDataManipulationModal}
-            onClose={() => setShowDataManipulationModal(false)}
-            geoServerLayers={geoServerLayers}
-          />
+            <DataManipulationCard
+              isOpen={showDataManipulationModal}
+              onClose={() => setShowDataManipulationModal(false)}
+              geoServerLayers={geoServerLayers}
+            />
 
-          <ServerInfoCard
-            isOpen={showServerInfoModal}
-            onClose={() => setShowServerInfoModal(false)}
-          />
+            <ServerInfoCard
+              isOpen={showServerInfoModal}
+              onClose={() => setShowServerInfoModal(false)}
+            />
 
-          <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
+            <MapStatusBar coordinates={coordinates} zoom={zoom} scale={scale} />
+          </div>
         </div>
-
       </div>
     </Tooltip.Provider>
   );
