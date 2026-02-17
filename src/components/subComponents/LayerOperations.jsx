@@ -771,7 +771,7 @@ const LayerOperations = ({
         switch (activeLayerTool) {
             case 'visibility':
                 return (
-                    <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                    <label className="toggle-switch">
                         <input
                             type="checkbox"
                             checked={layer.visible}
@@ -782,7 +782,7 @@ const LayerOperations = ({
                 );
             case 'info':
                 return (
-                    <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
+                    <label className="toggle-switch">
                         <input
                             type="checkbox"
                             checked={layer.queryable}
@@ -793,8 +793,7 @@ const LayerOperations = ({
                 );
             case 'density':
                 return (
-                    <div className="density-control" style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'flex-end' }}>
-                        <span style={{ fontSize: '10px', opacity: 0.7 }}>{Math.round((layer.opacity || 1) * 100)}%</span>
+                    <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
                         <input
                             type="range"
                             min="0"
@@ -804,7 +803,9 @@ const LayerOperations = ({
                             onChange={(e) => handleLayerOpacityChange(layer.id, parseFloat(e.target.value))}
                             className="layer-opacity-slider"
                             title="Adjust Opacity"
+                            style={{ flex: 1 }}
                         />
+                        <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{Math.round((layer.opacity || 1) * 100)}%</span>
                     </div>
                 );
             case 'action': {
@@ -860,7 +861,7 @@ const LayerOperations = ({
                                 onError={(e) => e.target.style.display = 'none'}
                             />
                         ) : (
-                            <div style={{ fontSize: '10px', opacity: 0.5, fontStyle: 'italic' }}>Local Layer</div>
+                            <div style={{ fontSize: '12px', opacity: 0.5, fontStyle: 'italic' }}>Local Layer</div>
                         )}
                     </div>
                 );
@@ -1103,7 +1104,7 @@ const LayerOperations = ({
                     padding: activeLayerTool === 'querybuilder' ? '12px 0 8px' : '8px 0'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700, opacity: 0.8 }}>GEOSERVER LAYERS</span>
+                        <span style={{ fontSize: '11px', fontWeight: 600, color: '#5f6368' }}>Server Layers</span>
                         {activeLayerTool === 'querybuilder' && (
                             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', marginRight: '4px' }}>
                                 <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>ALL</span>
@@ -1193,8 +1194,8 @@ const LayerOperations = ({
                     </div>
                     {(activeLayerTool === 'visibility' || activeLayerTool === 'info' || activeLayerTool === 'spatialjoin') && serverLayers.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 500 }}>ALL</span>
-                            <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 500 }}>ALL</span>
+                            <label className="toggle-switch">
                                 <input
                                     type="checkbox"
                                     checked={serverLayers.every(l => l.visible)}
@@ -1211,8 +1212,8 @@ const LayerOperations = ({
                     )}
                     {activeLayerTool === 'swipe' && geoServerLayers.filter(l => l.visible).length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 500 }}>ALL</span>
-                            <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 500 }}>ALL</span>
+                            <label className="toggle-switch">
                                 <input
                                     type="checkbox"
                                     checked={swipeLayerIds?.length === geoServerLayers.filter(l => l.visible).length && swipeLayerIds?.length > 0}
@@ -1232,469 +1233,457 @@ const LayerOperations = ({
                             ? sourceLayers.filter(l => l.visible)
                             : sourceLayers;
 
-                        if (displayedLayers.length === 0) {
-                            return (
-                                <div className="empty-layers-msg">
-                                    {(activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'styles' || activeLayerTool === 'swipe')
-                                        ? "No visible server layers."
-                                        : "No server layers connected."}
-                                </div>
-                            );
-                        }
-
-                        return displayedLayers.map((layer, index) => (
-                            <div
-                                key={layer.id}
-                                draggable={activeLayerTool === 'reorder'}
-                                onDragStart={(e) => handleDragStart(e, layer.id)}
-                                onDragOver={(e) => handleDragOver(e, layer.id)}
-                                onDragEnd={handleDragEnd}
-                                className={activeLayerTool === 'reorder' ? 'draggable-layer-item' : ''}
-                            >
-                                <div
-                                    className={`layer-item-redesigned 
-                                        ${activeLayerTool === 'zoom' && activeZoomLayerId === layer.id ? 'active' : ''} 
-                                        ${activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id ? 'active' : ''}
-                                        ${activeLayerTool === 'styles' && editingStyleLayer === layer.id ? 'active' : ''}
-                                        ${draggedLayerId === layer.id ? 'dragging-active' : ''}
-                                    `}
-                                    onClick={() => {
-                                        if (activeLayerTool === 'action') {
-                                            // Optional: Pick a default action or just let individual buttons handle it
-                                            // For now, doing nothing on row click for 'action' tool to avoid ambiguity
-                                        } else if (activeLayerTool === 'styles') {
-                                            handleLoadStyle(layer);
-                                        }
-                                    }}
-                                    style={{
-                                        cursor: (activeLayerTool === 'styles') ? 'pointer' : 'default',
-                                        borderLeft: (
-                                            (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id)) ||
-                                            (activeLayerTool === 'styles' && editingStyleLayer === layer.id)
-                                        ) ? '3px solid var(--color-primary)' : 'none',
-                                        backgroundColor: (
-                                            (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id)) ||
-                                            (activeLayerTool === 'styles' && editingStyleLayer === layer.id)
-                                        ) ? 'rgba(var(--color-primary-rgb), 0.12)' : 'transparent'
-                                    }}
-                                >
-                                    <div className="layer-info" style={{
-                                        flex: activeLayerTool === 'density' ? '0 0 auto' : '1',
-                                        maxWidth: activeLayerTool === 'density' ? '120px' : 'none'
-                                    }}>
-                                        <CircleDot size={14} className="layer-icon" />
-                                        <span style={{
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            fontSize: '13px',
-                                            fontWeight: '500'
-                                        }}>
-                                            {layer.name}
-                                        </span>
-                                    </div>
-                                    {renderLayerContent(layer)}
-                                </div>
-
-                                {/* Style Editor Panel - Toggleable Card */}
-                                {activeLayerTool === 'styles' && editingStyleLayer === layer.id && styleData && (
-                                    <div className="style-editor-panel">
-                                        <div className="style-editor-header">
-                                            <span className="style-editor-title">Style Editor</span>
-                                            <div className="style-editor-actions">
-                                                <button
-                                                    className="style-save-btn"
-                                                    onClick={(e) => { e.stopPropagation(); handleSaveStyle(); }}
-                                                    disabled={isSavingStyle}
-                                                >
-                                                    {isSavingStyle ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                                    {isSavingStyle ? 'Saving...' : 'Save'}
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="style-editor-body">
-                                            <div className="style-tab-content modern-ref">
-
-                                                {/* SYMBOLOGY SECTION */}
-                                                <div className="tab-pane ref-layout" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '16px', marginBottom: '16px' }}>
-
-                                                    {/* ROW 1: Fill Pattern + Fill Color */}
-                                                    <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
-                                                        {styleData.availableProps.hatchPattern && (
-                                                            <div style={{ flex: 1 }}>
-                                                                <span className="ref-label">Fill Pattern</span>
-                                                                <div className="ref-select-wrapper">
-                                                                    <select
-                                                                        value={styleData.properties.hatchPattern}
-                                                                        onChange={(e) => updateStyleProp('hatchPattern', e.target.value, true)}
-                                                                    >
-                                                                        {Object.entries(HATCH_PATTERNS).map(([name, val]) => (
-                                                                            <option key={name} value={val}>{name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {styleData.availableProps.fill && (
-                                                            <div style={{ flex: 1 }}>
-                                                                <span className="ref-label">Fill Color</span>
-                                                                <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fill }}>
-                                                                    <input
-                                                                        type="color"
-                                                                        value={styleData.properties.fill || '#cccccc'}
-                                                                        onChange={(e) => updateStyleProp('fill', e.target.value)}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {/* ROW 2: Fill Opacity */}
-                                                    <div className="ref-row">
-                                                        <span className="ref-label">Fill Opacity ({Math.round((styleData.properties.fillOpacity || 1) * 100)}%)</span>
-                                                        <div className="ref-input-group">
-                                                            <input
-                                                                type="range" min="0" max="1" step="0.1"
-                                                                className="layer-opacity-slider"
-                                                                value={styleData.properties.fillOpacity || 1}
-                                                                onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    {/* ROW 3: Stroke Pattern + Stroke Color */}
-                                                    <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
-                                                        <div style={{ flex: 1 }}>
-                                                            <span className="ref-label">Stroke Pattern</span>
-                                                            <div className="ref-select-wrapper">
-                                                                <select
-                                                                    value={getDashName(styleData.properties.strokeDasharray)}
-                                                                    onChange={(e) => updateStyleProp('strokeDasharray', DASH_STYLES[e.target.value])}
-                                                                >
-                                                                    {Object.keys(DASH_STYLES).map(name => (
-                                                                        <option key={name} value={name}>{name}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                        {styleData.availableProps.stroke && (
-                                                            <div style={{ flex: 1 }}>
-                                                                <span className="ref-label">Stroke Color</span>
-                                                                <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.stroke }}>
-                                                                    <input
-                                                                        type="color"
-                                                                        value={styleData.properties.stroke || '#333333'}
-                                                                        onChange={(e) => updateStyleProp('stroke', e.target.value)}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {/* ROW 4: Stroke Width */}
-                                                    {styleData.availableProps.strokeWidth && (
-                                                        <div className="ref-row">
-                                                            <span className="ref-label">Stroke Width ({styleData.properties.strokeWidth || 1}px)</span>
-                                                            <div className="ref-input-group">
-                                                                <input
-                                                                    type="range" min="0.5" max="20" step="0.5"
-                                                                    className="layer-opacity-slider"
-                                                                    value={styleData.properties.strokeWidth || 1}
-                                                                    onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* SVG ICON / DYNAMIC SYMBOLOGY (POINT ONLY) - At End */}
-                                                    {styleData.availableProps.externalGraphicUrl && (
-                                                        <div className="ref-row">
-                                                            <span className="ref-label">Dynamic Symbology</span>
-                                                            <div className="ref-input-group" style={{ flexDirection: 'column', gap: '8px' }}>
-                                                                <div className="ref-flex-row">
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Icon URL or filename"
-                                                                        className="ref-text-input"
-                                                                        value={styleData.properties.externalGraphicUrl}
-                                                                        onChange={(e) => updateStyleProp('externalGraphicUrl', e.target.value)}
-                                                                    />
-                                                                    <label className="style-save-btn" style={{ cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 0 }}>
-                                                                        <Upload size={14} /> Upload
-                                                                        <input
-                                                                            type="file"
-                                                                            accept=".svg,.png,.jpg,.jpeg,.gif"
-                                                                            style={{ display: 'none' }}
-                                                                            onChange={handleFileUpload}
-                                                                        />
-                                                                    </label>
-                                                                </div>
-                                                                <div style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
-                                                                    Supports SVG, PNG based on server capability.
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* LABELS SECTION */}
-                                                <div className="tab-pane ref-layout">
-                                                    <div className="symbology-header" style={{ marginTop: '0', marginBottom: '12px' }}>
-                                                        <Info size={13} /> Labeling Settings
-                                                    </div>
-
-                                                    {/* LABEL ATTRIBUTE */}
-                                                    <div className="ref-row">
-                                                        <span className="ref-label">Label Field</span>
-                                                        <div className="ref-select-wrapper">
-                                                            <select
-                                                                value={styleData.properties.labelAttribute || ''}
-                                                                onChange={(e) => updateStyleProp('labelAttribute', e.target.value)}
-                                                            >
-                                                                <option value="">None (No Label)</option>
-                                                                {layerAttributes.map(attr => (
-                                                                    <option key={attr} value={attr}>{attr}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                    </div>
-
-                                                    {(styleData.properties.labelAttribute) && (
-                                                        <div className="ref-layout">
-                                                            {/* FONT FAMILY */}
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Font Family</span>
-                                                                <div className="ref-select-wrapper">
-                                                                    <select
-                                                                        value={styleData.properties.fontFamily || 'Arial'}
-                                                                        onChange={(e) => updateStyleProp('fontFamily', e.target.value)}
-                                                                    >
-                                                                        {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* FONT SIZE */}
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Font Size ({styleData.properties.fontSize || 12}pt)</span>
-                                                                <div className="ref-input-group">
-                                                                    <input
-                                                                        type="range" min="6" max="72" step="1"
-                                                                        className="layer-opacity-slider"
-                                                                        value={styleData.properties.fontSize || 12}
-                                                                        onChange={(e) => updateStyleProp('fontSize', parseFloat(e.target.value))}
-                                                                    />
-                                                                </div>
-                                                            </div>
-
-                                                            {/* FONT WEIGHT/STYLE */}
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Text Style</span>
-                                                                <div className="ref-flex-row">
-                                                                    <select
-                                                                        className="ref-mini-select"
-                                                                        value={styleData.properties.fontWeight || 'normal'}
-                                                                        onChange={(e) => updateStyleProp('fontWeight', e.target.value)}
-                                                                    >
-                                                                        <option value="normal">Normal</option>
-                                                                        <option value="bold">Bold</option>
-                                                                    </select>
-                                                                    <select
-                                                                        className="ref-mini-select"
-                                                                        value={styleData.properties.fontStyle || 'normal'}
-                                                                        onChange={(e) => updateStyleProp('fontStyle', e.target.value)}
-                                                                    >
-                                                                        <option value="normal">Regular</option>
-                                                                        <option value="italic">Italic</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* FONT & HALO COLOR */}
-                                                            <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
-                                                                <div style={{ flex: 1 }}>
-                                                                    <span className="ref-label">Font Color</span>
-                                                                    <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fontColor || '#000000' }}>
-                                                                        <input
-                                                                            type="color"
-                                                                            value={styleData.properties.fontColor || '#000000'}
-                                                                            onChange={(e) => updateStyleProp('fontColor', e.target.value)}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                                <div style={{ flex: 1 }}>
-                                                                    <span className="ref-label">Halo Color</span>
-                                                                    <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.haloColor || '#FFFFFF' }}>
-                                                                        <input
-                                                                            type="color"
-                                                                            value={styleData.properties.haloColor || '#FFFFFF'}
-                                                                            onChange={(e) => updateStyleProp('haloColor', e.target.value)}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* STATIC LABEL TOGGLE */}
-                                                            <div className="ref-row">
-                                                                <span className="ref-label">Static Label</span>
-                                                                <label className="toggle-switch" style={{ transform: 'scale(0.8)', marginRight: '-4px' }}>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={styleData.properties.staticLabel}
-                                                                        onChange={(e) => updateStyleProp('staticLabel', e.target.checked)}
-                                                                    />
-                                                                    <span className="toggle-slider"></span>
-                                                                </label>
-                                                            </div>
-
-                                                            {/* MIN ZOOM LEVEL */}
-                                                            {!styleData.properties.staticLabel && (
-                                                                <div className="ref-row">
-                                                                    <span className="ref-label">Show at Zoom Level &gt; {styleData.properties.minZoom || 14}</span>
-                                                                    <div className="ref-input-group">
-                                                                        <input
-                                                                            type="range" min="0" max="22" step="1"
-                                                                            className="layer-opacity-slider"
-                                                                            value={styleData.properties.minZoom || 14}
-                                                                            onChange={(e) => updateStyleProp('minZoom', parseInt(e.target.value))}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {!styleData.properties.labelAttribute && (
-                                                        <div className="no-props-hint">
-                                                            Select a field to enable labeling.
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Query Builder UI removed from here, now in QueryBuilderCard */}
-                            </div>
-                        ));
-                    })()}
-                </div>
-
-                {activeLayerTool === 'spatialjoin' && (
-                    <div style={{ padding: '16px', display: 'flex', justifyContent: 'center' }}>
-                        <button
-                            className="elite-button premium-join-btn"
-                            onClick={() => onOpenSpatialJoin(null)}
-                            style={{
-                                width: '100%',
-                                gap: '12px',
-                                padding: '14px',
-                                background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '12px',
-                                fontWeight: '700',
-                                fontSize: '14px',
-                                letterSpacing: '0.5px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxShadow: '0 8px 16px -4px rgba(var(--color-primary-rgb), 0.3)',
-                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                cursor: 'pointer',
-                                textTransform: 'uppercase'
-                            }}
-                        >
-                            <Combine size={20} />
-                            Spatial Join
-                        </button>
-                    </div>
-                )}
-
-                {/* TEMPORARY LAYERS SECTION - Moved to Bottom */}
-                {tempLayers.length > 0 && (
-                    <div style={{ marginTop: '10px', borderTop: '1px solid var(--color-border)', paddingTop: '8px' }}>
-                        <div className="layer-section-header" style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            marginBottom: '8px',
-                            padding: '0 8px'
-                        }}>
-                            <span style={{ fontSize: '11px', fontWeight: 700, opacity: 0.8, color: 'var(--color-warning)' }}>TEMPORARY LAYERS</span>
-                            {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && (
-                                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 500 }}>ALL</span>
-                                    <label className="toggle-switch" style={{ transform: 'scale(0.7)', marginRight: '-4px' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={tempLayers.every(l => l.visible)}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                tempLayers.forEach(l => {
-                                                    if (l.visible !== checked) handleToggleGeoLayer(l.id);
-                                                });
-                                            }}
-                                        />
-                                        <span className="toggle-slider"></span>
-                                    </label>
-                                </div>
-                            )}
-                        </div>
-                        <div className="layer-list-group">
-                            {tempLayers.map((layer) => {
-                                // Check if tool is supported for temp layers
+                        const displayedTempLayers = (() => {
+                            if (!tempLayers.length) return [];
+                            return tempLayers.filter(layer => {
                                 const isToolSupported =
+                                    !activeLayerTool ||
                                     activeLayerTool === 'visibility' ||
                                     activeLayerTool === 'density' ||
                                     activeLayerTool === 'info' ||
                                     activeLayerTool === 'action' ||
                                     activeLayerTool === 'swipe' ||
                                     activeLayerTool === 'attribute';
+                                if (!isToolSupported) return false;
+                                if (activeLayerTool && activeLayerTool !== 'visibility' && !layer.visible) return false;
+                                return true;
+                            });
+                        })();
 
-                                if (activeLayerTool && !isToolSupported) return null;
-
-                                if (activeLayerTool === 'visibility' || activeLayerTool === 'density' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'swipe' || activeLayerTool === 'attribute') {
-                                    if (!layer.visible && activeLayerTool !== 'visibility') return null;
-                                }
-
-
-                                return (
-                                    <div key={layer.id} className="layer-item-redesigned" style={{
-                                        borderLeft: (
-                                            (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id))
-                                        ) ? '3px solid var(--color-warning)' : 'none',
-                                    }}>
-                                        <div className="layer-info" style={{
-                                            flex: activeLayerTool === 'density' ? '0 0 auto' : '1',
-                                            maxWidth: activeLayerTool === 'density' ? '120px' : 'none'
-                                        }}>
-                                            <FileJson size={14} className="layer-icon" style={{ color: 'var(--color-warning)' }} />
-                                            <span style={{
-                                                whiteSpace: 'nowrap',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                fontSize: '13px',
-                                                fontWeight: '500'
-                                            }}>
-                                                {layer.name}
-                                            </span>
-                                        </div>
-                                        {renderLayerContent(layer)}
-                                    </div>
-                                );
-                            })}
-                            {activeLayerTool && !['visibility', 'density', 'info', 'action', 'swipe', 'attribute'].includes(activeLayerTool) && (
-                                <div style={{ padding: '8px 12px', fontSize: '12px', opacity: 0.5, fontStyle: 'italic' }}>
-                                    This tool is not available for temporary layers.
+                        if (displayedLayers.length === 0 && displayedTempLayers.length === 0) {
+                            return (
+                                <div className="empty-layers-msg">
+                                    {(activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'styles' || activeLayerTool === 'swipe')
+                                        ? "No visible layers."
+                                        : "No layers connected."}
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                )}
+                            );
+                        }
+
+                        return (
+                            <>
+                                {displayedLayers.map((layer, index) => (
+                                    <div
+                                        key={layer.id}
+                                        draggable={activeLayerTool === 'reorder'}
+                                        onDragStart={(e) => handleDragStart(e, layer.id)}
+                                        onDragOver={(e) => handleDragOver(e, layer.id)}
+                                        onDragEnd={handleDragEnd}
+                                        className={activeLayerTool === 'reorder' ? 'draggable-layer-item' : ''}
+                                    >
+                                        <div
+                                            className={`layer-item-redesigned 
+                                                ${activeLayerTool === 'zoom' && activeZoomLayerId === layer.id ? 'active' : ''} 
+                                                ${activeLayerTool === 'highlight' && activeHighlightLayerId === layer.id ? 'active' : ''}
+                                                ${activeLayerTool === 'styles' && editingStyleLayer === layer.id ? 'active' : ''}
+                                                ${draggedLayerId === layer.id ? 'dragging-active' : ''}
+                                                ${activeLayerTool === 'density' ? 'density-layout' : ''}
+                                            `}
+                                            onClick={() => {
+                                                if (activeLayerTool === 'action') {
+                                                } else if (activeLayerTool === 'styles') {
+                                                    handleLoadStyle(layer);
+                                                }
+                                            }}
+                                            style={{
+                                                cursor: (activeLayerTool === 'styles') ? 'pointer' : 'default'
+                                            }}
+                                        >
+                                            <div className="layer-info">
+                                                <CircleDot size={14} className="layer-icon" />
+                                                <span style={{
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    fontWeight: '450'
+                                                }}>
+                                                    {layer.name}
+                                                </span>
+                                            </div>
+                                            {renderLayerContent(layer)}
+                                        </div>
+
+                                        {/* Style Editor Panel - Toggleable Card */}
+                                        {activeLayerTool === 'styles' && editingStyleLayer === layer.id && styleData && (
+                                            <div className="style-editor-panel">
+                                                <div className="style-editor-header">
+                                                    <span className="style-editor-title">Style Editor</span>
+                                                    <div className="style-editor-actions">
+                                                        <button
+                                                            className="style-save-btn"
+                                                            onClick={(e) => { e.stopPropagation(); handleSaveStyle(); }}
+                                                            disabled={isSavingStyle}
+                                                        >
+                                                            {isSavingStyle ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                                            {isSavingStyle ? 'Saving...' : 'Save'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="style-editor-body">
+                                                    <div className="style-tab-content modern-ref">
+
+                                                        {/* SYMBOLOGY SECTION */}
+                                                        <div className="tab-pane ref-layout" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '16px', marginBottom: '16px' }}>
+
+                                                            {/* ROW 1: Fill Pattern + Fill Color */}
+                                                            <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
+                                                                {styleData.availableProps.hatchPattern && (
+                                                                    <div style={{ flex: 1 }}>
+                                                                        <span className="ref-label">Fill Pattern</span>
+                                                                        <div className="ref-select-wrapper">
+                                                                            <select
+                                                                                value={styleData.properties.hatchPattern}
+                                                                                onChange={(e) => updateStyleProp('hatchPattern', e.target.value, true)}
+                                                                            >
+                                                                                {Object.entries(HATCH_PATTERNS).map(([name, val]) => (
+                                                                                    <option key={name} value={val}>{name}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {styleData.availableProps.fill && (
+                                                                    <div style={{ flex: 1 }}>
+                                                                        <span className="ref-label">Fill Color</span>
+                                                                        <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fill }}>
+                                                                            <input
+                                                                                type="color"
+                                                                                value={styleData.properties.fill || '#cccccc'}
+                                                                                onChange={(e) => updateStyleProp('fill', e.target.value)}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* ROW 2: Fill Opacity */}
+                                                            <div className="ref-row">
+                                                                <span className="ref-label">Fill Opacity ({Math.round((styleData.properties.fillOpacity || 1) * 100)}%)</span>
+                                                                <div className="ref-input-group">
+                                                                    <input
+                                                                        type="range" min="0" max="1" step="0.1"
+                                                                        className="layer-opacity-slider"
+                                                                        value={styleData.properties.fillOpacity || 1}
+                                                                        onChange={(e) => updateStyleProp('fillOpacity', parseFloat(e.target.value))}
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* ROW 3: Stroke Pattern + Stroke Color */}
+                                                            <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <span className="ref-label">Stroke Pattern</span>
+                                                                    <div className="ref-select-wrapper">
+                                                                        <select
+                                                                            value={getDashName(styleData.properties.strokeDasharray)}
+                                                                            onChange={(e) => updateStyleProp('strokeDasharray', DASH_STYLES[e.target.value])}
+                                                                        >
+                                                                            {Object.keys(DASH_STYLES).map(name => (
+                                                                                <option key={name} value={name}>{name}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                                {styleData.availableProps.stroke && (
+                                                                    <div style={{ flex: 1 }}>
+                                                                        <span className="ref-label">Stroke Color</span>
+                                                                        <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.stroke }}>
+                                                                            <input
+                                                                                type="color"
+                                                                                value={styleData.properties.stroke || '#333333'}
+                                                                                onChange={(e) => updateStyleProp('stroke', e.target.value)}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* ROW 4: Stroke Width */}
+                                                            {styleData.availableProps.strokeWidth && (
+                                                                <div className="ref-row">
+                                                                    <span className="ref-label">Stroke Width ({styleData.properties.strokeWidth || 1}px)</span>
+                                                                    <div className="ref-input-group">
+                                                                        <input
+                                                                            type="range" min="0.5" max="20" step="0.5"
+                                                                            className="layer-opacity-slider"
+                                                                            value={styleData.properties.strokeWidth || 1}
+                                                                            onChange={(e) => updateStyleProp('strokeWidth', parseFloat(e.target.value))}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* SVG ICON / DYNAMIC SYMBOLOGY (POINT ONLY) - At End */}
+                                                            {styleData.availableProps.externalGraphicUrl && (
+                                                                <div className="ref-row">
+                                                                    <span className="ref-label">Dynamic Symbology</span>
+                                                                    <div className="ref-input-group" style={{ flexDirection: 'column', gap: '8px' }}>
+                                                                        <div className="ref-flex-row">
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Icon URL or filename"
+                                                                                className="ref-text-input"
+                                                                                value={styleData.properties.externalGraphicUrl}
+                                                                                onChange={(e) => updateStyleProp('externalGraphicUrl', e.target.value)}
+                                                                            />
+                                                                            <label className="style-save-btn" style={{ cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 0 }}>
+                                                                                <Upload size={14} /> Upload
+                                                                                <input
+                                                                                    type="file"
+                                                                                    accept=".svg,.png,.jpg,.jpeg,.gif"
+                                                                                    style={{ display: 'none' }}
+                                                                                    onChange={handleFileUpload}
+                                                                                />
+                                                                            </label>
+                                                                        </div>
+                                                                        <div style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
+                                                                            Supports SVG, PNG based on server capability.
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* LABELS SECTION */}
+                                                        <div className="tab-pane ref-layout">
+                                                            <div className="symbology-header" style={{ marginTop: '0', marginBottom: '12px' }}>
+                                                                <Info size={13} /> Labeling Settings
+                                                            </div>
+
+                                                            {/* LABEL ATTRIBUTE */}
+                                                            <div className="ref-row">
+                                                                <span className="ref-label">Label Field</span>
+                                                                <div className="ref-select-wrapper">
+                                                                    <select
+                                                                        value={styleData.properties.labelAttribute || ''}
+                                                                        onChange={(e) => updateStyleProp('labelAttribute', e.target.value)}
+                                                                    >
+                                                                        <option value="">None (No Label)</option>
+                                                                        {layerAttributes.map(attr => (
+                                                                            <option key={attr} value={attr}>{attr}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            {(styleData.properties.labelAttribute) && (
+                                                                <div className="ref-layout">
+                                                                    {/* FONT FAMILY */}
+                                                                    <div className="ref-row">
+                                                                        <span className="ref-label">Font Family</span>
+                                                                        <div className="ref-select-wrapper">
+                                                                            <select
+                                                                                value={styleData.properties.fontFamily || 'Arial'}
+                                                                                onChange={(e) => updateStyleProp('fontFamily', e.target.value)}
+                                                                            >
+                                                                                {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* FONT SIZE */}
+                                                                    <div className="ref-row">
+                                                                        <span className="ref-label">Font Size ({styleData.properties.fontSize || 12}pt)</span>
+                                                                        <div className="ref-input-group">
+                                                                            <input
+                                                                                type="range" min="6" max="72" step="1"
+                                                                                className="layer-opacity-slider"
+                                                                                value={styleData.properties.fontSize || 12}
+                                                                                onChange={(e) => updateStyleProp('fontSize', parseFloat(e.target.value))}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* FONT WEIGHT/STYLE */}
+                                                                    <div className="ref-row">
+                                                                        <span className="ref-label">Text Style</span>
+                                                                        <div className="ref-flex-row">
+                                                                            <select
+                                                                                className="ref-mini-select"
+                                                                                value={styleData.properties.fontWeight || 'normal'}
+                                                                                onChange={(e) => updateStyleProp('fontWeight', e.target.value)}
+                                                                            >
+                                                                                <option value="normal">Normal</option>
+                                                                                <option value="bold">Bold</option>
+                                                                            </select>
+                                                                            <select
+                                                                                className="ref-mini-select"
+                                                                                value={styleData.properties.fontStyle || 'normal'}
+                                                                                onChange={(e) => updateStyleProp('fontStyle', e.target.value)}
+                                                                            >
+                                                                                <option value="normal">Regular</option>
+                                                                                <option value="italic">Italic</option>
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* FONT & HALO COLOR */}
+                                                                    <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', marginBottom: '12px' }}>
+                                                                        <div style={{ flex: 1 }}>
+                                                                            <span className="ref-label">Font Color</span>
+                                                                            <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.fontColor || '#000000' }}>
+                                                                                <input
+                                                                                    type="color"
+                                                                                    value={styleData.properties.fontColor || '#000000'}
+                                                                                    onChange={(e) => updateStyleProp('fontColor', e.target.value)}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div style={{ flex: 1 }}>
+                                                                            <span className="ref-label">Halo Color</span>
+                                                                            <div className="ref-active-color-bar" style={{ backgroundColor: styleData.properties.haloColor || '#FFFFFF' }}>
+                                                                                <input
+                                                                                    type="color"
+                                                                                    value={styleData.properties.haloColor || '#FFFFFF'}
+                                                                                    onChange={(e) => updateStyleProp('haloColor', e.target.value)}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* STATIC LABEL TOGGLE */}
+                                                                    <div className="ref-row">
+                                                                        <span className="ref-label">Static Label</span>
+                                                                        <label className="toggle-switch">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={styleData.properties.staticLabel}
+                                                                                onChange={(e) => updateStyleProp('staticLabel', e.target.checked)}
+                                                                            />
+                                                                            <span className="toggle-slider"></span>
+                                                                        </label>
+                                                                    </div>
+
+                                                                    {/* MIN ZOOM LEVEL */}
+                                                                    {!styleData.properties.staticLabel && (
+                                                                        <div className="ref-row">
+                                                                            <span className="ref-label">Show at Zoom Level &gt; {styleData.properties.minZoom || 14}</span>
+                                                                            <div className="ref-input-group">
+                                                                                <input
+                                                                                    type="range" min="0" max="22" step="1"
+                                                                                    className="layer-opacity-slider"
+                                                                                    value={styleData.properties.minZoom || 14}
+                                                                                    onChange={(e) => updateStyleProp('minZoom', parseInt(e.target.value))}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {!styleData.properties.labelAttribute && (
+                                                                <div className="no-props-hint">
+                                                                    Select a field to enable labeling.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Query Builder UI removed from here, now in QueryBuilderCard */}
+                                    </div>
+                                ))}
+
+
+                                {/* Spatial Join Run Button */}
+                                {activeLayerTool === 'spatialjoin' && (
+                                    <div style={{ padding: '12px 4px' }}>
+                                        <button
+                                            className="elite-button premium-join-btn"
+                                            onClick={() => onOpenSpatialJoin(null)}
+                                            style={{
+                                                width: '100%',
+                                                gap: '10px',
+                                                padding: '12px',
+                                                background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                fontWeight: '600',
+                                                fontSize: '13px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                boxShadow: '0 4px 12px -2px rgba(var(--color-primary-rgb), 0.3)',
+                                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <Combine size={18} />
+                                            Run Spatial Join
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Temp Layers unified list continuation */}
+                                {displayedTempLayers.length > 0 && (
+                                    <>
+                                        <div className="layer-section-header" style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            marginTop: displayedLayers.length > 0 ? '8px' : '0',
+                                            padding: '4px 8px'
+                                        }}>
+                                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#f59e0b' }}>Temporary</span>
+                                            {(activeLayerTool === 'visibility' || activeLayerTool === 'info') && (
+                                                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ fontSize: '12px', fontWeight: 500 }}>ALL</span>
+                                                    <label className="toggle-switch">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={tempLayers.every(l => l.visible)}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                tempLayers.forEach(l => {
+                                                                    if (l.visible !== checked) handleToggleGeoLayer(l.id);
+                                                                });
+                                                            }}
+                                                        />
+                                                        <span className="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {displayedTempLayers.map((layer) => (
+                                            <div key={layer.id} className="layer-item-redesigned" style={{
+                                                borderLeft: (
+                                                    (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id))
+                                                ) ? '3px solid #f59e0b' : 'none',
+                                            }}>
+                                                <div className="layer-info" style={{
+                                                    flex: activeLayerTool === 'density' ? '0 0 auto' : '1',
+                                                    maxWidth: activeLayerTool === 'density' ? '120px' : 'none'
+                                                }}>
+                                                    <FileJson size={14} className="layer-icon" style={{ color: '#f59e0b' }} />
+                                                    <span style={{
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        fontSize: '13px',
+                                                        fontWeight: '450'
+                                                    }}>
+                                                        {layer.name}
+                                                    </span>
+                                                </div>
+                                                {renderLayerContent(layer)}
+                                            </div>
+                                        ))}
+                                        {activeLayerTool && !['visibility', 'density', 'info', 'action', 'swipe', 'attribute'].includes(activeLayerTool) && (
+                                            <div style={{ padding: '8px 12px', fontSize: '12px', opacity: 0.5, fontStyle: 'italic' }}>
+                                                This tool is not available for temporary layers.
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
+                </div>
             </div>
-        </div >
+        </div>
     );
 };
 

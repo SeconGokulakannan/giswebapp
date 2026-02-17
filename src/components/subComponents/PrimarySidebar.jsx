@@ -84,7 +84,7 @@ const PrimarySidebar = ({
             items: [
                 {
                     id: 'layermanagement',
-                    label: 'Layer Management',
+                    label: 'Server',
                     icon: Database,
                     action: onOpenLayerManagement,
                     isActive: activePanel === 'layermanagement',
@@ -182,7 +182,7 @@ const PrimarySidebar = ({
                 },
                 {
                     id: 'settings',
-                    label: 'Layout Settings',
+                    label: 'Layout Nav',
                     icon: Settings2,
                     action: onToggleLayout,
                     isActive: false,
