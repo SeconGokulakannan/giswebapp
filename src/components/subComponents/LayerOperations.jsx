@@ -31,7 +31,9 @@ const LayerOperations = ({
     spatialJoinLayerIds, handleToggleSpatialJoinLayer,
     selectedQueryLayerIds, setSelectedQueryLayerIds,
     setShowSpatialJoin,
-    onOpenSpatialJoin
+    onOpenSpatialJoin,
+    showTopLegend,
+    setShowTopLegend
 }) => {
 
     const tools = [
@@ -971,7 +973,6 @@ const LayerOperations = ({
                                     toggleLayerQuery(layer.id);
                                     if (e.target.checked && !queryingLayer) {
                                         setQueryingLayer(layer);
-                                        setShowQueryBuilder(true);
                                     }
                                 }}
                             />
@@ -1617,6 +1618,36 @@ const LayerOperations = ({
                                     </div>
                                 )}
 
+                                {/* Query Builder Run Button */}
+                                {activeLayerTool === 'querybuilder' && (
+                                    <div style={{ padding: '12px 4px' }}>
+                                        <button
+                                            className="elite-button premium-query-btn"
+                                            onClick={() => setShowQueryBuilder(true)}
+                                            style={{
+                                                width: '100%',
+                                                gap: '10px',
+                                                padding: '12px',
+                                                background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                fontWeight: '600',
+                                                fontSize: '13px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                boxShadow: '0 4px 12px -2px rgba(6, 182, 212, 0.3)',
+                                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <DatabaseZap size={18} strokeWidth={2.5} />
+                                            Run Query Builder
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* Temp Layers unified list continuation */}
                                 {displayedTempLayers.length > 0 && (
                                     <>
@@ -1674,6 +1705,39 @@ const LayerOperations = ({
                                         {activeLayerTool && !['visibility', 'density', 'info', 'action', 'swipe', 'attribute'].includes(activeLayerTool) && (
                                             <div style={{ padding: '8px 12px', fontSize: '12px', opacity: 0.5, fontStyle: 'italic' }}>
                                                 This tool is not available for temporary layers.
+                                            </div>
+                                        )}
+
+                                        {activeLayerTool === 'legend' && (
+                                            <div style={{ padding: '16px 4px 8px' }}>
+                                                <button
+                                                    className={`elite-button show-legend-bar-btn ${showTopLegend ? 'active' : ''}`}
+                                                    onClick={() => setShowTopLegend(!showTopLegend)}
+                                                    style={{
+                                                        width: '100%',
+                                                        gap: '10px',
+                                                        padding: '12px',
+                                                        background: showTopLegend
+                                                            ? 'linear-gradient(135deg, #3b82f6, #6366f1)'
+                                                            : 'rgba(255, 255, 255, 0.6)',
+                                                        color: showTopLegend ? 'white' : 'var(--color-text)',
+                                                        border: showTopLegend ? 'none' : '1px solid rgba(226, 232, 240, 0.8)',
+                                                        borderRadius: '12px',
+                                                        fontWeight: '600',
+                                                        fontSize: '13px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        boxShadow: showTopLegend
+                                                            ? '0 4px 12px rgba(59, 130, 246, 0.3)'
+                                                            : '0 2px 4px rgba(0, 0, 0, 0.05)',
+                                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <List size={18} />
+                                                    {showTopLegend ? 'Hide Legend Bar' : 'Show Legend Bar'}
+                                                </button>
                                             </div>
                                         )}
                                     </>

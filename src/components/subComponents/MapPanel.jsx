@@ -123,7 +123,9 @@ const MapPanel = ({
     selectedQueryLayerIds, setSelectedQueryLayerIds,
     setShowSpatialJoin,
     onOpenSpatialJoin,
-    allAvailableLayers
+    allAvailableLayers,
+    showTopLegend,
+    setShowTopLegend
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -309,6 +311,8 @@ const MapPanel = ({
                         setSelectedQueryLayerIds={setSelectedQueryLayerIds}
                         setShowSpatialJoin={setShowSpatialJoin}
                         onOpenSpatialJoin={onOpenSpatialJoin}
+                        showTopLegend={showTopLegend}
+                        setShowTopLegend={setShowTopLegend}
                     />
                 )}
 

@@ -40,6 +40,7 @@ import SpatialJoinCard from '../subComponents/SpatialJoinCard';
 import CreateLayerCard from '../subComponents/CreateLayerCard';
 import DataManipulationCard from '../subComponents/DataManipulationCard';
 import ServerInfoCard from '../subComponents/ServerInfoCard';
+import TopLegendPanel from '../subComponents/TopLegendPanel';
 import { getRenderPixel } from 'ol/render';
 
 //Map Utils
@@ -49,7 +50,7 @@ import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, forma
 import {
   searchLocation, getLayerAttributes, getFeaturesForAttributeTable, getGeoServerLayers, getWMSSourceParams, getLayerBBox,
   getLayerStyle, updateLayerStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
-  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE
+  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl
 } from '../../services/Server';
 
 // Server Credentials
@@ -202,6 +203,7 @@ function GISMap() {
   const [analysisSLDMap, setAnalysisSLDMap] = useState({}); // layerId -> sldBody
   const analysisVectorLayersRef = useRef({}); // layerId -> olVectorLayer
   const analysisWMSVisibilitiesRef = useRef({}); // layerId -> originalVisibility (for restore)
+  const [showTopLegend, setShowTopLegend] = useState(false);
   const [bookmarks, setBookmarks] = useState(() => {
     const key = getUniqueCookieKey('gis_bookmarks');
     const saved = getCookie(key);
@@ -2360,6 +2362,8 @@ function GISMap() {
             onToggleLayout={toggleLayoutMode}
             isLocked={isLocked}
             setIsLocked={setIsLocked}
+            showTopLegend={showTopLegend}
+            setShowTopLegend={setShowTopLegend}
           />
         )}
 
@@ -2427,6 +2431,14 @@ function GISMap() {
               handleLocateMe={handleLocateMe}
               layoutMode={layoutMode}
             />
+
+            {showTopLegend && (
+              <TopLegendPanel
+                layers={geoServerLayers.filter(l => l.visible)}
+                onClose={() => setShowTopLegend(false)}
+                getLegendUrl={getLegendUrl}
+              />
+            )}
 
             <MapPanel
               activePanel={activePanel}
@@ -2515,6 +2527,8 @@ function GISMap() {
               setShowSpatialJoin={setShowSpatialJoin}
               onOpenSpatialJoin={handleOpenSpatialJoin}
               allAvailableLayers={[...geoServerLayers, ...localVectorLayers]}
+              showTopLegend={showTopLegend}
+              setShowTopLegend={setShowTopLegend}
             />
 
             {/* Define allLayers for easy lookup */}

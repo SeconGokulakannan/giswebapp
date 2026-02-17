@@ -22,7 +22,8 @@ import {
     ChevronRight,
     LayoutGrid,
     Database,
-    Globe
+    Globe,
+    List
 } from 'lucide-react';
 
 const PrimarySidebar = ({
@@ -36,7 +37,9 @@ const PrimarySidebar = ({
     onToggleLayout,
     isLocked,
     setIsLocked,
-    handlePrintClick
+    handlePrintClick,
+    showTopLegend,
+    setShowTopLegend
 }) => {
     // State for expanded sections
     const [expandedSections, setExpandedSections] = useState({
@@ -89,12 +92,7 @@ const PrimarySidebar = ({
                     action: onOpenLayerManagement,
                     isActive: activePanel === 'layermanagement',
                     color: '#6366f1' // Indigo
-                }
-            ]
-        },
-        {
-            title: 'Analysis',
-            items: [
+                },
                 {
                     id: 'layers',
                     label: 'Layers',
@@ -106,6 +104,12 @@ const PrimarySidebar = ({
                     isActive: activePanel === 'layers',
                     color: '#8b5cf6' // Violet
                 },
+            ]
+        },
+        {
+            title: 'Analysis',
+            items: [
+
                 {
                     id: 'tools',
                     label: 'Drawing',
@@ -119,7 +123,7 @@ const PrimarySidebar = ({
                 },
                 {
                     id: 'utility_tools',
-                    label: 'Analysis Tools',
+                    label: 'Measure Tools',
                     icon: DraftingCompass,
                     action: () => {
                         setActivePanel(activePanel === 'utility_tools' ? null : 'utility_tools');
@@ -149,6 +153,14 @@ const PrimarySidebar = ({
                     },
                     isActive: activePanel === 'bookmarks',
                     color: '#14b8a6' // Teal
+                },
+                {
+                    id: 'legend-bar',
+                    label: 'Legend Bar',
+                    icon: List,
+                    action: () => setShowTopLegend(!showTopLegend),
+                    isActive: showTopLegend,
+                    color: '#d946ef' // Fuchsia
                 }
             ]
         },
