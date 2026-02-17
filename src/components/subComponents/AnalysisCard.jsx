@@ -7,19 +7,7 @@ const PRESET_COLORS = [
     '#22c55e', '#ef4444', '#3b82f6', '#eab308', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#64748b'
 ];
 
-const AnalysisCard = ({
-    isOpen,
-    onClose,
-    visibleLayers,
-    onRunAnalysis,
-    onRefreshLayer,
-    onUpdateStyle,
-    currentFrameIndex: externalFrameIndex,
-    isPlaying: externalIsPlaying,
-    onPlaybackToggle,
-    onFrameChange,
-    onReset
-}) => {
+const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset }) => {
     const [selectedLayerId, setSelectedLayerId] = useState('');
 
     // Dynamic State

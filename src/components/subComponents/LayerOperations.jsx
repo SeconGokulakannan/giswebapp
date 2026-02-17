@@ -1625,7 +1625,7 @@ const LayerOperations = ({
                                             className="elite-button premium-query-btn"
                                             onClick={() => setShowQueryBuilder(true)}
                                             style={{
-                                                width: '100%',
+                                                width: 'auto',
                                                 gap: '10px',
                                                 padding: '12px',
                                                 background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
