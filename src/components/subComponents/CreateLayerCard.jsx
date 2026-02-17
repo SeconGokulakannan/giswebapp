@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
+import GeoJSON from 'ol/format/GeoJSON';
+import { extend, createEmpty, isEmpty } from 'ol/extent';
 import { batchInsertFeatures, publishNewLayer, WORKSPACE, reloadGeoServer } from '../../services/Server';
 
 const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
@@ -308,12 +310,28 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                 console.log('Sample feature properties:', filteredFeatures[0]?.properties);
             }
 
+            let calculatedExtent = null;
+            if (activeTab === 'upload' && finalData && finalData.features.length > 0) {
+                try {
+                    const geoJSONFormat = new GeoJSON();
+                    const features = geoJSONFormat.readFeatures(finalData);
+                    const extent = createEmpty();
+                    features.forEach(f => extend(extent, f.getGeometry().getExtent()));
+                    if (!isEmpty(extent)) {
+                        calculatedExtent = extent.join(',');
+                    }
+                } catch (e) {
+                    console.warn("Failed to calculate extent:", e);
+                }
+            }
+
             const published = await handlePublishNewLayer({
                 layerName: layerName.trim(),
                 geometryType,
                 attributes: filteredAttributes,
                 srid: '4326',
-                data: activeTab === 'upload' ? finalData : null
+                data: activeTab === 'upload' ? finalData : null,
+                extent: calculatedExtent
             });
 
             if (published) {

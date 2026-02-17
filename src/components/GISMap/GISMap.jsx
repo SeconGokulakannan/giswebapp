@@ -450,7 +450,8 @@ function GISMap() {
         cqlFilter: null,
         geometryFieldName: layer.geometryFieldName,
         geometryType: layer.geometryType,
-        srid: layer.srid
+        srid: layer.srid,
+        extent: layer.extent
       }));
       setGeoServerLayers(layerObjects.sort((a, b) => (a.sequence || 999) - (b.sequence || 999)));
     } catch (err) {
@@ -606,6 +607,20 @@ function GISMap() {
         }
         return;
       }
+
+      // Check for saved extent first
+      if (layer.extent) {
+        const extentPart = layer.extent.split(',').map(Number);
+        if (extentPart.length === 4 && extentPart.every(val => isFinite(val))) {
+          mapInstanceRef.current.getView().fit(extentPart, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 16,
+            duration: 1000
+          });
+          return;
+        }
+      }
+
       const bbox = await getLayerBBox(layer.fullName);
       if (bbox && bbox.every(val => isFinite(val))) {
         // [minx, miny, maxx, maxy]
@@ -678,6 +693,19 @@ function GISMap() {
           }
         }
       } else {
+        // Check for saved extent first
+        if (layer.extent) {
+          const extentPart = layer.extent.split(',').map(Number);
+          if (extentPart.length === 4 && extentPart.every(val => isFinite(val))) {
+            mapInstanceRef.current.getView().fit(extentPart, {
+              padding: [50, 50, 50, 50],
+              maxZoom: 14,
+              duration: 800
+            });
+            return;
+          }
+        }
+
         const bbox = await getLayerBBox(layer.fullName);
         if (bbox && bbox.every(val => isFinite(val))) {
           // Pan to the layer
@@ -2336,31 +2364,33 @@ function GISMap() {
         )}
 
         <div className="main-content">
-          <MapHeader
-            onOpenLayerManagement={handleOpenLayerManagement}
-            layoutMode={layoutMode}
-            onToggleLayout={toggleLayoutMode}
-            activePanel={activePanel}
-            setActivePanel={(panel) => {
-              setActivePanel(panel);
-              if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
-                setActiveTool(null);
-                removeInteractions();
-              }
-            }}
-            setIsPanelMinimized={setIsPanelMinimized}
-            toggleTheme={toggleTheme}
-            theme={theme}
-            handleClearDrawings={handleClearDrawings}
-            handlePrintClick={handlePrintClick}
-            isLocked={isLocked}
-            setIsLocked={setIsLocked}
-            activeTool={activeTool}
-            handleToolClick={handleToolClick}
-            hasDrawings={hasDrawings}
-            hasMeasurements={hasMeasurements}
-            onOpenLoadTempModal={() => setShowLoadTempModal(true)}
-          />
+          {layoutMode === 'topbar' && (
+            <MapHeader
+              onOpenLayerManagement={handleOpenLayerManagement}
+              layoutMode={layoutMode}
+              onToggleLayout={toggleLayoutMode}
+              activePanel={activePanel}
+              setActivePanel={(panel) => {
+                setActivePanel(panel);
+                if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
+                  setActiveTool(null);
+                  removeInteractions();
+                }
+              }}
+              setIsPanelMinimized={setIsPanelMinimized}
+              toggleTheme={toggleTheme}
+              theme={theme}
+              handleClearDrawings={handleClearDrawings}
+              handlePrintClick={handlePrintClick}
+              isLocked={isLocked}
+              setIsLocked={setIsLocked}
+              activeTool={activeTool}
+              handleToolClick={handleToolClick}
+              hasDrawings={hasDrawings}
+              hasMeasurements={hasMeasurements}
+              onOpenLoadTempModal={() => setShowLoadTempModal(true)}
+            />
+          )}
 
           {/* Map Container */}
           <div className="map-container">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
     Map as MapIcon,
@@ -17,7 +17,12 @@ import {
     Eraser,
     Lock,
     Unlock,
-    Navigation
+    Navigation,
+    ChevronDown,
+    ChevronRight,
+    LayoutGrid,
+    Database,
+    Globe
 } from 'lucide-react';
 
 const PrimarySidebar = ({
@@ -33,201 +38,218 @@ const PrimarySidebar = ({
     setIsLocked,
     handlePrintClick
 }) => {
+    // State for expanded sections
+    const [expandedSections, setExpandedSections] = useState({
+        'General': true,
+        'Analysis': true,
+        'Utilities': true,
+        'Server': true
+    });
 
-    // Grouped Navigation for a more professional hierarchy
+    const toggleSection = (sectionTitle) => {
+        setExpandedSections(prev => ({
+            ...prev,
+            [sectionTitle]: !prev[sectionTitle]
+        }));
+    };
+
+    // Navigation Data Structure
     const navSections = [
         {
-            title: 'Core',
+            title: 'General',
             items: [
-                { id: 'basemaps', label: 'Base Map', icon: MapIcon, color: '#347deb' },
-                { id: 'layers', label: 'Layers', icon: Layers, color: '#10b981' },
+                {
+                    id: 'gis-home',
+                    label: 'GIS Home',
+                    icon: Navigation,
+                    action: () => { }, // Placeholder or view reset
+                    isActive: false,
+                    color: '#3b82f6' // Blue
+                },
+                {
+                    id: 'basemaps',
+                    label: 'Base Map',
+                    icon: MapIcon,
+                    action: () => {
+                        setActivePanel(activePanel === 'basemaps' ? null : 'basemaps');
+                        setIsPanelMinimized(false);
+                    },
+                    isActive: activePanel === 'basemaps',
+                    color: '#10b981' // Emerald
+                }
+            ]
+        },
+        {
+            title: 'Server',
+            items: [
+                {
+                    id: 'layermanagement',
+                    label: 'Layer Management',
+                    icon: Database,
+                    action: onOpenLayerManagement,
+                    isActive: activePanel === 'layermanagement',
+                    color: '#6366f1' // Indigo
+                }
             ]
         },
         {
             title: 'Analysis',
             items: [
-                { id: 'tools', label: 'Drawing', icon: PenTool, color: '#f59e0b' },
-                { id: 'utility_tools', label: 'Analysis', icon: DraftingCompass, color: '#8b5cf6' },
-                { id: 'location', label: 'Location', icon: MapPin, color: '#ef4444' },
-                { id: 'bookmarks', label: 'Bookmarks', icon: Bookmark, color: '#ec4899' },
+                {
+                    id: 'layers',
+                    label: 'Layers',
+                    icon: Layers,
+                    action: () => {
+                        setActivePanel(activePanel === 'layers' ? null : 'layers');
+                        setIsPanelMinimized(false);
+                    },
+                    isActive: activePanel === 'layers',
+                    color: '#8b5cf6' // Violet
+                },
+                {
+                    id: 'tools',
+                    label: 'Drawing',
+                    icon: PenTool,
+                    action: () => {
+                        setActivePanel(activePanel === 'tools' ? null : 'tools');
+                        setIsPanelMinimized(false);
+                    },
+                    isActive: activePanel === 'tools',
+                    color: '#f59e0b' // Amber
+                },
+                {
+                    id: 'utility_tools',
+                    label: 'Analysis Tools',
+                    icon: DraftingCompass,
+                    action: () => {
+                        setActivePanel(activePanel === 'utility_tools' ? null : 'utility_tools');
+                        setIsPanelMinimized(false);
+                    },
+                    isActive: activePanel === 'utility_tools',
+                    color: '#ec4899' // Pink
+                },
+                {
+                    id: 'location',
+                    label: 'Location',
+                    icon: MapPin,
+                    action: () => {
+                        setActivePanel(activePanel === 'location' ? null : 'location');
+                        setIsPanelMinimized(false);
+                    },
+                    isActive: activePanel === 'location',
+                    color: '#ef4444' // Red
+                },
+                {
+                    id: 'bookmarks',
+                    label: 'Bookmarks',
+                    icon: Bookmark,
+                    action: () => {
+                        setActivePanel(activePanel === 'bookmarks' ? null : 'bookmarks');
+                        setIsPanelMinimized(false);
+                    },
+                    isActive: activePanel === 'bookmarks',
+                    color: '#14b8a6' // Teal
+                }
+            ]
+        },
+
+        {
+            title: 'Utilities',
+            items: [
+                {
+                    id: 'lock-map',
+                    label: isLocked ? 'Unlock Map' : 'Lock Map',
+                    icon: isLocked ? Lock : Unlock,
+                    action: () => setIsLocked(!isLocked),
+                    isActive: isLocked,
+                    color: isLocked ? '#ef4444' : '#22c55e'
+                },
+                {
+                    id: 'print-map',
+                    label: 'Print Map',
+                    icon: Printer,
+                    action: handlePrintClick,
+                    isActive: false,
+                    color: '#64748b'
+                },
+                {
+                    id: 'clear-map',
+                    label: 'Clear All',
+                    icon: Eraser,
+                    action: handleClearDrawings,
+                    isActive: false,
+                    color: '#f43f5e'
+                },
+                {
+                    id: 'settings',
+                    label: 'Layout Settings',
+                    icon: Settings2,
+                    action: onToggleLayout,
+                    isActive: false,
+                    color: '#8b5cf6'
+                },
+                {
+                    id: 'theme',
+                    label: theme === 'light' ? 'Dark Mode' : 'Light Mode',
+                    icon: theme === 'light' ? Moon : Sun,
+                    action: toggleTheme,
+                    isActive: false,
+                    color: '#eab308'
+                }
             ]
         }
     ];
 
     return (
-        <div className="primary-sidebar">
+        <div className="primary-sidebar-redesign">
+            {/* Brand / Logo Area */}
+            <div className="sidebar-header-redesign">
+                <div className="brand-logo-small">
+                    <Globe size={18} color="white" />
+                </div>
+                <span className="brand-name">GIS Portal</span>
+            </div>
 
-            <nav className="sidebar-nav">
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
+            <nav className="sidebar-nav-redesign">
+                {navSections.map((section) => (
+                    <div key={section.title} className="sidebar-section-group">
                         <button
-                            className={`sidebar-nav-item`}>
-                            <div className="active-pillar" />
-                            <div className="item-icon-wrapper">
-                                <Navigation size={22} />
-                            </div>
-                            <span className="item-label">GIS</span>
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            GIS
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button
-                            className={`sidebar-nav-item ${activePanel === 'layermanagement' ? 'active' : ''}`}
-                            onClick={onOpenLayerManagement}
+                            className="section-header-btn"
+                            onClick={() => toggleSection(section.title)}
                         >
-                            <div className="active-pillar" />
-                            <div className="item-icon-wrapper">
-                                <Cog size={22} />
-                            </div>
-                            <span className="item-label">Server</span>
+                            <span className="section-title">{section.title}</span>
+                            {expandedSections[section.title] ?
+                                <ChevronDown size={14} className="section-arrow" /> :
+                                <ChevronRight size={14} className="section-arrow" />
+                            }
                         </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Layer Management
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
 
-                {navSections.map((section, sIdx) => (
-                    <div key={section.title} className="nav-section">
-                        {sIdx > 0 && <div className="section-divider" />}
-                        <div className="nav-items-group">
-                            {section.items.map((item) => (
-                                <Tooltip.Root key={item.id}>
-                                    <Tooltip.Trigger asChild>
-                                        <button
-                                            className={`sidebar-nav-item ${activePanel === item.id ? 'active' : ''}`}
-                                            onClick={() => {
-                                                setActivePanel(activePanel === item.id ? null : item.id);
-                                                setIsPanelMinimized(false);
-                                            }}
-                                        >
-                                            <div className="active-pillar" />
-                                            <div className="item-icon-wrapper">
-                                                <item.icon size={22} strokeWidth={1.5} />
-                                            </div>
-                                            <span className="item-label">{item.label}</span>
-                                        </button>
-                                    </Tooltip.Trigger>
-                                    <Tooltip.Portal>
-                                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                                            <div className="tooltip-inner">
-                                                <span className="tooltip-text">{item.label}</span>
-                                            </div>
-                                            <Tooltip.Arrow className="TooltipArrow" />
-                                        </Tooltip.Content>
-                                    </Tooltip.Portal>
-                                </Tooltip.Root>
-                            ))}
-                        </div>
+                        {expandedSections[section.title] && (
+                            <div className="section-items">
+                                {section.items.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        className={`sidebar-item-row ${item.isActive ? 'active' : ''}`}
+                                        onClick={item.action}
+                                        title={item.label}
+                                        style={{ '--item-color': item.color }}
+                                    >
+                                        <div className="item-icon-box">
+                                            <item.icon size={18} strokeWidth={1.8} />
+                                        </div>
+                                        <span className="item-label-text">{item.label}</span>
+                                        {item.isActive && <div className="active-indicator" />}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 ))}
-
-
-
-                <div className="section-divider" />
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button
-                            className={`sidebar-nav-item ${isLocked ? 'active' : ''}`}
-                            onClick={() => setIsLocked(!isLocked)}
-                        >
-                            <div className="active-pillar" />
-                            <div className="item-icon-wrapper">
-                                {isLocked ? <Lock size={22} strokeWidth={1.5} /> : <Unlock size={22} strokeWidth={1.5} />}
-                            </div>
-                            <span className="item-label">{isLocked ? "Unlock" : "Lock"}</span>
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            {isLocked ? "Unlock Map" : "Lock Map"}
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button className="sidebar-nav-item" onClick={handlePrintClick}>
-                            <div className="active-pillar" />
-                            <div className="item-icon-wrapper">
-                                <Printer size={22} strokeWidth={1.5} />
-                            </div>
-                            <span className="item-label">Print</span>
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Export Map
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button className="sidebar-nav-item" onClick={handleClearDrawings}>
-                            <div className="active-pillar" />
-                            <div className="item-icon-wrapper">
-                                <Eraser size={22} strokeWidth={1.5} />
-                            </div>
-                            <span className="item-label">Clear</span>
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Clear Map
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
-                <div className="section-divider" />
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button className="sidebar-nav-item" onClick={onToggleLayout}>
-                            <Settings2 size={20} />
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            Top Bar Mode
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button className="sidebar-nav-item" onClick={toggleTheme}>
-                            {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" side="right" sideOffset={16}>
-                            {theme === 'light' ? 'Dark' : 'Light'} Mode
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-
-
-
             </nav>
+
+            <div className="sidebar-footer-redesign">
+                <span className="footer-version">All rights reserved by SECON</span>
+            </div>
         </div>
     );
 };

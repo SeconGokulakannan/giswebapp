@@ -80,7 +80,8 @@ export const getGeoServerLayers = async () => {
                 fid: feature.id,
                 geometryFieldName: feature.properties.GeometryFieldName || 'undef',
                 geometryType: feature.properties.GeometryType || 'undef',
-                srid: feature.properties.SRId || 'undef'
+                srid: feature.properties.SRId || 'undef',
+                extent: feature.properties.Extent || null
             }));
         }
     }
@@ -971,7 +972,8 @@ export const publishNewLayer = async (config) => {
             IsShowLayer: true,
             GeometryFieldName: 'geom',
             GeometryType: geometryType,
-            SRId: srid
+            SRId: srid,
+            Extent: config.extent || null
         };
 
         const registered = await addNewLayerConfig(metadata);
