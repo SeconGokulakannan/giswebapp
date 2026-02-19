@@ -41,10 +41,10 @@ export const parseSLD = (sldBody) => {
     const extract = (name, defaultValue, parentContext = null) => {
         let searchTarget = sldBody;
         if (parentContext) {
-            const contextRegex = new RegExp(`<${parentContext}[\\s\\S]*?>([\\s\\S]*?)</${parentContext}>`, 'i');
+            const contextRegex = new RegExp(`<([\\w-]*:)?${parentContext}[\\s\\S]*?>([\\s\\S]*?)</(?:[\\w-]*:)?${parentContext}>`, 'i');
             const contextMatch = sldBody.match(contextRegex);
             if (contextMatch) {
-                searchTarget = contextMatch[1];
+                searchTarget = contextMatch[2];
             } else {
                 return defaultValue;
             }
@@ -63,45 +63,51 @@ export const parseSLD = (sldBody) => {
     const extractTag = (tagName, defaultValue, parentContext = null) => {
         let regex;
         if (parentContext) {
-            regex = new RegExp(`<${parentContext}[\\s\\S]*?<${tagName}>([^<]+)</${tagName}>`, 'i');
+            regex = new RegExp(`<([\\w-]*:)?${parentContext}[\\s\\S]*?<([\\w-]*:)?${tagName}>([^<]+)</(?:[\\w-]*:)?${tagName}>`, 'i');
+            const match = sldBody.match(regex);
+            if (match) {
+                const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
+                availableProps[propKey] = true;
+                return match[3].trim();
+            }
         } else {
-            regex = new RegExp(`<${tagName}>([^<]+)</${tagName}>`, 'i');
-        }
-        const match = sldBody.match(regex);
-        if (match) {
-            const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
-            availableProps[propKey] = true;
-            return match[1].trim();
+            regex = new RegExp(`<([\\w-]*:)?${tagName}>([^<]+)</(?:[\\w-]*:)?${tagName}>`, 'i');
+            const match = sldBody.match(regex);
+            if (match) {
+                const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
+                availableProps[propKey] = true;
+                return match[2].trim();
+            }
         }
         return defaultValue;
     };
 
     const extractExternalGraphic = () => {
-        const regex = /<ExternalGraphic>[\s\S]*?<OnlineResource[\s\S]*?href="([^"]+)"[\s\S]*?\/>/i;
+        const regex = /<([\\w-]*:)?ExternalGraphic>[\s\S]*?<([\\w-]*:)?OnlineResource[\s\S]*?href="([^"]+)"[\s\S]*?\/>/i;
         const match = sldBody.match(regex);
         if (match) {
             availableProps.externalGraphicUrl = true;
-            return match[1].trim();
+            return match[3].trim();
         }
         return '';
     };
 
     const extractLabelProp = () => {
-        const regex = /<(?:[\w-]*:)?Label>\s*<(?:[\w-]*:)?PropertyName>([\s\S]*?)<\/(?:[\w-]*:)?PropertyName>\s*<\/(?:[\w-]*:)?Label>/i;
+        const regex = /<([\\w-]*:)?Label>\s*<([\\w-]*:)?PropertyName>([\s\S]*?)<\/(?:[\\w-]*:)?PropertyName>\s*<\/(?:[\\w-]*:)?Label>/i;
         const match = sldBody.match(regex);
         if (match) {
             availableProps.labelAttribute = true;
-            return match[1].trim();
+            return match[3].trim();
         }
         return '';
     };
 
     const extractHatch = () => {
-        const regex = /<Fill>[\s\S]*?<GraphicFill>[\s\S]*?<WellKnownName>([^<]+)<\/WellKnownName>/i;
+        const regex = /<([\\w-]*:)?Fill>[\s\S]*?<([\\w-]*:)?GraphicFill>[\s\S]*?<([\\w-]*:)?WellKnownName>([^<]+)<\/(?:[\\w-]*:)?WellKnownName>/i;
         const match = sldBody.match(regex);
         if (match) {
             availableProps.hatchPattern = true;
-            return match[1].trim();
+            return match[4].trim();
         }
         return '';
     };
@@ -132,14 +138,14 @@ export const parseSLD = (sldBody) => {
     props.labelAttribute = extractLabelProp();
 
     // Parse GeneratedLabelRule for Scale
-    const labelRuleRegex = /<Rule>[\s\S]*?<Title>GeneratedLabelRule<\/Title>([\s\S]*?)<\/Rule>/i;
+    const labelRuleRegex = /<([\\w-]*:)?Rule>[\s\S]*?<([\\w-]*:)?Title>GeneratedLabelRule<\/([\\w-]*:)?Title>([\s\S]*?)<\/([\\w-]*:)?Rule>/i;
     const labelRuleMatch = sldBody.match(labelRuleRegex);
     if (labelRuleMatch) {
-        const ruleBody = labelRuleMatch[1];
-        const maxScaleRegex = /<MaxScaleDenominator>([\d.]+)<\/MaxScaleDenominator>/i;
+        const ruleBody = labelRuleMatch[4];
+        const maxScaleRegex = /<([\\w-]*:)?MaxScaleDenominator>([\d.]+)<\/([\\w-]*:)?MaxScaleDenominator>/i;
         const maxScaleMatch = ruleBody.match(maxScaleRegex);
         if (maxScaleMatch) {
-            const scale = parseFloat(maxScaleMatch[1]);
+            const scale = parseFloat(maxScaleMatch[2]);
             // Approximate conversion: Scale = 559082264 / (2 ^ Zoom)
             if (scale > 0) {
                 const zoom = Math.log2(559082264 / scale);
@@ -154,14 +160,14 @@ export const parseSLD = (sldBody) => {
     }
 
     // Parse VendorOptions for Duplicates and Repeat
-    const groupOptionRegex = /<VendorOption name="group">([^<]+)<\/VendorOption>/i;
-    const repeatOptionRegex = /<VendorOption name="repeat">([^<]+)<\/VendorOption>/i;
+    const groupOptionRegex = /<([\\w-]*:)?VendorOption name="group">([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
+    const repeatOptionRegex = /<([\\w-]*:)?VendorOption name="repeat">([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
 
     const groupMatch = sldBody.match(groupOptionRegex);
-    props.preventDuplicates = groupMatch ? (groupMatch[1] === 'yes') : false;
+    props.preventDuplicates = groupMatch ? (groupMatch[2] === 'yes') : false;
 
     const repeatMatch = sldBody.match(repeatOptionRegex);
-    props.labelRepeat = repeatMatch ? parseInt(repeatMatch[1]) : 0;
+    props.labelRepeat = repeatMatch ? parseInt(repeatMatch[2]) : 0;
 
 
     const hasPoint = sldBody.includes('PointSymbolizer');
@@ -198,15 +204,14 @@ export const applyStyleChanges = (sldBody, props) => {
     let pendingLabelRule = null;
 
     const ensureParent = (parentTag, containerTag) => {
-        const tagRegex = new RegExp(`<${parentTag}[^>]*>`, 'i');
+        const tagRegex = new RegExp(`<([\\w-]*:)?${parentTag}[^>]*>`, 'i');
         if (!newSld.match(tagRegex)) {
-            const containerRegex = new RegExp(`(<(?:[\\w-]*:)?${containerTag}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${containerTag}>)`, 'i');
+            const containerRegex = new RegExp(`(<([\\w-]*:)?${containerTag}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${containerTag}>)`, 'i');
             const match = newSld.match(containerRegex);
             if (match) {
-                const prefixMatch = match[1].match(/<([\w-]*:)/);
-                const prefix = prefixMatch ? prefixMatch[1] : '';
+                const prefix = match[2] || '';
                 const newParent = `\n            <${prefix}${parentTag}></${prefix}${parentTag}>`;
-                newSld = newSld.replace(containerRegex, `$1$2${newParent}$3`);
+                newSld = newSld.replace(containerRegex, `$1$3${newParent}$4`);
             }
         }
     };
@@ -215,48 +220,46 @@ export const applyStyleChanges = (sldBody, props) => {
         if (value === undefined) return;
 
         if (parentTagName) {
-            const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'gi');
+            const parentRegex = new RegExp(`(<([\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'gi');
 
-            newSld = newSld.replace(parentRegex, (match, startTag, content, endTag) => {
-                const paramRegex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)([^<]*)(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
+            newSld = newSld.replace(parentRegex, (match, startTag, prefix, content, endTag) => {
+                const paramRegex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name="${name}"[^>]*>)([^<]*)(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
 
                 if (value === null) {
                     return `${startTag}${content.replace(paramRegex, '')}${endTag}`;
                 } else {
                     if (paramRegex.test(content)) {
-                        return `${startTag}${content.replace(paramRegex, `$1${value}$3`)}${endTag}`;
+                        return `${startTag}${content.replace(paramRegex, `$1${value}$5`)}${endTag}`;
                     } else {
                         const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-                        const prefixMatch = startTag.match(/<([\w-]*:)/);
-                        const prefix = prefixMatch ? prefixMatch[1] : '';
-                        const newParam = `\n            <${prefix}${tagType} name="${name}">${value}</${prefix}${tagType}>`;
+                        const internalPrefix = prefix || '';
+                        const newParam = `\n            <${internalPrefix}${tagType} name="${name}">${value}</${internalPrefix}${tagType}>`;
                         return `${startTag}${content}${newParam}${endTag}`;
                     }
                 }
             });
         } else {
-            const regex = new RegExp(`(<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
+            const regex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
             if (value === null) {
                 if (newSld.match(regex)) newSld = newSld.replace(regex, '');
             } else {
-                if (newSld.match(regex)) newSld = newSld.replace(regex, `$1${value}$2`);
+                if (newSld.match(regex)) newSld = newSld.replace(regex, `$1${value}$4`);
             }
         }
     };
 
     const replaceTag = (tagName, value, parentTagName) => {
         if (value === undefined || value === null) return;
-        const regex = new RegExp(`(<(?:[\\w-]*:)?${tagName}[^>]*>)[^<]*(</(?:[\\w-]*:)?${tagName}>)`, 'i');
+        const regex = new RegExp(`(<([\\w-]*:)?${tagName}[^>]*>)[^<]*(</(?:[\\w-]*:)?${tagName}>)`, 'i');
         if (newSld.match(regex)) {
-            newSld = newSld.replace(regex, `$1${value}$2`);
+            newSld = newSld.replace(regex, `$1${value}$3`);
         } else if (parentTagName) {
-            const parentRegex = new RegExp(`(<(?:[\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
+            const parentRegex = new RegExp(`(<([\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
             const match = newSld.match(parentRegex);
             if (match) {
-                const prefixMatch = match[1].match(/<([\w-]*:)/);
-                const prefix = prefixMatch ? prefixMatch[1] : '';
+                const prefix = match[2] || '';
                 const newTag = `\n            <${prefix}${tagName}>${value}</${prefix}${tagName}>`;
-                newSld = newSld.replace(parentRegex, `$1$2${newTag}$3`);
+                newSld = newSld.replace(parentRegex, `$1$3${newTag}$4`);
             }
         }
     };
@@ -295,118 +298,128 @@ export const applyStyleChanges = (sldBody, props) => {
 
     // Handle SVG Icons
     if (props.externalGraphicUrl) {
-        const pointSymbolizerRegex = /<PointSymbolizer>[\s\S]*?<Graphic>([\s\S]*?)<\/Graphic><\/PointSymbolizer>/i;
+        const pointSymbolizerRegex = /(<([\\w-]*:)?PointSymbolizer[^>]*>[\s\S]*?<([\\w-]*:)?Graphic[^>]*>)([\s\S]*?)(<\/([\\w-]*:)?Graphic>[\s\S]*?<\/([\\w-]*:)?PointSymbolizer>)/i;
         const match = newSld.match(pointSymbolizerRegex);
         if (match) {
-            const svgTag = `<ExternalGraphic><OnlineResource xlink:type="simple" xlink:href="${props.externalGraphicUrl}" /><Format>image/svg+xml</Format></ExternalGraphic>`;
-            const cleanGraphic = match[1].replace(/<(?:Mark|ExternalGraphic)>[\s\S]*?<\/(?:Mark|ExternalGraphic)>/i, svgTag);
-            newSld = newSld.replace(pointSymbolizerRegex, `<PointSymbolizer><Graphic>${cleanGraphic}</Graphic></PointSymbolizer>`);
+            const prefix = match[2] || '';
+            const svgTag = `<${prefix}ExternalGraphic><${prefix}OnlineResource xlink:type="simple" xlink:href="${props.externalGraphicUrl}" /><${prefix}Format>image/svg+xml</${prefix}Format></${prefix}ExternalGraphic>`;
+            const cleanGraphic = match[4].replace(/<([\\w-]*:)?(Mark|ExternalGraphic)>[\s\S]*?<\/(?:[\\w-]*:)?(?:\2)>/i, svgTag);
+            newSld = newSld.replace(pointSymbolizerRegex, `$1${cleanGraphic}$5`);
         }
     } else if (props.wellKnownName) {
-        const pointSymbolizerRegex = /<PointSymbolizer>[\s\S]*?<Graphic>([\s\S]*?)<\/Graphic><\/PointSymbolizer>/i;
+        const pointSymbolizerRegex = /(<([\\w-]*:)?PointSymbolizer[^>]*>[\s\S]*?<([\\w-]*:)?Graphic[^>]*>)([\s\S]*?)(<\/([\\w-]*:)?Graphic>[\s\S]*?<\/([\\w-]*:)?PointSymbolizer>)/i;
         const match = newSld.match(pointSymbolizerRegex);
-        if (match && match[1].includes('ExternalGraphic')) {
-            const markTag = `<Mark><WellKnownName>${props.wellKnownName}</WellKnownName><Fill/><Stroke/></Mark>`;
-            const cleanGraphic = match[1].replace(/<ExternalGraphic>[\s\S]*?<\/ExternalGraphic>/i, markTag);
-            newSld = newSld.replace(pointSymbolizerRegex, `<PointSymbolizer><Graphic>${cleanGraphic}</Graphic></PointSymbolizer>`);
+        if (match && match[4].includes('ExternalGraphic')) {
+            const prefix = match[2] || '';
+            const markTag = `<${prefix}Mark><${prefix}WellKnownName>${props.wellKnownName}</${prefix}WellKnownName><${prefix}Fill/><${prefix}Stroke/></${prefix}Mark>`;
+            const cleanGraphic = match[4].replace(/<([\\w-]*:)?ExternalGraphic>[\s\S]*?<\/(?:[\\w-]*:)?ExternalGraphic>/i, markTag);
+            newSld = newSld.replace(pointSymbolizerRegex, `$1${cleanGraphic}$5`);
         }
     }
 
     // Handle Hatch Patterns for Polygons
-    const polyFillRegex = /(<PolygonSymbolizer[\s\S]*?)<Fill>([\s\S]*?)<\/Fill>/i;
+    const polyFillRegex = /(<([\\w-]*:)?PolygonSymbolizer[\s\S]*?)<([\\w-]*:)?Fill>([\s\S]*?)<\/([\\w-]*:)?Fill>/i;
     const polyFillMatch = newSld.match(polyFillRegex);
     const isGraphicPattern = props.hatchPattern && props.hatchPattern !== '' && props.hatchPattern !== 'outline';
 
     if (isGraphicPattern) {
-        const graphicFill = `<Fill>
-          <GraphicFill>
-            <Graphic>
-              <Mark>
-                <WellKnownName>${props.hatchPattern}</WellKnownName>
-                <Stroke>
-                  <CssParameter name="stroke">${props.stroke || '#000000'}</CssParameter>
-                  <CssParameter name="stroke-width">1</CssParameter>
-                </Stroke>
-              </Mark>
-              <Size>8</Size>
-            </Graphic>
-          </GraphicFill>
-        </Fill>`;
+        const prefix = polyFillMatch ? (polyFillMatch[3] || '') : '';
+        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+        const graphicFill = `<${prefix}Fill>
+          <${prefix}GraphicFill>
+            <${prefix}Graphic>
+              <${prefix}Mark>
+                <${prefix}WellKnownName>${props.hatchPattern}</${prefix}WellKnownName>
+                <${prefix}Stroke>
+                  <${prefix}${tagType} name="stroke">${props.stroke || '#000000'}</${prefix}${tagType}>
+                  <${prefix}${tagType} name="stroke-width">1</${prefix}${tagType}>
+                </${prefix}Stroke>
+              </${prefix}Mark>
+              <${prefix}Size>12</${prefix}Size>
+            </${prefix}Graphic>
+          </${prefix}GraphicFill>
+        </${prefix}Fill>`;
         if (polyFillMatch) {
             newSld = newSld.replace(polyFillRegex, `$1${graphicFill}`);
         }
     } else if (props.hatchPattern === 'outline') {
-        // Force opacity to 0 for Outline mode
-        const outlineFill = `<Fill><CssParameter name="fill-opacity">0</CssParameter></Fill>`;
+        const prefix = polyFillMatch ? (polyFillMatch[3] || '') : '';
+        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+        const outlineFill = `<${prefix}Fill><${prefix}${tagType} name="fill-opacity">0</${prefix}${tagType}></${prefix}Fill>`;
         if (polyFillMatch) {
             newSld = newSld.replace(polyFillRegex, `$1${outlineFill}`);
         }
-    } else if (polyFillMatch && polyFillMatch[2].includes('GraphicFill')) {
-        // Restore solid fill if pattern was present before
-        const solidFill = `<Fill>
-          <CssParameter name="fill">${props.fill || '#cccccc'}</CssParameter>
-          <CssParameter name="fill-opacity">${props.fillOpacity || 1}</CssParameter>
-        </Fill>`;
+    } else if (polyFillMatch && polyFillMatch[4].includes('GraphicFill')) {
+        const prefix = polyFillMatch[3] || '';
+        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+        const solidFill = `<${prefix}Fill>
+          <${prefix}${tagType} name="fill">${props.fill || '#cccccc'}</${prefix}${tagType}>
+          <${prefix}${tagType} name="fill-opacity">${props.fillOpacity || 1}</${prefix}${tagType}>
+        </${prefix}Fill>`;
         newSld = newSld.replace(polyFillRegex, `$1${solidFill}`);
     }
 
     // Handle Labels
-    newSld = newSld.replace(/<(?:[\w-]*:)?TextSymbolizer>[\s\S]*?<\/(?:[\w-]*:)?TextSymbolizer>/gi, '');
-    newSld = newSld.replace(/<Rule>[\s\S]*?<Title>GeneratedLabelRule<\/Title>[\s\S]*?<\/Rule>/gi, '');
+    newSld = newSld.replace(/<([\\w-]*:)?TextSymbolizer>[\s\S]*?<\/(?:[\\w-]*:)?TextSymbolizer>/gi, '');
+    newSld = newSld.replace(/<([\\w-]*:)?Rule>[\s\S]*?<([\\w-]*:)?Title>GeneratedLabelRule<\/([\\w-]*:)?Title>[\s\S]*?<\/([\\w-]*:)?Rule>/gi, '');
 
     if (props.labelAttribute) {
-        let scaleFilter = '';
-        if (!props.staticLabel) {
-            const scale = 559082264 / Math.pow(2, props.minZoom);
-            scaleFilter = `\n            <MaxScaleDenominator>${scale}</MaxScaleDenominator>`;
+        const featureTypeStyleRegex = /(<([\\w-]*:)?FeatureTypeStyle[^>]*>)([\\s\\S]*?)(<\/([\\w-]*:)?FeatureTypeStyle>)/i;
+        const ftMatch = newSld.match(featureTypeStyleRegex);
+        if (ftMatch) {
+            const prefix = ftMatch[2] || '';
+            const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+
+            let scaleFilter = '';
+            if (!props.staticLabel) {
+                const scale = 559082264 / Math.pow(2, props.minZoom);
+                scaleFilter = `\n            <${prefix}MaxScaleDenominator>${scale}</${prefix}MaxScaleDenominator>`;
+            }
+
+            const newLabelRule = `
+    <${prefix}Rule>
+        <${prefix}Title>GeneratedLabelRule</${prefix}Title>${scaleFilter}
+        <${prefix}TextSymbolizer>
+            <${prefix}Label>
+                <ogc:PropertyName>${props.labelAttribute}</ogc:PropertyName>
+            </${prefix}Label>
+            <${prefix}Font>
+                <${prefix}${tagType} name="font-family">${props.fontFamily || 'Arial'}</${prefix}${tagType}>
+                <${prefix}${tagType} name="font-size">${props.fontSize || 12}</${prefix}${tagType}>
+                <${prefix}${tagType} name="font-style">${props.fontStyle || 'normal'}</${prefix}${tagType}>
+                <${prefix}${tagType} name="font-weight">${props.fontWeight || 'normal'}</${prefix}${tagType}>
+            </${prefix}Font>
+            <${prefix}LabelPlacement>
+                <${prefix}PointPlacement>
+                    <${prefix}AnchorPoint>
+                        <${prefix}AnchorPointX>0.5</${prefix}AnchorPointX>
+                        <${prefix}AnchorPointY>0.5</${prefix}AnchorPointY>
+                    </${prefix}AnchorPoint>
+                </${prefix}PointPlacement>
+            </${prefix}LabelPlacement>
+            <${prefix}Halo>
+                <${prefix}Radius>${props.haloRadius || 1}</${prefix}Radius>
+                <${prefix}Fill>
+                    <${prefix}${tagType} name="fill">${props.haloColor || '#FFFFFF'}</${prefix}${tagType}>
+                </${prefix}Fill>
+            </${prefix}Halo>
+            <${prefix}Fill>
+               <${prefix}${tagType} name="fill">${props.fontColor || '#000000'}</${prefix}${tagType}>
+            </${prefix}Fill>
+            <${prefix}VendorOption name="group">${props.staticLabel ? 'yes' : 'no'}</${prefix}VendorOption>
+            <${prefix}VendorOption name="labelAllGroup">false</${prefix}VendorOption>
+            <${prefix}VendorOption name="partials">true</${prefix}VendorOption>
+            <${prefix}VendorOption name="repeat">${props.staticLabel ? '0' : (props.labelRepeat || '0')}</${prefix}VendorOption>
+            <${prefix}VendorOption name="spaceAround">10</${prefix}VendorOption>
+            <${prefix}VendorOption name="conflictResolution">true</${prefix}VendorOption>
+            <${prefix}VendorOption name="goodnessOfFit">0</${prefix}VendorOption>
+            <${prefix}VendorOption name="maxDisplacement">40</${prefix}VendorOption>
+            <${prefix}VendorOption name="autoWrap">100</${prefix}VendorOption>
+        </${prefix}TextSymbolizer>
+    </${prefix}Rule>`;
+
+            newSld = newSld.replace(featureTypeStyleRegex, `$1$3${newLabelRule}$4`);
         }
-
-        const newLabelRule = `
-    <Rule>
-        <Title>GeneratedLabelRule</Title>${scaleFilter}
-        <TextSymbolizer>
-            <Label>
-                <PropertyName>${props.labelAttribute}</PropertyName>
-            </Label>
-            <Font>
-                <CssParameter name="font-family">${props.fontFamily || 'Arial'}</CssParameter>
-                <CssParameter name="font-size">${props.fontSize || 12}</CssParameter>
-                <CssParameter name="font-style">${props.fontStyle || 'normal'}</CssParameter>
-                <CssParameter name="font-weight">${props.fontWeight || 'normal'}</CssParameter>
-            </Font>
-            <LabelPlacement>
-                <PointPlacement>
-                    <AnchorPoint>
-                        <AnchorPointX>0.5</AnchorPointX>
-                        <AnchorPointY>0.5</AnchorPointY>
-                    </AnchorPoint>
-                </PointPlacement>
-            </LabelPlacement>
-            <Halo>
-                <Radius>${props.haloRadius || 1}</Radius>
-                <Fill>
-                    <CssParameter name="fill">${props.haloColor || '#FFFFFF'}</CssParameter>
-                </Fill>
-            </Halo>
-            <Fill>
-               <CssParameter name="fill">${props.fontColor || '#000000'}</CssParameter>
-            </Fill>
-            <VendorOption name="group">${props.staticLabel ? 'yes' : 'no'}</VendorOption>
-            <VendorOption name="labelAllGroup">false</VendorOption>
-            <VendorOption name="partials">true</VendorOption>
-            <VendorOption name="repeat">${props.staticLabel ? '0' : (props.labelRepeat || '0')}</VendorOption>
-            <VendorOption name="spaceAround">10</VendorOption>
-            <VendorOption name="conflictResolution">true</VendorOption>
-            <VendorOption name="goodnessOfFit">0</VendorOption>
-            <VendorOption name="maxDisplacement">40</VendorOption>
-            <VendorOption name="autoWrap">100</VendorOption>
-        </TextSymbolizer>
-    </Rule>`;
-        pendingLabelRule = newLabelRule;
-    }
-
-    if (pendingLabelRule) {
-        newSld = newSld.replace(/(<\/FeatureTypeStyle>)/i, `${pendingLabelRule}$1`);
     }
 
     return newSld;

@@ -12,6 +12,7 @@ const DASH_STYLES = {
 const HATCH_PATTERNS = {
     'Solid': '',
     'Outline': 'outline',
+    'Horizontal': 'shape://horizline',
     'Vertical': 'shape://vertline',
     'Diagonal': 'shape://slash',
     'Back Slash': 'shape://backslash',

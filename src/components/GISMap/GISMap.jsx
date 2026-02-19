@@ -1238,6 +1238,9 @@ function GISMap() {
 
       if (success) {
         // Authoritative re-fetch to ensure sync with server
+        // WAIT for GeoServer to finalize the write (REST API can be slightly async with disk IO)
+        await new Promise(r => setTimeout(r, 1000));
+
         const newData = await getLayerStyle(editingStyleLayer.fullName);
         if (newData) {
           const parsed = parseSLD(newData.sldBody);
@@ -1255,7 +1258,7 @@ function GISMap() {
           source.updateParams({
             ...source.getParams(),
             _t: Date.now(),
-            SLD_BODY: null
+            SLD_BODY: null // CLEAR the temporary preview SLD
           });
         }
 
