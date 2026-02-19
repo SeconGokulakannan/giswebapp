@@ -105,6 +105,7 @@ const MapPanel = ({
     handleHighlightLayer,
     activeHighlightLayerId,
     isHighlightAnimating,
+    onOpenStyleEditor,
     handleUpdateLayerStyle,
     infoSelectionMode,
     setInfoSelectionMode,
@@ -284,6 +285,7 @@ const MapPanel = ({
                         handleHighlightLayer={handleHighlightLayer}
                         activeHighlightLayerId={activeHighlightLayerId}
                         isHighlightAnimating={isHighlightAnimating}
+                        onOpenStyleEditor={onOpenStyleEditor}
                         handleUpdateLayerStyle={handleUpdateLayerStyle}
                         infoSelectionMode={infoSelectionMode}
                         setInfoSelectionMode={setInfoSelectionMode}

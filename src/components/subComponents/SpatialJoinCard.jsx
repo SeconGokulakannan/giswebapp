@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, MessageSquareShare, Zap } from 'lucide-react';
+import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, MessageSquareShare, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes } from '../../services/Server';
 
@@ -128,122 +128,54 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
     if (!isOpen) return null;
 
     return (
-        <div className={`spatial-join-card ${isMinimized ? 'minimized' : ''}`} style={{
-            position: 'absolute',
-            bottom: '20px',
-            left: '20px',
-            width: '400px',
-            background: 'rgba(var(--color-bg-primary-rgb), 0.95)',
-            backdropFilter: 'blur(20px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-            borderRadius: '16px',
-            border: '1px solid var(--color-border)',
-            boxShadow: 'var(--shadow-2xl), inset 0 0 0 1px rgba(var(--color-bg-primary-rgb), 0.05)',
-            zIndex: 1001,
-            userSelect: 'none',
-            overflow: 'hidden',
-            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-            color: 'var(--color-text-primary)'
-        }}>
-            {/* Header */}
-            <div style={{
-                padding: '14px 18px',
-                background: 'rgba(var(--color-bg-secondary-rgb, 200, 200, 200), 0.2)',
-                borderBottom: '1px solid var(--color-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexShrink: 0
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                        width: '32px',
-                        height: '32px',
-                        background: 'linear-gradient(135deg, #f97316, #ef4444)',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 4px 12px rgba(249, 115, 22, 0.3)'
-                    }}>
-                        <MessageSquareShare size={18} color="white" />
-                    </div>
-                    <div>
-                        <div style={{ fontSize: '13px', fontWeight: '800', letterSpacing: '0.02em', color: 'var(--color-text-primary)' }}>
-                            SPATIAL JOIN
+        <div className={`sj-panel-wrapper ${isMinimized ? 'sj-panel-minimized' : ''}`}>
+            {/* Collapse Toggle Handle */}
+            <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                className="sj-collapse-handle"
+                title={isMinimized ? 'Expand Spatial Join' : 'Minimize Spatial Join'}
+            >
+                {isMinimized ? <ChevronRight size={18} strokeWidth={2.5} /> : <ChevronLeft size={18} strokeWidth={2.5} />}
+            </button>
+
+            {/* Main Card */}
+            <div className="sj-card">
+                {/* Header */}
+                <div className="sj-header">
+                    <div className="sj-header-left">
+                        <div className="sj-header-icon">
+                            <MessageSquareShare size={16} strokeWidth={2.5} />
                         </div>
-                        <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>
-                            Attribute Matching
+                        <div>
+                            <h3 className="sj-title">Spatial Join</h3>
+                            <p className="sj-subtitle">Attribute Matching</p>
                         </div>
                     </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                        onClick={() => setIsMinimized(!isMinimized)}
-                        style={{
-                            background: 'transparent', border: 'none', color: 'var(--color-text-muted)',
-                            cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', transition: 'all 0.2s ease'
-                        }}
-                    >
-                        {isMinimized ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                    </button>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: 'rgba(var(--color-danger-rgb, 239, 68, 68), 0.1)', border: 'none',
-                            color: 'var(--color-danger)', width: '28px', height: '28px', borderRadius: '8px',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', padding: '6px'
-                        }}
-                    >
-                        <X size={16} />
+                    <button onClick={onClose} className="sj-close-btn" title="Close">
+                        <X size={16} strokeWidth={2.5} />
                     </button>
                 </div>
-            </div>
 
-            {/* Content */}
-            <div style={{
-                maxHeight: isMinimized ? '0' : '800px',
-                opacity: isMinimized ? 0 : 1,
-                overflow: 'hidden',
-                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
-            }}>
-                <div style={{ padding: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-                        {allGeoServerLayers.length < 2 && (
-                            <div style={{
-                                textAlign: 'center', padding: '20px', color: 'var(--color-text-muted)',
-                                background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
-                                borderRadius: '12px', border: '1px dashed var(--color-border)'
-                            }}>
-                                <MessageSquareShare size={24} style={{ opacity: 0.4, marginBottom: '8px' }} />
-                                <p style={{ fontSize: '12px', fontWeight: '600' }}>Not enough layers available for spatial join.</p>
+                {/* Body */}
+                <div className="sj-body">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        {allGeoServerLayers.length < 2 ? (
+                            <div className="qb-empty-state">
+                                <div className="qb-empty-icon" style={{ background: '#fff7ed' }}>
+                                    <MessageSquareShare size={28} color="#f97316" />
+                                </div>
+                                <p className="qb-empty-title">Insufficient Layers</p>
+                                <p className="qb-empty-desc">Enable at least two layers to perform a spatial join.</p>
                             </div>
-                        )}
-
-                        {allGeoServerLayers.length >= 2 && (
+                        ) : (
                             <>
                                 {/* Join Type Selection */}
-                                <div style={{
-                                    background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
-                                    padding: '14px', borderRadius: '12px',
-                                    border: '1px solid var(--color-border)',
-                                    display: 'flex', flexDirection: 'column', gap: '8px'
-                                }}>
-                                    <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                        JOIN TYPE
-                                    </label>
+                                <div className="qb-field-group">
+                                    <label className="qb-field-label">Join Type</label>
                                     <select
                                         value={joinType}
                                         onChange={(e) => setJoinType(e.target.value)}
-                                        style={{
-                                            width: '100%', height: '34px',
-                                            background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
-                                            borderRadius: '8px', color: 'var(--color-text-primary)',
-                                            fontSize: '12px', padding: '0 8px', outline: 'none', fontWeight: '600'
-                                        }}
+                                        className="qb-select"
                                     >
                                         <option value="union">Union Join</option>
                                         <option value="left">Left Join</option>
@@ -251,33 +183,19 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                                     </select>
                                 </div>
 
-                                {/* Layer A */}
-                                <div style={{
-                                    background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
-                                    padding: '14px', borderRadius: '12px',
-                                    border: `2px solid ${colorA}30`
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                                        <div style={{
-                                            width: '10px', height: '10px', borderRadius: '50%',
-                                            background: colorA, flexShrink: 0
-                                        }} />
-                                        <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                            LAYER A (TARGET)
-                                        </label>
+                                {/* Layer A (Target) */}
+                                <div className="qb-condition-card-clean" style={{ borderLeftWidth: '4px', borderLeftColor: colorA }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: colorA }} />
+                                        <label className="qb-field-label" style={{ margin: 0 }}>Layer A (Target)</label>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>LAYER</label>
+                                    <div className="qb-field-row">
+                                        <div className="qb-field-group" style={{ flex: 1 }}>
+                                            <label className="qb-field-label">Layer</label>
                                             <select
                                                 value={layerA}
                                                 onChange={(e) => setLayerA(e.target.value)}
-                                                style={{
-                                                    width: '100%', height: '34px',
-                                                    background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
-                                                    borderRadius: '8px', color: 'var(--color-text-primary)',
-                                                    fontSize: '12px', padding: '0 8px', outline: 'none', fontWeight: '600'
-                                                }}
+                                                className="qb-select"
                                             >
                                                 <option value="">Select layer...</option>
                                                 {layerAOptions.map(l => (
@@ -285,108 +203,56 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                                                 ))}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>ATTRIBUTE</label>
-                                            {isFetchingA ? (
-                                                <div style={{ height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-                                                </div>
-                                            ) : (
-                                                <select
-                                                    value={attrA}
-                                                    onChange={(e) => setAttrA(e.target.value)}
-                                                    disabled={!layerA || attrsA.length === 0}
-                                                    style={{
-                                                        width: '100%', height: '34px',
-                                                        background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
-                                                        borderRadius: '8px', color: 'var(--color-text-primary)',
-                                                        fontSize: '12px', padding: '0 8px', outline: 'none'
-                                                    }}
-                                                >
-                                                    <option value="">Select attr...</option>
-                                                    {attrsA.map(attr => (
-                                                        <option key={attr} value={attr}>{attr}</option>
-                                                    ))}
-                                                </select>
-                                            )}
+                                        <div className="qb-field-group" style={{ flex: 1 }}>
+                                            <label className="qb-field-label">Attribute</label>
+                                            <select
+                                                value={attrA}
+                                                onChange={(e) => setAttrA(e.target.value)}
+                                                disabled={!layerA || attrsA.length === 0}
+                                                className="qb-select"
+                                            >
+                                                <option value="">Select attr...</option>
+                                                {attrsA.map(attr => (
+                                                    <option key={attr} value={attr}>{attr}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
-                                    {/* Color Picker - Only show if not Union Join */}
                                     {joinType !== 'union' && (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
-                                            <div style={{
-                                                width: '28px', height: '28px', borderRadius: '8px',
-                                                background: colorA, position: 'relative', overflow: 'hidden',
-                                                border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
-                                            }}>
-                                                <input
-                                                    type="color"
-                                                    value={colorA}
-                                                    onChange={(e) => setColorA(e.target.value)}
-                                                    style={{
-                                                        position: 'absolute', top: '-5px', left: '-5px',
-                                                        width: '50px', height: '50px', border: 'none',
-                                                        cursor: 'pointer', background: 'none'
-                                                    }}
-                                                />
+                                            <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: colorA, position: 'relative', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
+                                                <input type="color" value={colorA} onChange={(e) => setColorA(e.target.value)} style={{ position: 'absolute', top: '-5px', left: '-5px', width: '40px', height: '40px', border: 'none', cursor: 'pointer', background: 'none' }} />
                                             </div>
-                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                {PRESET_COLORS.slice(0, 6).map(c => (
-                                                    <button
-                                                        key={c}
-                                                        onClick={() => setColorA(c)}
-                                                        style={{
-                                                            width: '18px', height: '18px', borderRadius: '4px',
-                                                            background: c, border: colorA === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
-                                                            cursor: 'pointer', padding: 0, transition: 'all 0.15s'
-                                                        }}
-                                                    />
+                                            <div style={{ display: 'flex', gap: '2px' }}>
+                                                {PRESET_COLORS.slice(0, 5).map(c => (
+                                                    <button key={c} onClick={() => setColorA(c)} style={{ width: '16px', height: '16px', borderRadius: '3px', background: c, border: 'none', cursor: 'pointer' }} />
                                                 ))}
                                             </div>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* VS Divider */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
-                                    <span style={{
-                                        fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)',
-                                        background: 'var(--color-bg-secondary)', padding: '4px 12px', borderRadius: '20px',
-                                        border: '1px solid var(--color-border)', letterSpacing: '1px'
-                                    }}>JOIN</span>
-                                    <div style={{ flex: 1, height: '1px', background: 'var(--color-border)' }} />
+                                {/* Divider */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ flex: 1, height: '1px', background: 'var(--color-border)', opacity: 0.5 }} />
+                                    <Zap size={14} color="#f97316" />
+                                    <div style={{ flex: 1, height: '1px', background: 'var(--color-border)', opacity: 0.5 }} />
                                 </div>
 
-                                {/* Layer B */}
-                                <div style={{
-                                    background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
-                                    padding: '14px', borderRadius: '12px',
-                                    border: `2px solid ${colorB}30`
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                                        <div style={{
-                                            width: '10px', height: '10px', borderRadius: '50%',
-                                            background: colorB, flexShrink: 0
-                                        }} />
-                                        <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                            LAYER B (SOURCE)
-                                        </label>
+                                {/* Layer B (Source) */}
+                                <div className="qb-condition-card-clean" style={{ borderLeftWidth: '4px', borderLeftColor: colorB }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: colorB }} />
+                                        <label className="qb-field-label" style={{ margin: 0 }}>Layer B (Source)</label>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <div>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>LAYER</label>
+                                    <div className="qb-field-row">
+                                        <div className="qb-field-group" style={{ flex: 1 }}>
+                                            <label className="qb-field-label">Layer</label>
                                             <select
                                                 value={layerB}
                                                 onChange={(e) => setLayerB(e.target.value)}
                                                 disabled={!layerA}
-                                                style={{
-                                                    width: '100%', height: '34px',
-                                                    background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
-                                                    borderRadius: '8px', color: 'var(--color-text-primary)',
-                                                    fontSize: '12px', padding: '0 8px', outline: 'none', fontWeight: '600'
-                                                }}
+                                                className="qb-select"
                                             >
                                                 <option value="">Select layer...</option>
                                                 {layerBOptions.map(l => (
@@ -394,114 +260,46 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                                                 ))}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>ATTRIBUTE</label>
-                                            {isFetchingB ? (
-                                                <div style={{ height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-                                                </div>
-                                            ) : (
-                                                <select
-                                                    value={attrB}
-                                                    onChange={(e) => setAttrB(e.target.value)}
-                                                    disabled={!layerB || attrsB.length === 0}
-                                                    style={{
-                                                        width: '100%', height: '34px',
-                                                        background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
-                                                        borderRadius: '8px', color: 'var(--color-text-primary)',
-                                                        fontSize: '12px', padding: '0 8px', outline: 'none'
-                                                    }}
-                                                >
-                                                    <option value="">Select attr...</option>
-                                                    {attrsB.map(attr => (
-                                                        <option key={attr} value={attr}>{attr}</option>
-                                                    ))}
-                                                </select>
-                                            )}
+                                        <div className="qb-field-group" style={{ flex: 1 }}>
+                                            <label className="qb-field-label">Attribute</label>
+                                            <select
+                                                value={attrB}
+                                                onChange={(e) => setAttrB(e.target.value)}
+                                                disabled={!layerB || attrsB.length === 0}
+                                                className="qb-select"
+                                            >
+                                                <option value="">Select attr...</option>
+                                                {attrsB.map(attr => (
+                                                    <option key={attr} value={attr}>{attr}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
-                                    {/* Color Picker - Only show if not Union Join */}
                                     {joinType !== 'union' && (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
-                                            <div style={{
-                                                width: '28px', height: '28px', borderRadius: '8px',
-                                                background: colorB, position: 'relative', overflow: 'hidden',
-                                                border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
-                                            }}>
-                                                <input
-                                                    type="color"
-                                                    value={colorB}
-                                                    onChange={(e) => setColorB(e.target.value)}
-                                                    style={{
-                                                        position: 'absolute', top: '-5px', left: '-5px',
-                                                        width: '50px', height: '50px', border: 'none',
-                                                        cursor: 'pointer', background: 'none'
-                                                    }}
-                                                />
+                                            <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: colorB, position: 'relative', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
+                                                <input type="color" value={colorB} onChange={(e) => setColorB(e.target.value)} style={{ position: 'absolute', top: '-5px', left: '-5px', width: '40px', height: '40px', border: 'none', cursor: 'pointer', background: 'none' }} />
                                             </div>
-                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                {PRESET_COLORS.slice(0, 6).map(c => (
-                                                    <button
-                                                        key={c}
-                                                        onClick={() => setColorB(c)}
-                                                        style={{
-                                                            width: '18px', height: '18px', borderRadius: '4px',
-                                                            background: c, border: colorB === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
-                                                            cursor: 'pointer', padding: 0, transition: 'all 0.15s'
-                                                        }}
-                                                    />
+                                            <div style={{ display: 'flex', gap: '2px' }}>
+                                                {PRESET_COLORS.slice(0, 5).map(c => (
+                                                    <button key={c} onClick={() => setColorB(c)} style={{ width: '16px', height: '16px', borderRadius: '3px', background: c, border: 'none', cursor: 'pointer' }} />
                                                 ))}
                                             </div>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Features Pattern - Only show for Union Join */}
+                                {/* Features Pattern (Union Join only) */}
                                 {joinType === 'union' && (
-                                    <div style={{
-                                        background: 'rgba(var(--color-bg-secondary-rgb), 0.3)',
-                                        padding: '14px', borderRadius: '12px',
-                                        border: `2px solid ${matchColor}30`
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                                            <div style={{
-                                                width: '10px', height: '10px', borderRadius: '50%',
-                                                background: matchColor, flexShrink: 0
-                                            }} />
-                                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                FEATURES PATTERN
-                                            </label>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)' }}>COLOR</label>
-                                            <div style={{
-                                                width: '28px', height: '28px', borderRadius: '8px',
-                                                background: matchColor, position: 'relative', overflow: 'hidden',
-                                                border: '2px solid var(--color-border)', flexShrink: 0, cursor: 'pointer'
-                                            }}>
-                                                <input
-                                                    type="color"
-                                                    value={matchColor}
-                                                    onChange={(e) => setMatchColor(e.target.value)}
-                                                    style={{
-                                                        position: 'absolute', top: '-5px', left: '-5px',
-                                                        width: '50px', height: '50px', border: 'none',
-                                                        cursor: 'pointer', background: 'none'
-                                                    }}
-                                                />
+                                    <div className="qb-condition-card-clean" style={{ borderLeftWidth: '4px', borderLeftColor: matchColor }}>
+                                        <label className="qb-field-label">Features Pattern Color</label>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: matchColor, position: 'relative', overflow: 'hidden', border: '2px solid var(--color-border)' }}>
+                                                <input type="color" value={matchColor} onChange={(e) => setMatchColor(e.target.value)} style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }} />
                                             </div>
-                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                {PRESET_COLORS.slice(0, 6).map(c => (
-                                                    <button
-                                                        key={c}
-                                                        onClick={() => setMatchColor(c)}
-                                                        style={{
-                                                            width: '18px', height: '18px', borderRadius: '4px',
-                                                            background: c, border: matchColor === c ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border)',
-                                                            cursor: 'pointer', padding: 0, transition: 'all 0.15s'
-                                                        }}
-                                                    />
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                {PRESET_COLORS.map(c => (
+                                                    <button key={c} onClick={() => setMatchColor(c)} style={{ width: '20px', height: '20px', borderRadius: '50%', background: c, border: matchColor === c ? '2px solid var(--color-text-primary)' : 'none', cursor: 'pointer', padding: 0 }} />
                                                 ))}
                                             </div>
                                         </div>
@@ -509,41 +307,23 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                                 )}
 
                                 {/* Action Buttons */}
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    <button
-                                        onClick={handleReset}
-                                        style={{
-                                            flex: 1, padding: '12px', borderRadius: '14px',
-                                            border: '1px solid var(--color-border)',
-                                            background: 'var(--color-bg-secondary)',
-                                            color: 'var(--color-text-muted)', fontSize: '12px',
-                                            fontWeight: '700', cursor: 'pointer', display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <RefreshCw size={14} /> RESET
+                                <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                                    <button onClick={handleReset} className="qb-reset-btn" style={{ flex: 1 }}>
+                                        <RefreshCw size={14} /> <span>Reset</span>
                                     </button>
                                     <button
                                         onClick={handlePerformJoin}
                                         disabled={isJoining || !layerA || !layerB || !attrA || !attrB}
+                                        className="qb-apply-btn"
                                         style={{
-                                            flex: 2, padding: '12px', borderRadius: '14px',
-                                            border: 'none',
-                                            background: (!layerA || !layerB || !attrA || !attrB)
-                                                ? 'var(--color-bg-secondary)'
-                                                : 'linear-gradient(135deg, #f97316, #ef4444)',
-                                            color: (!layerA || !layerB || !attrA || !attrB)
-                                                ? 'var(--color-text-muted)' : '#fff',
-                                            fontSize: '12px', fontWeight: '800', cursor: isJoining ? 'not-allowed' : 'pointer',
-                                            boxShadow: (!layerA || !layerB || !attrA || !attrB)
-                                                ? 'none' : '0 8px 20px rgba(249, 115, 22, 0.3)',
-                                            textTransform: 'uppercase', letterSpacing: '0.5px',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                                            transition: 'all 0.3s'
+                                            flex: 2,
+                                            background: (!layerA || !layerB || !attrA || !attrB) ? 'var(--color-bg-secondary)' : 'linear-gradient(135deg, #f97316, #ef4444)',
+                                            color: (!layerA || !layerB || !attrA || !attrB) ? 'var(--color-text-muted)' : '#fff',
+                                            boxShadow: (!layerA || !layerB || !attrA || !attrB) ? 'none' : '0 8px 20px rgba(249, 115, 22, 0.3)'
                                         }}
                                     >
                                         {isJoining ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                                        {isJoining ? 'JOINING...' : 'PERFORM JOIN'}
+                                        <span>{isJoining ? 'Joining...' : 'Perform Join'}</span>
                                     </button>
                                 </div>
                             </>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes } from '../../services/Server';
 
@@ -122,419 +122,210 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefresh
     if (!isOpen) return null;
 
     return (
-        <div
-            className={`analysis-card ${isMinimized ? 'minimized' : ''}`}
-            style={{
-                position: 'absolute',
-                bottom: '20px',
-                left: '20px',
-                width: '380px', // Match QueryBuilderCard width
-                background: 'rgba(var(--color-bg-primary-rgb), 0.95)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                borderRadius: '16px',
-                border: '1px solid var(--color-border)',
-                boxShadow: 'var(--shadow-2xl), inset 0 0 0 1px rgba(var(--color-bg-primary-rgb), 0.05)',
-                zIndex: 1001,
-                userSelect: 'none',
-                overflow: 'hidden',
-                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                color: 'var(--color-text-primary)'
-            }}
-        >
-            {/* Header */}
-            <div style={{
-                padding: '14px 18px',
-                background: 'rgba(var(--color-bg-secondary-rgb, 200, 200, 200), 0.2)',
-                borderBottom: '1px solid var(--color-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexShrink: 0
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                        width: '32px',
-                        height: '32px',
-                        background: 'linear-gradient(135deg, var(--color-primary), #6366f1)',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 4px 12px rgba(var(--color-primary-rgb), 0.3)'
-                    }}>
-                        <Activity size={18} color="white" />
-                    </div>
-                    <div>
-                        <div style={{ fontSize: '13px', fontWeight: '800', letterSpacing: '0.02em', color: 'var(--color-text-primary)' }}>
-                            MAP ANALYSIS
+        <div className={`ac-panel-wrapper ${isMinimized ? 'ac-panel-minimized' : ''}`}>
+            {/* Collapse Toggle Handle */}
+            <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                className="ac-collapse-handle"
+                title={isMinimized ? 'Expand Analysis' : 'Minimize Analysis'}
+            >
+                {isMinimized ? <ChevronRight size={18} strokeWidth={2.5} /> : <ChevronLeft size={18} strokeWidth={2.5} />}
+            </button>
+
+            {/* Main Card */}
+            <div className="ac-card">
+                {/* Header */}
+                <div className="ac-header">
+                    <div className="ac-header-left">
+                        <div className="ac-header-icon">
+                            <Activity size={16} strokeWidth={2.5} />
                         </div>
-                        <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>
-                            Dynamics
+                        <div>
+                            <h3 className="ac-title">Map Analysis</h3>
+                            <p className="ac-subtitle">Analyze layer dynamics</p>
                         </div>
                     </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                        onClick={() => setIsMinimized(!isMinimized)}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--color-text-muted)',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s ease'
-                        }}
-                    >
-                        {isMinimized ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                    </button>
-                    <button
-                        onClick={onClose}
-                        className="close-btn"
-                        style={{ background: 'rgba(var(--color-danger-rgb, 239, 68, 68), 0.1)', border: 'none', color: 'var(--color-danger)', width: '28px', height: '28px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', padding: '6px' }}
-                    >
-                        <X size={16} />
+                    <button onClick={onClose} className="ac-close-btn" title="Close">
+                        <X size={16} strokeWidth={2.5} />
                     </button>
                 </div>
-            </div>
 
-            {/* Content */}
-            {/* Sliding Content */}
-            <div style={{
-                maxHeight: isMinimized ? '0' : '800px',
-                opacity: isMinimized ? 0 : 1,
-                overflow: 'hidden',
-                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
-            }}>
-                <div style={{ padding: '24px', paddingTop: '12px', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
-
-
-
+                {/* Body */}
+                <div className="ac-body">
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.4s ease' }}>
+                        {/* Property Selection */}
+                        <div className="qb-field-group">
+                            <label className="qb-field-label">Condition Attribute</label>
+                            <select
+                                value={selectedProperty}
+                                onChange={(e) => setSelectedProperty(e.target.value)}
+                                className="qb-select"
+                            >
+                                <option value="">Select attribute...</option>
+                                {attributes.map(attr => (
+                                    <option key={attr} value={attr}>{attr}</option>
+                                ))}
+                            </select>
+                        </div>
 
-                            {/* Property Selection */}
+                        {/* Mappings */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <label className="qb-field-label">Value Mappings</label>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>CONDITION ATTRIBUTE</label>
-                                <select
-                                    value={selectedProperty}
-                                    onChange={(e) => setSelectedProperty(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 12px',
-                                        borderRadius: '12px',
-                                        border: '1px solid var(--color-border)',
-                                        background: 'var(--color-bg-secondary)',
-                                        color: 'var(--color-text-primary)',
-                                        fontSize: '13px'
-                                    }}
-                                >
-                                    <option value="" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>Select attribute...</option>
-                                    {attributes.map(attr => (
-                                        <option key={attr} value={attr} style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>{attr}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Mappings with Operators */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <label style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.8px' }}>VALUE MAPPINGS</label>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {mappings.map((m, index) => (
-                                        <div key={index} style={{
-                                            display: 'flex',
-                                            gap: '6px',
-                                            alignItems: 'center',
-                                            background: 'var(--color-bg-tertiary)',
-                                            padding: '6px',
-                                            borderRadius: '14px',
-                                            border: '1px solid var(--color-border)'
-                                        }}>
-                                            {/* Operator Dropdown */}
+                                {mappings.map((m, index) => (
+                                    <div key={index} className="qb-condition-card-clean" style={{ padding: '8px' }}>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                             <select
                                                 value={m.operator || '='}
                                                 onChange={(e) => updateMapping(index, { operator: e.target.value })}
-                                                style={{
-                                                    width: '60px',
-                                                    padding: '8px 4px',
-                                                    borderRadius: '10px',
-                                                    border: 'none',
-                                                    background: 'var(--color-primary)',
-                                                    color: 'white',
-                                                    fontSize: '11px',
-                                                    fontWeight: '700',
-                                                    textAlign: 'center',
-                                                    cursor: 'pointer'
-                                                }}
+                                                className="qb-select"
+                                                style={{ width: '60px', background: 'var(--color-primary)', color: 'white', border: 'none' }}
                                             >
-                                                <option value="=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>=</option>
-                                                <option value="!=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>≠</option>
-                                                <option value=">" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>&gt;</option>
-                                                <option value="<" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>&lt;</option>
-                                                <option value=">=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>≥</option>
-                                                <option value="<=" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>≤</option>
-                                                <option value="LIKE" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}>LIKE</option>
+                                                <option value="=">=</option>
+                                                <option value="!=">≠</option>
+                                                <option value=">">&gt;</option>
+                                                <option value="<">&lt;</option>
+                                                <option value=">=">≥</option>
+                                                <option value="<=">≤</option>
+                                                <option value="LIKE">LIKE</option>
                                             </select>
-                                            {/* Value Input */}
                                             <input
                                                 type="text"
                                                 value={m.value}
                                                 onChange={(e) => updateMapping(index, { value: e.target.value })}
                                                 placeholder="Value..."
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '8px 12px',
-                                                    borderRadius: '10px',
-                                                    border: 'none',
-                                                    background: 'var(--color-bg-secondary)',
-                                                    color: 'var(--color-text-secondary)',
-                                                    fontSize: '12px',
-                                                    fontWeight: '600'
-                                                }}
+                                                className="qb-input"
+                                                style={{ flex: 1 }}
                                             />
-                                            {/* Color Picker */}
                                             <div style={{
-                                                width: '32px',
-                                                height: '32px',
-                                                borderRadius: '8px',
-                                                background: m.color,
-                                                position: 'relative',
-                                                overflow: 'hidden',
-                                                border: '2px solid var(--color-border)',
-                                                flexShrink: 0
+                                                width: '32px', height: '32px', borderRadius: '8px',
+                                                background: m.color, position: 'relative', overflow: 'hidden',
+                                                border: '2px solid var(--color-border)', flexShrink: 0
                                             }}>
                                                 <input
                                                     type="color"
                                                     value={m.color}
                                                     onChange={(e) => updateMapping(index, { color: e.target.value })}
-                                                    style={{
-                                                        position: 'absolute',
-                                                        top: '-5px',
-                                                        left: '-5px',
-                                                        width: '50px',
-                                                        height: '50px',
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        background: 'none'
-                                                    }}
+                                                    style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
                                                 />
                                             </div>
-                                            {/* Remove Button */}
                                             {mappings.length > 1 && (
                                                 <button
                                                     onClick={() => removeMapping(index)}
-                                                    style={{ background: 'rgba(var(--color-danger-rgb), 0.1)', border: 'none', color: 'var(--color-danger)', padding: '8px', borderRadius: '10px', cursor: 'pointer', flexShrink: 0 }}
+                                                    className="qb-remove-btn"
                                                 >
                                                     <X size={14} />
                                                 </button>
                                             )}
                                         </div>
-                                    ))}
-                                    <button
-                                        onClick={addMapping}
-                                        style={{
-                                            marginTop: '4px',
-                                            padding: '10px',
-                                            background: 'rgba(var(--color-primary-rgb), 0.1)',
-                                            border: '1px dashed var(--color-primary)',
-                                            borderRadius: '12px',
-                                            color: 'var(--color-primary)',
-                                            fontSize: '11px',
-                                            fontWeight: '700',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '8px',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <Plus size={14} /> ADD CONDITION
-                                    </button>
+                                    </div>
+                                ))}
+                                <button onClick={addMapping} className="qb-add-condition-btn">
+                                    <Plus size={14} /> <span>Add Condition</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Periodic Switch */}
+                        <div style={{ background: 'var(--color-bg-secondary)', borderRadius: '16px', border: '1px solid var(--color-border)', padding: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <Loader2 size={16} className={isPeriodic ? "animate-spin" : ""} color="var(--color-primary)" />
+                                    <label className="qb-field-label" style={{ margin: 0 }}>Periodic Playback</label>
                                 </div>
+                                <label className="toggle-switch" style={{ transform: 'scale(0.8)' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isPeriodic}
+                                        onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            if (checked) {
+                                                const dateAttrs = attributeDetails.filter(attr => /date|time|year|timestamp/i.test(attr.localType || attr.type || '') || /date|time|year|timestamp/i.test(attr.name));
+                                                if (dateAttrs.length === 0) { toast.error("No Attribute found with date"); return; }
+                                                if (!dateProperty) setDateProperty(dateAttrs[0].name);
+                                            }
+                                            setIsPeriodic(checked);
+                                            if (!checked && selectedProperty) {
+                                                onRunAnalysis({ layerId: selectedLayerId, property: selectedProperty, mappings, isPeriodic: false, dateProperty, startDate, endDate, filteredDates: [] });
+                                            }
+                                        }}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
                             </div>
 
-                            {/* Periodic Analysis Switch */}
-                            <div style={{
-                                background: 'var(--color-bg-secondary)',
-                                borderRadius: '16px',
-                                border: '1px solid var(--color-border)',
-                                padding: '16px'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isPeriodic ? '16px' : '0' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <Loader2 size={16} className={isPeriodic ? "animate-spin" : ""} color="var(--color-primary)" />
-                                        <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--color-text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Periodic Playback</label>
+                            {isPeriodic && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                                    <div className="qb-field-group">
+                                        <label className="qb-field-label">Date Field</label>
+                                        <select value={dateProperty} onChange={(e) => setDateProperty(e.target.value)} className="qb-select">
+                                            <option value="">Select Date Field...</option>
+                                            {attributeDetails.filter(attr => /date|time|year|timestamp/i.test(attr.localType || attr.type || '') || /date|time|year|timestamp/i.test(attr.name)).map(attr => (
+                                                <option key={attr.name} value={attr.name}>{attr.name}</option>
+                                            ))}
+                                        </select>
                                     </div>
-                                    <label className="toggle-switch" style={{ transform: 'scale(0.8)' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={isPeriodic}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (checked) {
-                                                    const dateAttrs = attributeDetails.filter(attr =>
-                                                        /date|time|year|timestamp/i.test(attr.localType || attr.type || '') ||
-                                                        /date|time|year|timestamp/i.test(attr.name)
-                                                    );
-                                                    if (dateAttrs.length === 0) {
-                                                        toast.error("No Attribute found with date");
-                                                        return;
-                                                    }
-                                                    // Default to first date attr if none selected
-                                                    if (!dateProperty) setDateProperty(dateAttrs[0].name);
-                                                }
-                                                setIsPeriodic(checked);
-
-                                                // If turned off and analysis already running/configured, re-run without periodic
-                                                if (!checked && selectedProperty) {
-                                                    onRunAnalysis({
-                                                        layerId: selectedLayerId,
-                                                        property: selectedProperty,
-                                                        mappings,
-                                                        isPeriodic: false,
-                                                        dateProperty,
-                                                        startDate,
-                                                        endDate,
-                                                        filteredDates: []
-                                                    });
-                                                }
-                                            }}
-                                        />
-                                        <span className="toggle-slider"></span>
-                                    </label>
-                                </div>
-
-                                {isPeriodic && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', animation: 'slideDown 0.3s ease-out' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', marginLeft: '4px' }}>DATE FIELD</label>
-                                            <select
-                                                value={dateProperty}
-                                                onChange={(e) => setDateProperty(e.target.value)}
-                                                className="elite-input"
-                                                style={{ width: '100%', fontSize: '13px' }}
-                                            >
-                                                <option value="">Select Date Field...</option>
-                                                {attributeDetails
-                                                    .filter(attr =>
-                                                        /date|time|year|timestamp/i.test(attr.localType || attr.type || '') ||
-                                                        /date|time|year|timestamp/i.test(attr.name)
-                                                    )
-                                                    .map(attr => (
-                                                        <option key={attr.name} value={attr.name}>{attr.name}</option>
-                                                    ))
-                                                }
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                        <div className="qb-field-group">
+                                            <label className="qb-field-label">From</label>
+                                            <select value={startDate} onChange={(e) => setStartDate(e.target.value)} className="qb-select">
+                                                <option value="">Start...</option>
+                                                {uniqueDates.map(date => <option key={date} value={date}>{date}</option>)}
                                             </select>
                                         </div>
-
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', marginLeft: '4px' }}>FROM</label>
-                                                <select
-                                                    value={startDate}
-                                                    onChange={(e) => setStartDate(e.target.value)}
-                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', fontSize: '12px' }}
-                                                >
-                                                    <option value="">Start...</option>
-                                                    {uniqueDates.map(date => <option key={date} value={date}>{date}</option>)}
-                                                </select>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--color-text-muted)', marginLeft: '4px' }}>TO</label>
-                                                <select
-                                                    value={endDate}
-                                                    onChange={(e) => setEndDate(e.target.value)}
-                                                    style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', fontSize: '12px' }}
-                                                >
-                                                    <option value="">End...</option>
-                                                    {uniqueDates.map(date => <option key={date} value={date}>{date}</option>)}
-                                                </select>
-                                            </div>
+                                        <div className="qb-field-group">
+                                            <label className="qb-field-label">To</label>
+                                            <select value={endDate} onChange={(e) => setEndDate(e.target.value)} className="qb-select">
+                                                <option value="">End...</option>
+                                                {uniqueDates.map(date => <option key={date} value={date}>{date}</option>)}
+                                            </select>
                                         </div>
-                                    </div>
-                                )}
-
-
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <button
-                                    onClick={() => {
-                                        setSelectedProperty('');
-                                        setMappings([{ value: '', color: PRESET_COLORS[0], operator: '=' }]);
-                                        setIsPeriodic(false);
-                                        if (onReset) onReset();
-                                    }}
-                                    style={{ flex: 1, padding: '12px', borderRadius: '14px', border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                                >
-                                    <RefreshCw size={14} /> RESET
-                                </button>
-                                <button
-                                    onClick={handleRunAnalysis}
-                                    style={{ flex: 2, padding: '12px', borderRadius: '14px', border: 'none', background: 'linear-gradient(135deg, var(--color-primary), #6366f1)', color: 'var(--color-text-inverse)', fontSize: '12px', fontWeight: '800', cursor: 'pointer', boxShadow: '0 8px 20px rgba(var(--color-primary-rgb), 0.3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}
-                                >
-                                    RUN ANALYSIS
-                                </button>
-                            </div>
-
-                            {/* Playback Console (Only after running and if periodic) */}
-                            {isPeriodic && filteredDates.length > 0 && (
-                                <div style={{
-                                    marginTop: '4px',
-                                    padding: '18px',
-                                    borderRadius: '20px',
-                                    background: 'var(--color-bg-secondary)',
-                                    border: '1px solid var(--color-border)',
-                                    boxShadow: 'var(--shadow-lg)'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
-                                        <button
-                                            onClick={() => onFrameChange(Math.max(0, externalFrameIndex - 1))}
-                                            style={{ background: 'var(--color-bg-tertiary)', border: 'none', color: 'var(--color-text-primary)', width: '36px', height: '36px', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                        >
-                                            <SkipBack size={18} fill="#fff" />
-                                        </button>
-                                        <button
-                                            onClick={onPlaybackToggle}
-                                            style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'var(--color-primary)', border: 'none', color: 'var(--color-text-inverse)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 0 20px rgba(var(--color-primary-rgb), 0.4)' }}
-                                        >
-                                            {externalIsPlaying ? <Pause size={24} fill="#fff" /> : <Play size={24} fill="#fff" style={{ marginLeft: '4px' }} />}
-                                        </button>
-                                        <button
-                                            onClick={() => onFrameChange(Math.min(filteredDates.length - 1, externalFrameIndex + 1))}
-                                            style={{ background: 'var(--color-bg-tertiary)', border: 'none', color: 'var(--color-text-primary)', width: '36px', height: '36px', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                        >
-                                            <SkipForward size={18} fill="#fff" />
-                                        </button>
-                                    </div>
-
-                                    <div style={{ background: 'var(--color-bg-tertiary)', padding: '12px', borderRadius: '14px', border: '1px solid var(--color-border)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '10px' }}>
-                                            <span style={{ color: 'var(--color-primary)', fontWeight: '800', background: 'rgba(var(--color-primary-rgb), 0.1)', padding: '2px 8px', borderRadius: '6px' }}>
-                                                {filteredDates[externalFrameIndex] || '---'}
-                                            </span>
-                                            <span style={{ color: 'var(--color-text-muted)', fontWeight: '700' }}>
-                                                {externalFrameIndex + 1} / {filteredDates.length}
-                                            </span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max={filteredDates.length > 0 ? filteredDates.length - 1 : 0}
-                                            value={externalFrameIndex}
-                                            onChange={(e) => onFrameChange(parseInt(e.target.value))}
-                                            style={{ width: '100%', accentColor: 'var(--color-primary)', cursor: 'pointer' }}
-                                        />
                                     </div>
                                 </div>
                             )}
                         </div>
+
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button
+                                onClick={() => { setSelectedProperty(''); setMappings([{ value: '', color: PRESET_COLORS[0], operator: '=' }]); setIsPeriodic(false); if (onReset) onReset(); }}
+                                className="qb-reset-btn"
+                                style={{ flex: 1 }}
+                            >
+                                <RefreshCw size={14} /> <span>Reset</span>
+                            </button>
+                            <button
+                                onClick={handleRunAnalysis}
+                                className="qb-apply-btn"
+                                style={{ flex: 2, background: 'linear-gradient(135deg, var(--color-primary), #6366f1)' }}
+                            >
+                                Run Analysis
+                            </button>
+                        </div>
+
+                        {/* Playback Console */}
+                        {isPeriodic && filteredDates.length > 0 && (
+                            <div style={{ padding: '16px', borderRadius: '20px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '16px' }}>
+                                    <button onClick={() => onFrameChange(Math.max(0, externalFrameIndex - 1))} className="ac-close-btn" style={{ width: '36px', height: '36px' }}>
+                                        <SkipBack size={16} fill="currentColor" />
+                                    </button>
+                                    <button onClick={onPlaybackToggle} style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--color-primary)', border: 'none', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 0 15px rgba(var(--color-primary-rgb), 0.3)' }}>
+                                        {externalIsPlaying ? <Pause size={20} fill="white" /> : <Play size={20} fill="white" style={{ marginLeft: '3px' }} />}
+                                    </button>
+                                    <button onClick={() => onFrameChange(Math.min(filteredDates.length - 1, externalFrameIndex + 1))} className="ac-close-btn" style={{ width: '36px', height: '36px' }}>
+                                        <SkipForward size={16} fill="currentColor" />
+                                    </button>
+                                </div>
+                                <div style={{ background: 'var(--color-bg-tertiary)', padding: '10px', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '8px' }}>
+                                        <span style={{ color: 'var(--color-primary)', fontWeight: '800' }}>{filteredDates[externalFrameIndex] || '---'}</span>
+                                        <span style={{ color: 'var(--color-text-muted)' }}>{externalFrameIndex + 1} / {filteredDates.length}</span>
+                                    </div>
+                                    <input type="range" min="0" max={filteredDates.length - 1} value={externalFrameIndex} onChange={(e) => onFrameChange(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--color-primary)', cursor: 'pointer' }} />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -1,0 +1,195 @@
+﻿[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 4 modules transformed.
+node.exe : 
+[31mΓ£ù[39m Build 
+failed in 53ms
+At line:1 char:1
++ & "C:\Program Files\
+nodejs/node.exe" "C:\U
+sers\Administrator\App
+Data\ ...
++ ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: ([31mΓ£ù[   
+ 39m Build failed     
+in 53ms:String) [    
+], RemoteExceptio    n
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+[31merror during 
+build:
+[31m[vite:esbuild] 
+Transform failed with 
+3 errors:
+D:/Web App/React/giswe
+bapp/src/components/GI
+SMap/GISMap.jsx:54:18:
+ ERROR: The symbol 
+"getLayerAttributes" 
+has already been 
+declared
+D:/Web App/React/giswe
+bapp/src/components/GI
+SMap/GISMap.jsx:55:2: 
+ERROR: The symbol 
+"getLayerStyle" has 
+already been declared
+D:/Web App/React/giswe
+bapp/src/components/GI
+SMap/GISMap.jsx:56:65:
+ ERROR: The symbol 
+"getLegendUrl" has 
+already been 
+declared[31m
+file: [36mD:/Web App/
+React/giswebapp/src/co
+mponents/GISMap/GISMap
+.jsx:54:18[31m
+[33m
+[33mThe symbol 
+"getLayerAttributes" 
+has already been 
+declared[33m
+52 |  // Service from 
+Server.js
+53 |  import {
+54 |    
+searchLocation, 
+getLayerAttributes, ge
+tFeaturesForAttributeT
+able, 
+getGeoServerLayers, 
+getWMSSourceParams, 
+getLayerB...
+   |                  
+  ^
+55 |    
+getLayerStyle, 
+updateLayerStyle, 
+saveSequence, 
+deleteFeature, 
+updateFeature, 
+SaveNewAttribute, 
+addNewLayerConfig, 
+p...
+56 |    
+batchInsertFeatures, b
+atchUpdateFeaturesByPr
+operty, WORKSPACE, 
+getLegendUrl
+
+[33mThe symbol 
+"getLayerStyle" has 
+already been 
+declared[33m
+53 |  import {
+54 |    
+searchLocation, 
+getLayerAttributes, ge
+tFeaturesForAttributeT
+able, 
+getGeoServerLayers, 
+getWMSSourceParams, 
+getLayerB...
+55 |    
+getLayerStyle, 
+updateLayerStyle, 
+saveSequence, 
+deleteFeature, 
+updateFeature, 
+SaveNewAttribute, 
+addNewLayerConfig, 
+p...
+   |    ^
+56 |    
+batchInsertFeatures, b
+atchUpdateFeaturesByPr
+operty, WORKSPACE, 
+getLegendUrl
+57 |  } from '../../se
+rvices/Server';
+
+[33mThe symbol 
+"getLegendUrl" has 
+already been 
+declared[33m
+54 |    
+searchLocation, 
+getLayerAttributes, ge
+tFeaturesForAttributeT
+able, 
+getGeoServerLayers, 
+getWMSSourceParams, 
+getLayerB...
+55 |    
+getLayerStyle, 
+updateLayerStyle, 
+saveSequence, 
+deleteFeature, 
+updateFeature, 
+SaveNewAttribute, 
+addNewLayerConfig, 
+p...
+56 |    
+batchInsertFeatures, b
+atchUpdateFeaturesByPr
+operty, WORKSPACE, 
+getLegendUrl
+   |                  
+                      
+                      
+     ^
+57 |  } from '../../se
+rvices/Server';
+58 |  
+[31m
+    at 
+failureErrorWithLog 
+(D:\Web App\React\gisw
+ebapp\node_modules\esb
+uild\lib\main.js:1467:
+15)
+    at D:\Web App\Reac
+t\giswebapp\node_modul
+es\esbuild\lib\main.js
+:736:50
+    at responseCallbac
+ks.<computed> (D:\Web 
+App\React\giswebapp\no
+de_modules\esbuild\lib
+\main.js:603:9)
+    at 
+handleIncomingPacket 
+(D:\Web App\React\gisw
+ebapp\node_modules\esb
+uild\lib\main.js:658:1
+2)
+    at 
+Socket.readFromStdout 
+(D:\Web App\React\gisw
+ebapp\node_modules\esb
+uild\lib\main.js:581:7
+)
+    at Socket.emit 
+(node:events:519:28)
+    at addChunk (node:
+internal/streams/reada
+ble:561:12)
+    at readableAddChun
+kPushByteMode (node:in
+ternal/streams/readabl
+e:512:3)
+    at Readable.push (
+node:internal/streams/
+readable:392:5)
+    at 
+Pipe.onStreamRead (nod
+e:internal/stream_base
+_commons:189:23)[39m

@@ -36,10 +36,12 @@ import QueryBuilderCard from '../subComponents/QueryBuilderCard';
 import AnalysisCard from '../subComponents/AnalysisCard';
 import LayerManagementCard from '../subComponents/LayerManagementCard';
 import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
+import StyleEditorCard from '../subComponents/StyleEditorCard';
 import SpatialJoinCard from '../subComponents/SpatialJoinCard';
 import CreateLayerCard from '../subComponents/CreateLayerCard';
 import DataManipulationCard from '../subComponents/DataManipulationCard';
 import ServerInfoCard from '../subComponents/ServerInfoCard';
+import { parseSLD, applyStyleChanges } from '../../utils/StyleUtils';
 import TopLegendPanel from '../subComponents/TopLegendPanel';
 import { getRenderPixel } from 'ol/render';
 
@@ -50,7 +52,7 @@ import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, forma
 import {
   searchLocation, getLayerAttributes, getFeaturesForAttributeTable, getGeoServerLayers, getWMSSourceParams, getLayerBBox,
   getLayerStyle, updateLayerStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
-  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl
+  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl, uploadIcon
 } from '../../services/Server';
 
 // Server Credentials
@@ -204,6 +206,10 @@ function GISMap() {
   const analysisVectorLayersRef = useRef({}); // layerId -> olVectorLayer
   const analysisWMSVisibilitiesRef = useRef({}); // layerId -> originalVisibility (for restore)
   const [showTopLegend, setShowTopLegend] = useState(false);
+  const [editingStyleLayer, setEditingStyleLayer] = useState(null);
+  const [styleData, setStyleData] = useState(null);
+  const [isSavingStyle, setIsSavingStyle] = useState(false);
+  const [layerStyleAttributes, setLayerStyleAttributes] = useState([]);
   const [bookmarks, setBookmarks] = useState(() => {
     const key = getUniqueCookieKey('gis_bookmarks');
     const saved = getCookie(key);
@@ -501,7 +507,40 @@ function GISMap() {
             mapLayer = new TileLayer({
               source: new TileWMS({
                 ...sourceParams,
-                params: sourceParams.params
+                params: sourceParams.params,
+                tileLoadFunction: (tile, src) => {
+                  const url = src.split('?')[0];
+                  const search = src.split('?')[1];
+                  const params = new URLSearchParams(search);
+
+                  // If using SLD_BODY and it's large, use POST
+                  if (params.get('SLD_BODY')) {
+                    fetch(url, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': AUTH_HEADER,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                      },
+                      body: search
+                    })
+                      .then(response => response.blob())
+                      .then(blob => {
+                        const objectUrl = URL.createObjectURL(blob);
+                        tile.getImage().src = objectUrl;
+                        tile.getImage().onload = () => URL.revokeObjectURL(objectUrl);
+                      })
+                      .catch(err => console.error('Tile load error:', err));
+                  } else {
+                    // Standard GET with Auth header (must use XHR or Fetch for headers)
+                    fetch(src, { headers: { 'Authorization': AUTH_HEADER } })
+                      .then(response => response.blob())
+                      .then(blob => {
+                        const objectUrl = URL.createObjectURL(blob);
+                        tile.getImage().src = objectUrl;
+                        tile.getImage().onload = () => URL.revokeObjectURL(objectUrl);
+                      });
+                  }
+                }
               }),
               zIndex: 1000 - (layer.sequence || 999),
               opacity: layer.opacity,
@@ -1150,7 +1189,141 @@ function GISMap() {
     toast.success('Spatial join reset. Layers restored.');
   };
 
-  //#endregion
+  const handleLoadStyle = async (layer) => {
+    setActiveLayerTool('styles');
+    setEditingStyleLayer(layer);
+    toast.loading('Loading current styles...', { id: 'style-load' });
+    try {
+      // Corrected call: pass the fullName and destructure result
+      const result = await getLayerStyle(layer.fullName);
+
+      if (result && result.sldBody) {
+        const { styleName, sldBody } = result;
+        const parsed = parseSLD(sldBody);
+        setStyleData({
+          styleName,
+          sldBody,
+          properties: parsed.props,
+          availableProps: parsed.availableProps
+        });
+
+        const attrs = await getLayerAttributes(layer.fullName);
+        setLayerStyleAttributes(attrs || []);
+        toast.success(`Styles loaded for ${layer.name}`, { id: 'style-load' });
+      } else {
+        throw new Error('No SLD content received');
+      }
+    } catch (error) {
+      console.error("Failed to load style:", error);
+      toast.error('Failed to load layer styles. Using defaults.', { id: 'style-load' });
+      setStyleData({
+        styleName: layer.style || layer.name,
+        sldBody: '',
+        properties: parseSLD('').props,
+        availableProps: parseSLD('').availableProps
+      });
+    }
+  };
+
+  const handleSaveStyle = async (overrideProps = null) => {
+    if (!editingStyleLayer || !styleData) return;
+
+    setIsSavingStyle(true);
+    const saveId = toast.loading('Saving style to server...');
+
+    try {
+      const propsToUse = overrideProps || styleData.properties;
+      const newSld = applyStyleChanges(styleData.sldBody, propsToUse);
+      const success = await updateLayerStyle(editingStyleLayer.fullName, newSld);
+
+      if (success) {
+        // Authoritative re-fetch to ensure sync with server
+        const newData = await getLayerStyle(editingStyleLayer.fullName);
+        if (newData) {
+          const parsed = parseSLD(newData.sldBody);
+          setStyleData({
+            ...newData,
+            properties: parsed.props,
+            availableProps: parsed.availableProps
+          });
+        }
+
+        // Re-trigger WMS refresh
+        const olLayer = operationalLayersRef.current[editingStyleLayer.id];
+        if (olLayer) {
+          const source = olLayer.getSource();
+          source.updateParams({
+            ...source.getParams(),
+            _t: Date.now(),
+            SLD_BODY: null
+          });
+        }
+
+        toast.success('Style saved successfully!', { id: saveId });
+      } else {
+        toast.error('Failed to save style to server.', { id: saveId });
+      }
+    } catch (error) {
+      console.error("Failed to save style:", error);
+      toast.error('Error saving style to server.', { id: saveId });
+    } finally {
+      setIsSavingStyle(false);
+    }
+  };
+
+  // Debounce for style previews
+  const previewTimeoutRef = useRef(null);
+
+  const updateStyleProp = (key, value, autoSave = false) => {
+    setStyleData(prev => {
+      if (!prev) return null;
+      const newProps = { ...prev.properties, [key]: value };
+
+      // REAL-TIME PREVIEW (Non-persistent)
+      if (editingStyleLayer) {
+        if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
+
+        previewTimeoutRef.current = setTimeout(() => {
+          const olLayer = operationalLayersRef.current[editingStyleLayer.id];
+          if (olLayer) {
+            const newSld = applyStyleChanges(prev.sldBody, newProps);
+            olLayer.getSource().updateParams({
+              ...olLayer.getSource().getParams(),
+              SLD_BODY: newSld,
+              _t: Date.now() // Add timestamp to break cache
+            });
+          }
+        }, 100); // 100ms debounce
+      }
+
+      if (autoSave) {
+        handleSaveStyle(newProps);
+      }
+
+      return {
+        ...prev,
+        properties: newProps
+      };
+    });
+  };
+
+  const handleStyleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !editingStyleLayer) return;
+
+    const toastId = toast.loading('Uploading icon...');
+    try {
+      const workspace = editingStyleLayer.fullName.split(':')[0];
+      const filename = await uploadIcon(file, workspace);
+      if (filename) {
+        updateStyleProp('externalGraphicUrl', filename, true);
+        toast.success('Icon uploaded and applied!', { id: toastId });
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      toast.error('Icon upload failed.', { id: toastId });
+    }
+  };
 
 
   // Analysis Playback Loop
@@ -2495,6 +2668,7 @@ function GISMap() {
               handleToggleLayerQuery={handleToggleLayerQuery}
               activeHighlightLayerId={activeHighlightLayerId}
               isHighlightAnimating={isHighlightAnimating}
+              onOpenStyleEditor={handleLoadStyle}
               handleUpdateLayerStyle={handleUpdateLayerStyle}
               infoSelectionMode={infoSelectionMode}
               setInfoSelectionMode={setInfoSelectionMode}
@@ -2723,6 +2897,21 @@ function GISMap() {
               onPerformSpatialJoin={handlePerformSpatialJoin}
               onResetSpatialJoin={handleResetSpatialJoin}
               targetLayerId={activeSpatialJoinLayerId}
+            />
+
+            <StyleEditorCard
+              isOpen={activeLayerTool === 'styles' && !!editingStyleLayer}
+              onClose={() => {
+                setEditingStyleLayer(null);
+                setActiveLayerTool(null);
+              }}
+              editingLayer={editingStyleLayer}
+              styleData={styleData}
+              layerAttributes={layerStyleAttributes}
+              isSaving={isSavingStyle}
+              onSave={handleSaveStyle}
+              onUpdateProp={updateStyleProp}
+              onFileUpload={handleStyleFileUpload}
             />
 
             <CreateLayerCard

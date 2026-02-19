@@ -141,7 +141,9 @@ export const getLayerBBox = async (fullLayerName) => {
 export const getLayerStyle = async (fullLayerName) => {
     try {
         const [ws, name] = fullLayerName.split(':');
-        const layerResponse = await fetch(`${GEOSERVER_URL}/rest/layers/${name}.json?t=${Date.now()}`,
+
+        // Use workspace-qualified URL for layer info to be precise
+        const layerResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/layers/${name}.json?t=${Date.now()}`,
             {
                 headers: {
                     'Authorization': AUTH_HEADER,
@@ -149,27 +151,50 @@ export const getLayerStyle = async (fullLayerName) => {
                 }
             });
 
-        if (!layerResponse.ok)
-            return null;
+        if (!layerResponse.ok) {
+            console.warn(`Layer ${fullLayerName} not found in workspace context, trying global...`);
+            const globalLayerRes = await fetch(`${GEOSERVER_URL}/rest/layers/${name}.json?t=${Date.now()}`, {
+                headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
+            });
+            if (!globalLayerRes.ok) return null;
+            const data = await globalLayerRes.json();
+            return fetchSLD(data.layer.defaultStyle.name, ws);
+        }
+
         const layerData = await layerResponse.json();
         const styleName = layerData.layer.defaultStyle.name;
-
-        // Fetch the SLD 
-        const sldResponse = await fetch(`${GEOSERVER_URL}/rest/styles/${styleName}.sld?t=${Date.now()}`,
-            {
-                headers: {
-                    'Authorization': AUTH_HEADER,
-                }
-            });
-
-        if (!sldResponse.ok) return null;
-
-        const sldBody = await sldResponse.text();
-
-        return { styleName, sldBody };
+        return fetchSLD(styleName, ws);
     }
     catch (err) {
         console.error('Failed to fetch layer style:', err);
+    }
+    return null;
+};
+
+// Helper to fetch SLD from either workspace or global
+const fetchSLD = async (styleName, workspace) => {
+    try {
+        // Strip workspace prefix if present (e.g., "cite:States" -> "States")
+        const cleanStyleName = styleName.includes(':') ? styleName.split(':')[1] : styleName;
+
+        // 1. Try workspace style first
+        let sldResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${workspace}/styles/${cleanStyleName}.sld?t=${Date.now()}`, {
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+
+        // 2. Try global style (with original or clean name) if workspace style doesn't exist or 404s
+        if (!sldResponse.ok) {
+            sldResponse = await fetch(`${GEOSERVER_URL}/rest/styles/${styleName}.sld?t=${Date.now()}`, {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+        }
+
+        if (sldResponse.ok) {
+            const sldBody = await sldResponse.text();
+            return { styleName, sldBody };
+        }
+    } catch (err) {
+        console.error(`Error fetching SLD for style ${styleName}:`, err);
     }
     return null;
 };
