@@ -34,6 +34,7 @@ const PrimarySidebar = ({
     theme,
     handleClearDrawings,
     onOpenLayerManagement,
+    isLayerManagementOpen, // New prop
     onToggleLayout,
     isLocked,
     setIsLocked,
@@ -41,6 +42,10 @@ const PrimarySidebar = ({
     showTopLegend,
     setShowTopLegend
 }) => {
+    // ... (lines 45-89 remain same)
+
+
+
     // State for expanded sections
     const [expandedSections, setExpandedSections] = useState({
         'General': true,
@@ -90,7 +95,7 @@ const PrimarySidebar = ({
                     label: 'Server',
                     icon: Database,
                     action: onOpenLayerManagement,
-                    isActive: activePanel === 'layermanagement',
+                    isActive: isLayerManagementOpen,
                     color: '#6366f1' // Indigo
                 },
                 {
@@ -181,7 +186,7 @@ const PrimarySidebar = ({
                     label: 'Print Map',
                     icon: Printer,
                     action: handlePrintClick,
-                    isActive: false,
+                    isActive: activePanel === 'print',
                     color: '#64748b'
                 },
                 {

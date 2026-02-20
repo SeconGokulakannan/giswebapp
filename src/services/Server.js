@@ -199,104 +199,100 @@ const fetchSLD = async (styleName, workspace) => {
     return null;
 };
 
-export const updateLayerStyle = async (fullLayerName, sldBody) => {
+export const updateLayerStyle = async (fullLayerName, styleName, sldBody) => {
     try {
-        const [ws, layerName] = fullLayerName.split(':');
-        const targetStyleName = `${layerName}_style`;
+        const [layerWs, layerName] = fullLayerName.split(':');
 
-        //Check workspace-specific style
-        const wsCheck = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/styles/${targetStyleName}.json`,
-            {
+        // Determine Target Workspace and Clean Style Name
+        let styleWs = layerWs; // Default to layer's workspace
+        let cleanStyleName = styleName;
+
+        if (styleName && styleName.includes(':')) {
+            const parts = styleName.split(':');
+            styleWs = parts[0];
+            cleanStyleName = parts[1];
+        }
+
+        console.log(`Updating Style. Layer: ${fullLayerName}, Style: ${styleWs}:${cleanStyleName}`);
+        // DEBUG: Log the SLD body to check for specific XML errors
+        console.log('--- SLD BODY DEBUG ---');
+        console.log(sldBody);
+        console.log('----------------------');
+
+        let updateUrl = `${GEOSERVER_URL}/rest/workspaces/${styleWs}/styles/${cleanStyleName}`;
+
+        // Check if style exists in workspace
+        const wsCheck = await fetch(`${GEOSERVER_URL}/rest/workspaces/${styleWs}/styles/${cleanStyleName}.json`, {
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+
+        if (!wsCheck.ok) {
+            // Check Global if not in workspace
+            const globalCheck = await fetch(`${GEOSERVER_URL}/rest/styles/${cleanStyleName}.json`, {
                 headers: { 'Authorization': AUTH_HEADER }
             });
 
-        let styleExists = wsCheck.ok;
-        let updateUrl = `${GEOSERVER_URL}/rest/workspaces/${ws}/styles/${targetStyleName}`;
-
-        if (!styleExists) {
-            // Apply Default Style if not exists
-            const globalCheck = await fetch(`${GEOSERVER_URL}/rest/styles/${targetStyleName}.json`,
-                {
-                    headers: { 'Authorization': AUTH_HEADER }
-                });
-
             if (globalCheck.ok) {
-                styleExists = true;
-                updateUrl = `${GEOSERVER_URL}/rest/styles/${targetStyleName}`;
+                updateUrl = `${GEOSERVER_URL}/rest/styles/${cleanStyleName}`;
+                console.log("Targeting Global Style");
+            } else {
+                console.warn("Style not found. Attempting creation in layer workspace.");
+                updateUrl = `${GEOSERVER_URL}/rest/workspaces/${layerWs}/styles/${cleanStyleName}`;
             }
         }
 
-        if (!styleExists) {
-            //  Create the style if it doesn't exist (target workspace)
-            const createResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/styles`,
-                {
+        // PUT the SLD body
+        const putSldResponse = await fetch(updateUrl, {
+            method: 'PUT',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/vnd.ogc.sld+xml'
+            },
+            body: sldBody
+        });
+
+        if (!putSldResponse.ok) {
+            const errorText = await putSldResponse.text();
+            console.error(`Failed to PUT SLD body (Status: ${putSldResponse.status}):`, errorText);
+
+            // Try creation fallback only if it's a 404 (Not Found) or specific known issue
+            if (putSldResponse.status === 404 || putSldResponse.status === 405) {
+                // Fallback: Try POST to create if PUT failed
+                const createResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${layerWs}/styles`, {
                     method: 'POST',
                     headers: {
                         'Authorization': AUTH_HEADER,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        style:
-                        {
-                            name: targetStyleName,
-                            filename: `${targetStyleName}.sld`
+                        style: {
+                            name: cleanStyleName,
+                            filename: `${cleanStyleName}.sld`
                         }
                     })
                 });
 
-            if (!createResponse.ok) {
-                // Create globally if workspace fails
-                await fetch(`${GEOSERVER_URL}/rest/styles`,
-                    {
-                        method: 'POST',
-                        headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ style: { name: targetStyleName, filename: `${targetStyleName}.sld` } })
-                    });
-                updateUrl = `${GEOSERVER_URL}/rest/styles/${targetStyleName}`;
-            }
-        }
-
-        //PUT the SLD body
-        const putSldResponse = await fetch(updateUrl,
-            {
-                method: 'PUT',
-                headers: {
-                    'Authorization': AUTH_HEADER,
-                    'Content-Type': 'application/vnd.ogc.sld+xml'
-                },
-                body: sldBody
-            });
-
-        if (!putSldResponse.ok) return false;
-
-        //Ensure the layer is using this style
-        const layerInfoRes = await fetch(`${GEOSERVER_URL}/rest/layers/${layerName}.json`,
-            {
-                headers: { 'Authorization': AUTH_HEADER }
-            });
-
-        //retrive Update Styles
-        if (layerInfoRes.ok) {
-            const layerData = await layerInfoRes.json();
-
-            if (layerData && layerData.layer.defaultStyle.name !== targetStyleName) {
-                await fetch(`${GEOSERVER_URL}/rest/layers/${layerName}`,
-                    {
+                if (createResponse.ok) {
+                    // Retry PUT after creation
+                    const retryPut = await fetch(`${GEOSERVER_URL}/rest/workspaces/${layerWs}/styles/${cleanStyleName}`, {
                         method: 'PUT',
-                        headers: {
-                            'Authorization': AUTH_HEADER,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            layer: {
-                                defaultStyle: { name: targetStyleName }
-                            }
-                        })
+                        headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/vnd.ogc.sld+xml' },
+                        body: sldBody
                     });
+                    if (!retryPut.ok) {
+                        console.error(`Retry PUT failed (Status: ${retryPut.status}):`, await retryPut.text());
+                    }
+                    return retryPut.ok;
+                } else {
+                    console.error(`Failed to create style (Status: ${createResponse.status}):`, await createResponse.text());
+                }
             }
+            return false;
         }
 
         return true;
+
+
     }
     catch (err) {
         console.error('Failed to update unique layer style:', err);

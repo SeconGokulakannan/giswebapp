@@ -170,6 +170,7 @@ const MapPanel = ({
                         {activePanel === 'utility_tools' && 'Tools'}
                         {activePanel === 'location' && 'Go to Location'}
                         {activePanel === 'print' && 'Export Map'}
+                        {activePanel === 'basemaps' && 'Base Maps'}
                         {activePanel === 'bookmarks' && 'Map Bookmarks'}
                     </h3>
                     <p>
@@ -179,6 +180,7 @@ const MapPanel = ({
                         {activePanel === 'utility_tools' && 'Measure and Analyze Map Data'}
                         {activePanel === 'location' && 'Enter precise coordinates'}
                         {activePanel === 'print' && 'Configure Map Export settings'}
+                        {activePanel === 'basemaps' && 'Change the underlying map style'}
                         {activePanel === 'bookmarks' && 'Save and navigate to favorite views'}
                     </p>
                 </div>

@@ -50,12 +50,16 @@ export const parseSLD = (sldBody) => {
             }
         }
 
-        const regex = new RegExp(`<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name="${name}"[^>]*>([^<]+)</(?:[\\w-]*:)?(?:Css|Svg)Parameter>`, 'i');
+        // Expanded regex to handle namespaces better and ensuring value capture
+        const regex = new RegExp(`<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name=["']${name}["'][^>]*>([\\s\\S]*?)</(?:[\\w-]*:)?(?:Css|Svg)Parameter>`, 'i');
         const match = searchTarget.match(regex);
         if (match) {
             const propKey = name.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
             availableProps[propKey] = true;
-            return match[1].trim();
+            let val = match[1].trim();
+            // Normalize dash-array
+            if (name === 'stroke-dasharray') val = val.replace(/,/g, ' ').replace(/\s+/g, ' ');
+            return val;
         }
         return defaultValue;
     };
@@ -63,7 +67,7 @@ export const parseSLD = (sldBody) => {
     const extractTag = (tagName, defaultValue, parentContext = null) => {
         let regex;
         if (parentContext) {
-            regex = new RegExp(`<([\\w-]*:)?${parentContext}[\\s\\S]*?<([\\w-]*:)?${tagName}>([^<]+)</(?:[\\w-]*:)?${tagName}>`, 'i');
+            regex = new RegExp(`<([\\w-]*:)?${parentContext}[\\s\\S]*?<([\\w-]*:)?${tagName}>([\\s\\S]*?)</(?:[\\w-]*:)?${tagName}>`, 'i');
             const match = sldBody.match(regex);
             if (match) {
                 const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
@@ -71,7 +75,7 @@ export const parseSLD = (sldBody) => {
                 return match[3].trim();
             }
         } else {
-            regex = new RegExp(`<([\\w-]*:)?${tagName}>([^<]+)</(?:[\\w-]*:)?${tagName}>`, 'i');
+            regex = new RegExp(`<([\\w-]*:)?${tagName}>([\\s\\S]*?)</(?:[\\w-]*:)?${tagName}>`, 'i');
             const match = sldBody.match(regex);
             if (match) {
                 const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
@@ -103,11 +107,13 @@ export const parseSLD = (sldBody) => {
     };
 
     const extractHatch = () => {
-        const regex = /<([\\w-]*:)?Fill>[\s\S]*?<([\\w-]*:)?GraphicFill>[\s\S]*?<([\\w-]*:)?WellKnownName>([^<]+)<\/(?:[\\w-]*:)?WellKnownName>/i;
+        // More specific regex to ensure we are inside a GraphicFill/Graphic/Mark structure
+        // Relaxed whitespace handling and tag attributes
+        const regex = /<([\\w-]*:)?Fill>[\s\S]*?<([\\w-]*:)?GraphicFill>[\s\S]*?<([\\w-]*:)?Graphic>[\s\S]*?<([\\w-]*:)?Mark>[\s\S]*?<([\\w-]*:)?WellKnownName>([^<]+)<\/(?:[\\w-]*:)?WellKnownName>/i;
         const match = sldBody.match(regex);
         if (match) {
             availableProps.hatchPattern = true;
-            return match[4].trim();
+            return match[6].trim();
         }
         return '';
     };
@@ -125,7 +131,16 @@ export const parseSLD = (sldBody) => {
     props.rotation = parseFloat(extractTag('Rotation', props.rotation));
     props.wellKnownName = extractTag('WellKnownName', props.wellKnownName);
     props.externalGraphicUrl = extractExternalGraphic();
-    props.hatchPattern = extractHatch();
+
+    // Hatch Pattern Detection
+    const hatch = extractHatch();
+    if (hatch) {
+        props.hatchPattern = hatch;
+    } else if (props.fillOpacity === 0 && availableProps.fillOpacity) {
+        // Detect Outline from 0 opacity
+        props.hatchPattern = 'outline';
+        availableProps.hatchPattern = true;
+    }
 
     props.fontSize = parseFloat(extract('font-size', props.fontSize, 'TextSymbolizer'));
     props.fontFamily = extract('font-family', props.fontFamily, 'TextSymbolizer');
@@ -160,8 +175,8 @@ export const parseSLD = (sldBody) => {
     }
 
     // Parse VendorOptions for Duplicates and Repeat
-    const groupOptionRegex = /<([\\w-]*:)?VendorOption name="group">([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
-    const repeatOptionRegex = /<([\\w-]*:)?VendorOption name="repeat">([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
+    const groupOptionRegex = /<([\\w-]*:)?VendorOption name=["']group["']>([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
+    const repeatOptionRegex = /<([\\w-]*:)?VendorOption name=["']repeat["']>([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
 
     const groupMatch = sldBody.match(groupOptionRegex);
     props.preventDuplicates = groupMatch ? (groupMatch[2] === 'yes') : false;
@@ -200,17 +215,28 @@ export const parseSLD = (sldBody) => {
 };
 
 export const applyStyleChanges = (sldBody, props) => {
+    console.log("StyleUtils: Applying Changes. Props:", props);
     let newSld = sldBody;
     let pendingLabelRule = null;
 
-    const ensureParent = (parentTag, containerTag) => {
+    const ensureParent = (parentTag, containerTag, beforeTag = null) => {
         const tagRegex = new RegExp(`<([\\w-]*:)?${parentTag}[^>]*>`, 'i');
         if (!newSld.match(tagRegex)) {
             const containerRegex = new RegExp(`(<([\\w-]*:)?${containerTag}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${containerTag}>)`, 'i');
             const match = newSld.match(containerRegex);
             if (match) {
                 const prefix = match[2] || '';
+                const content = match[3];
                 const newParent = `\n            <${prefix}${parentTag}></${prefix}${parentTag}>`;
+
+                if (beforeTag) {
+                    const beforeRegex = new RegExp(`<([\\w-]*:)?${beforeTag}[^>]*>`, 'i');
+                    if (content.match(beforeRegex)) {
+                        const updatedContent = content.replace(beforeRegex, `${newParent}\n            $&`);
+                        newSld = newSld.replace(containerRegex, `$1${updatedContent}$4`);
+                        return;
+                    }
+                }
                 newSld = newSld.replace(containerRegex, `$1$3${newParent}$4`);
             }
         }
@@ -223,7 +249,7 @@ export const applyStyleChanges = (sldBody, props) => {
             const parentRegex = new RegExp(`(<([\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'gi');
 
             newSld = newSld.replace(parentRegex, (match, startTag, prefix, content, endTag) => {
-                const paramRegex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name="${name}"[^>]*>)([^<]*)(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
+                const paramRegex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name=["']${name}["'][^>]*>)([^<]*)(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
 
                 if (value === null) {
                     return `${startTag}${content.replace(paramRegex, '')}${endTag}`;
@@ -233,13 +259,13 @@ export const applyStyleChanges = (sldBody, props) => {
                     } else {
                         const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
                         const internalPrefix = prefix || '';
-                        const newParam = `\n            <${internalPrefix}${tagType} name="${name}">${value}</${internalPrefix}${tagType}>`;
+                        const newParam = `<${internalPrefix}${tagType} name="${name}">${value}</${internalPrefix}${tagType}>`;
                         return `${startTag}${content}${newParam}${endTag}`;
                     }
                 }
             });
         } else {
-            const regex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name="${name}"[^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
+            const regex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name=["']${name}["'][^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
             if (value === null) {
                 if (newSld.match(regex)) newSld = newSld.replace(regex, '');
             } else {
@@ -267,20 +293,41 @@ export const applyStyleChanges = (sldBody, props) => {
     // -------------------------------------------------------------------------
     // 1. Structural Robustness
     // -------------------------------------------------------------------------
-    ensureParent('Fill', 'PolygonSymbolizer');
+    // -------------------------------------------------------------------------
+    // 1. Structural Robustness (Order Matters for Schema Compliance)
+    // -------------------------------------------------------------------------
+    ensureParent('Fill', 'PolygonSymbolizer', 'Stroke'); // Fill before Stroke
     ensureParent('Stroke', 'PolygonSymbolizer');
+
     ensureParent('Stroke', 'LineSymbolizer');
-    ensureParent('Fill', 'Mark');
+
+    ensureParent('Fill', 'Mark', 'Stroke');
     ensureParent('Stroke', 'Mark');
-    ensureParent('Halo', 'TextSymbolizer');
-    ensureParent('Font', 'TextSymbolizer');
+
+    ensureParent('Halo', 'TextSymbolizer', 'Fill');
+    ensureParent('Font', 'TextSymbolizer', 'Halo');
     ensureParent('Fill', 'TextSymbolizer');
 
     // -------------------------------------------------------------------------
     // 2. Generic Property Replacements (First pass)
     // -------------------------------------------------------------------------
-    replace('fill', props.fill, 'Fill');
-    replace('fill-opacity', props.fillOpacity, 'Fill');
+    // -------------------------------------------------------------------------
+    // 2. Generic Property Replacements (First pass - excluded from GraphicFill)
+    // -------------------------------------------------------------------------
+    // We delay 'fill' and 'stroke' for Polygon if a pattern is active
+    // We delay 'fill' and 'stroke' for Polygon if a pattern is active
+    const isGraphicPattern = props.hatchPattern && props.hatchPattern !== '' && props.hatchPattern !== 'outline';
+    const isOutline = props.hatchPattern === 'outline';
+    console.log("StyleUtils: isGraphicPattern:", isGraphicPattern, "isOutline:", isOutline, "hatchPattern:", props.hatchPattern);
+
+    if (!isGraphicPattern && !isOutline) {
+        console.log("StyleUtils: Applying generic fill (no pattern)");
+        replace('fill', props.fill, 'Fill');
+        replace('fill-opacity', props.fillOpacity, 'Fill');
+    } else {
+        console.log("StyleUtils: Skipping generic fill for pattern or outline");
+    }
+
     replace('stroke', props.stroke, 'Stroke');
     replace('stroke-width', props.strokeWidth, 'Stroke');
     replace('stroke-opacity', props.strokeOpacity, 'Stroke');
@@ -295,6 +342,15 @@ export const applyStyleChanges = (sldBody, props) => {
     // -------------------------------------------------------------------------
     // 2. Specialized Replacements (Second pass - can overwrite generic tags)
     // -------------------------------------------------------------------------
+
+    // Handle Dash Array (Remove if null/Solid)
+    if (props.strokeDasharray === null || props.strokeDasharray === '') {
+        const strokeRegex = /(<([\w-]*:)?Stroke[^>]*>)([\s\S]*?)(<\/([\w-]*:)?Stroke>)/gi;
+        newSld = newSld.replace(strokeRegex, (match, start, prefix, content, end) => {
+            const dashRegex = /<([\w-]*:)?(Css|Svg)Parameter[^>]*name=["']stroke-dasharray["'][^>]*>([\s\S]*?)<\/([\w-]*:)?\2Parameter>/i;
+            return `${start}${content.replace(dashRegex, '')}${end}`;
+        });
+    }
 
     // Handle SVG Icons
     if (props.externalGraphicUrl) {
@@ -317,13 +373,34 @@ export const applyStyleChanges = (sldBody, props) => {
         }
     }
 
-    // Handle Hatch Patterns for Polygons
-    const polyFillRegex = /(<([\\w-]*:)?PolygonSymbolizer[\s\S]*?)<([\\w-]*:)?Fill>([\s\S]*?)<\/([\\w-]*:)?Fill>/i;
+    // 2. Handle Hatch Patterns for Polygons
+    // -------------------------------------------------------------------------
+    // Improved Regex to find existing Fill within PolygonSymbolizer
+    const polyFillRegex = /(<([\w-]*:)?PolygonSymbolizer[^>]*>)([\s\S]*?)(<([\w-]*:)?Fill>[\s\S]*?<\/(?:[\w-]*:)?Fill>)([\s\S]*?)(<\/(?:[\w-]*:)?PolygonSymbolizer>)/i;
     const polyFillMatch = newSld.match(polyFillRegex);
-    const isGraphicPattern = props.hatchPattern && props.hatchPattern !== '' && props.hatchPattern !== 'outline';
+
+    // We also need a regex to just find ANY Fill inside PolygonSymbolizer for removal if the specific match above fails but we want to insert
+    const simplePolyFillRegex = /<([\w-]*:)?Fill>[\s\S]*?<\/(?:[\w-]*:)?Fill>/i;
+
+    // isGraphicPattern is already declared above
 
     if (isGraphicPattern) {
-        const prefix = polyFillMatch ? (polyFillMatch[3] || '') : '';
+        console.log("StyleUtils: Entering pattern replacement block");
+
+        // Determine prefix safely
+        let prefix = '';
+        if (polyFillMatch && polyFillMatch[3]) {
+            prefix = polyFillMatch[3];
+        } else {
+            const polySymMatch = newSld.match(/(<([\w-]*:)?PolygonSymbolizer[^>]*>)/i);
+            if (polySymMatch && polySymMatch[2]) {
+                prefix = polySymMatch[2];
+            }
+        }
+        prefix = (prefix || '').trim();
+        console.log("StyleUtils: Using prefix:", `'${prefix}'`);
+
+        // Create the new Fill Tag
         const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
         const graphicFill = `<${prefix}Fill>
           <${prefix}GraphicFill>
@@ -331,23 +408,55 @@ export const applyStyleChanges = (sldBody, props) => {
               <${prefix}Mark>
                 <${prefix}WellKnownName>${props.hatchPattern}</${prefix}WellKnownName>
                 <${prefix}Stroke>
-                  <${prefix}${tagType} name="stroke">${props.stroke || '#000000'}</${prefix}${tagType}>
+                  <${prefix}${tagType} name="stroke">${props.fill || '#000000'}</${prefix}${tagType}>
                   <${prefix}${tagType} name="stroke-width">1</${prefix}${tagType}>
                 </${prefix}Stroke>
               </${prefix}Mark>
-              <${prefix}Size>12</${prefix}Size>
+              <${prefix}Size>8</${prefix}Size>
             </${prefix}Graphic>
           </${prefix}GraphicFill>
         </${prefix}Fill>`;
-        if (polyFillMatch) {
-            newSld = newSld.replace(polyFillRegex, `$1${graphicFill}`);
+
+        // Robust Replacement Strategy:
+        // 1. Find the PolygonSymbolizer block
+        const polySymRegex = /(<([\w-]*:)?PolygonSymbolizer[^>]*>)([\s\S]*?)(<\/([\w-]*:)?PolygonSymbolizer>)/i;
+        const symMatch = newSld.match(polySymRegex);
+
+        if (symMatch) {
+            const startTag = symMatch[1];
+            let content = symMatch[3];
+            const endTag = symMatch[4];
+
+            // 2. Remove ANY existing Fill tag from the content
+            // Matches <sld:Fill>...</sld:Fill> or <sld:Fill />
+            const fillRegex = /<([\w-]*:)?Fill([\s\S]*?)(<\/(?:[\w-]*:)?Fill>|\/>)/gi;
+            // Also check for simple self-closing if the above is too strict
+            const simpleFillRegex = /<([\w-]*:)?Fill[^>]*>[\s\S]*?<\/(?:[\w-]*:)?Fill>/gi;
+
+            let cleanedContent = content;
+            if (fillRegex.test(content)) {
+                console.log("StyleUtils: Removing existing Fill from content");
+                cleanedContent = content.replace(fillRegex, '');
+            } else if (simpleFillRegex.test(content)) {
+                console.log("StyleUtils: Removing existing Fill (simple regex)");
+                cleanedContent = content.replace(simpleFillRegex, '');
+            }
+
+            // 3. Prepend the new GraphicFill to the cleaned content (Fill usually comes first)
+            // Ensure we don't duplicate newlines excessively
+            const newContent = `\n${graphicFill}\n${cleanedContent.trim()}`;
+
+            console.log("StyleUtils: Reassembling PolygonSymbolizer with new Pattern");
+            newSld = newSld.replace(polySymRegex, `${startTag}${newContent}\n${endTag}`);
+        } else {
+            console.warn("StyleUtils: No PolygonSymbolizer found to apply pattern!");
         }
-    } else if (props.hatchPattern === 'outline') {
-        const prefix = polyFillMatch ? (polyFillMatch[3] || '') : '';
-        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-        const outlineFill = `<${prefix}Fill><${prefix}${tagType} name="fill-opacity">0</${prefix}${tagType}></${prefix}Fill>`;
+    } else if (isOutline) {
+        console.log("StyleUtils: Applying Outline (Removing Fill)");
         if (polyFillMatch) {
-            newSld = newSld.replace(polyFillRegex, `$1${outlineFill}`);
+            newSld = newSld.replace(polyFillRegex, `$1$3$6$7`);
+        } else {
+            newSld = newSld.replace(simplePolyFillRegex, '');
         }
     } else if (polyFillMatch && polyFillMatch[4].includes('GraphicFill')) {
         const prefix = polyFillMatch[3] || '';
@@ -417,10 +526,36 @@ export const applyStyleChanges = (sldBody, props) => {
             <${prefix}VendorOption name="autoWrap">100</${prefix}VendorOption>
         </${prefix}TextSymbolizer>
     </${prefix}Rule>`;
-
             newSld = newSld.replace(featureTypeStyleRegex, `$1$3${newLabelRule}$4`);
         }
     }
+
+    // Final Pass: Ensure Tag Order (Schema Compliance)
+    const reorderTags = (symbolizerName, tagsOrder) => {
+        const symRegex = new RegExp(`(<([\\w-]*:)?${symbolizerName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${symbolizerName}>)`, 'gi');
+        newSld = newSld.replace(symRegex, (match, start, prefix, content, end) => {
+            const tags = [];
+            tagsOrder.forEach(tagName => {
+                const tagRegex = new RegExp(`[\\s]*<([\\w-]*:)?${tagName}[\\s\\S]*?\\/?>`, 'i');
+                const tagFullRegex = new RegExp(`[\\s]*<([\\w-]*:)?${tagName}[\\s\\S]*?</(?:[\\w-]*:)?${tagName}>`, 'i');
+
+                let tagMatch = content.match(tagFullRegex);
+                if (!tagMatch) tagMatch = content.match(tagRegex); // Try self-closing
+
+                if (tagMatch) {
+                    tags.push(tagMatch[0]);
+                    content = content.replace(tagMatch[0], ''); // Remove found tag
+                }
+            });
+            // Append remaining content (like VendorOptions) and return reordered
+            return `${start}${tags.join('')}${content}${end}`;
+        });
+    };
+
+    reorderTags('PolygonSymbolizer', ['Geometry', 'Fill', 'Stroke']);
+    reorderTags('PointSymbolizer', ['Geometry', 'Graphic']);
+    reorderTags('LineSymbolizer', ['Geometry', 'Stroke']);
+    reorderTags('TextSymbolizer', ['Label', 'Font', 'LabelPlacement', 'Halo', 'Fill']);
 
     return newSld;
 };

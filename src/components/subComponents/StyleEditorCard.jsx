@@ -12,7 +12,6 @@ const DASH_STYLES = {
 const HATCH_PATTERNS = {
     'Solid': '',
     'Outline': 'outline',
-    'Horizontal': 'shape://horizline',
     'Vertical': 'shape://vertline',
     'Diagonal': 'shape://slash',
     'Back Slash': 'shape://backslash',
@@ -55,7 +54,14 @@ const StyleEditorCard = ({
 
     const getDashName = (dashArray) => {
         if (!dashArray) return 'Solid';
-        const entry = Object.entries(DASH_STYLES).find(([name, val]) => val === dashArray);
+        // Normalize input: replace spaces/commas with single space
+        const normalizedInput = dashArray.toString().replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+
+        const entry = Object.entries(DASH_STYLES).find(([name, val]) => {
+            if (!val) return false;
+            const normalizedVal = val.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+            return normalizedVal === normalizedInput;
+        });
         return entry ? entry[0] : 'Solid';
     };
 
@@ -178,13 +184,15 @@ const StyleEditorCard = ({
                                 {/* Fill Opacity */}
                                 <div className="qb-field-group" style={{ marginTop: '4px' }}>
                                     <label className="qb-field-label">Fill Opacity</label>
-                                    <div className="ref-input-group">
+                                    <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
                                         <input
                                             type="range" min="0" max="1" step="0.1"
                                             value={localProperties.fillOpacity !== undefined ? localProperties.fillOpacity : 1}
                                             onChange={(e) => handleLocalPropUpdate('fillOpacity', parseFloat(e.target.value))}
+                                            className="layer-opacity-slider"
+                                            style={{ flex: 1 }}
                                         />
-                                        <span className="ref-value-text">
+                                        <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
                                             {Math.round((localProperties.fillOpacity !== undefined ? localProperties.fillOpacity : 1) * 100)}%
                                         </span>
                                     </div>
@@ -234,13 +242,15 @@ const StyleEditorCard = ({
                                 {styleData.availableProps.strokeWidth && (
                                     <div className="qb-field-group" style={{ marginTop: '4px' }}>
                                         <label className="qb-field-label">Stroke Width</label>
-                                        <div className="ref-input-group">
+                                        <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
                                             <input
                                                 type="range" min="0.5" max="20" step="0.5"
                                                 value={localProperties.strokeWidth || 1}
                                                 onChange={(e) => handleLocalPropUpdate('strokeWidth', parseFloat(e.target.value))}
+                                                className="layer-opacity-slider"
+                                                style={{ flex: 1 }}
                                             />
-                                            <span className="ref-value-text">
+                                            <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
                                                 {localProperties.strokeWidth || 1}px
                                             </span>
                                         </div>
@@ -265,24 +275,28 @@ const StyleEditorCard = ({
                                     <div className="qb-field-row" style={{ marginTop: '12px' }}>
                                         <div className="qb-field-group" style={{ flex: 1 }}>
                                             <label className="qb-field-label">Marker Size</label>
-                                            <div className="ref-input-group">
+                                            <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
                                                 <input
                                                     type="range" min="1" max="50" step="1"
                                                     value={localProperties.size || 10}
                                                     onChange={(e) => handleLocalPropUpdate('size', parseFloat(e.target.value))}
+                                                    className="layer-opacity-slider"
+                                                    style={{ flex: 1 }}
                                                 />
-                                                <span className="ref-value-text">{localProperties.size || 10}px</span>
+                                                <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{localProperties.size || 10}px</span>
                                             </div>
                                         </div>
                                         <div className="qb-field-group" style={{ flex: 1 }}>
                                             <label className="qb-field-label">Rotation</label>
-                                            <div className="ref-input-group">
+                                            <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
                                                 <input
                                                     type="range" min="0" max="360" step="1"
                                                     value={localProperties.rotation || 0}
                                                     onChange={(e) => handleLocalPropUpdate('rotation', parseFloat(e.target.value))}
+                                                    className="layer-opacity-slider"
+                                                    style={{ flex: 1 }}
                                                 />
-                                                <span className="ref-value-text">{localProperties.rotation || 0}°</span>
+                                                <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{localProperties.rotation || 0}°</span>
                                             </div>
                                         </div>
                                     </div>
@@ -435,13 +449,15 @@ const StyleEditorCard = ({
                                             </div>
                                             <div className="qb-field-group" style={{ flex: 1 }}>
                                                 <label className="qb-field-label">Halo Radius</label>
-                                                <div className="ref-input-group">
+                                                <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
                                                     <input
                                                         type="range" min="0" max="10" step="0.5"
                                                         value={localProperties.haloRadius || 1}
                                                         onChange={(e) => handleLocalPropUpdate('haloRadius', parseFloat(e.target.value))}
+                                                        className="layer-opacity-slider"
+                                                        style={{ flex: 1 }}
                                                     />
-                                                    <span className="ref-value-text">{localProperties.haloRadius || 1}px</span>
+                                                    <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{localProperties.haloRadius || 1}px</span>
                                                 </div>
                                             </div>
                                         </div>

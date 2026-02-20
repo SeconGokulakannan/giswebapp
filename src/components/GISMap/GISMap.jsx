@@ -255,6 +255,7 @@ function GISMap() {
   const [swipeLayerIds, setSwipeLayerIds] = useState([]); // Array of layer IDs
   const [swipePosition, setSwipePosition] = useState(50); // Percentage
   const swipeLayersRef = useRef(new Map()); // Map of layerId -> olLayer
+  const preSwipeVisibilitiesRef = useRef({}); // Store visibility state before swipe
 
   // ELITE: Toggle Swipe Mode - Multi-layer support
   const handleToggleSwipe = (layerId) => {
@@ -294,6 +295,64 @@ function GISMap() {
       return [layerId];
     });
   };
+
+  // ELITE: Exclusive Swipe Visibility Logic
+  useEffect(() => {
+    const isSwiping = swipeLayerIds.length > 0;
+    const wasSwiping = Object.keys(preSwipeVisibilitiesRef.current).length > 0;
+
+    if (isSwiping && !wasSwiping) {
+      // ENTRANCE: Save state and hide others
+      const snapshot = {};
+      [...geoServerLayers, ...localVectorLayers].forEach(l => {
+        snapshot[l.id] = l.visible;
+      });
+      preSwipeVisibilitiesRef.current = snapshot;
+
+      // Hide non-swiped, Show swiped
+      setGeoServerLayers(prev => prev.map(l => ({
+        ...l,
+        visible: swipeLayerIds.includes(l.id)
+      })));
+      setLocalVectorLayers(prev => prev.map(l => ({
+        ...l,
+        visible: swipeLayerIds.includes(l.id)
+      })));
+
+    } else if (isSwiping && wasSwiping) {
+      // UPDATE: Ensure new swiped layers are visible, others hidden
+      setGeoServerLayers(prev => prev.map(l => ({
+        ...l,
+        visible: swipeLayerIds.includes(l.id)
+      })));
+      setLocalVectorLayers(prev => prev.map(l => ({
+        ...l,
+        visible: swipeLayerIds.includes(l.id)
+      })));
+
+    } else if (!isSwiping && wasSwiping) {
+      // EXIT: Restore original visibilities
+      const snapshot = preSwipeVisibilitiesRef.current;
+
+      setGeoServerLayers(prev => prev.map(l => ({
+        ...l,
+        visible: snapshot[l.id] !== undefined ? snapshot[l.id] : l.visible
+      })));
+      setLocalVectorLayers(prev => prev.map(l => ({
+        ...l,
+        visible: snapshot[l.id] !== undefined ? snapshot[l.id] : l.visible
+      })));
+
+      preSwipeVisibilitiesRef.current = {};
+    }
+  }, [swipeLayerIds]);
+
+  // ELITE: Cleanup Swipe when tool is changed
+  useEffect(() => {
+    if (activeLayerTool !== 'swipe' && swipeLayerIds.length > 0) {
+      setSwipeLayerIds([]);
+    }
+  }, [activeLayerTool]);
 
   // ELITE: Swipe Logic (Clipping) - Multi-layer support
   useEffect(() => {
@@ -1211,17 +1270,13 @@ function GISMap() {
         setLayerStyleAttributes(attrs || []);
         toast.success(`Styles loaded for ${layer.name}`, { id: 'style-load' });
       } else {
-        throw new Error('No SLD content received');
+        throw new Error('No SLD content received from server');
       }
     } catch (error) {
       console.error("Failed to load style:", error);
-      toast.error('Failed to load layer styles. Using defaults.', { id: 'style-load' });
-      setStyleData({
-        styleName: layer.style || layer.name,
-        sldBody: '',
-        properties: parseSLD('').props,
-        availableProps: parseSLD('').availableProps
-      });
+      toast.error('Could not load existing styles. Please try again.', { id: 'style-load' });
+      // Do NOT set default styles here - let the user retry or see the error
+      // This prevents overwriting valid server styles with local defaults on network blips
     }
   };
 
@@ -1232,14 +1287,22 @@ function GISMap() {
     const saveId = toast.loading('Saving style to server...');
 
     try {
-      const propsToUse = overrideProps || styleData.properties;
+      const propsToUse = { ...(overrideProps || styleData.properties) };
+
+      // Force opacity for Outline
+      if (propsToUse.hatchPattern === 'outline') {
+        propsToUse.fillOpacity = 0.0;
+      }
+
       const newSld = applyStyleChanges(styleData.sldBody, propsToUse);
-      const success = await updateLayerStyle(editingStyleLayer.fullName, newSld);
+      console.log("GISMap: Generated SLD for Save:", newSld);
+      // Pass the correct style name to the update function
+      const success = await updateLayerStyle(editingStyleLayer.fullName, styleData.styleName, newSld);
 
       if (success) {
         // Authoritative re-fetch to ensure sync with server
         // WAIT for GeoServer to finalize the write (REST API can be slightly async with disk IO)
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 1500));
 
         const newData = await getLayerStyle(editingStyleLayer.fullName);
         if (newData) {
@@ -1258,7 +1321,7 @@ function GISMap() {
           source.updateParams({
             ...source.getParams(),
             _t: Date.now(),
-            SLD_BODY: null // CLEAR the temporary preview SLD
+            SLD_BODY: undefined // Explicitly clear the temporary SLD
           });
         }
 
@@ -1278,36 +1341,36 @@ function GISMap() {
   const previewTimeoutRef = useRef(null);
 
   const updateStyleProp = (key, value, autoSave = false) => {
-    setStyleData(prev => {
-      if (!prev) return null;
-      const newProps = { ...prev.properties, [key]: value };
+    if (!styleData) return;
 
-      // REAL-TIME PREVIEW (Non-persistent)
-      if (editingStyleLayer) {
-        if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
+    const newProps = { ...styleData.properties, [key]: value };
 
-        previewTimeoutRef.current = setTimeout(() => {
-          const olLayer = operationalLayersRef.current[editingStyleLayer.id];
-          if (olLayer) {
-            const newSld = applyStyleChanges(prev.sldBody, newProps);
-            olLayer.getSource().updateParams({
-              ...olLayer.getSource().getParams(),
-              SLD_BODY: newSld,
-              _t: Date.now() // Add timestamp to break cache
-            });
-          }
-        }, 100); // 100ms debounce
-      }
+    // Update state first
+    setStyleData(prev => ({
+      ...prev,
+      properties: newProps
+    }));
 
-      if (autoSave) {
-        handleSaveStyle(newProps);
-      }
+    // REAL-TIME PREVIEW
+    if (editingStyleLayer) {
+      if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
 
-      return {
-        ...prev,
-        properties: newProps
-      };
-    });
+      previewTimeoutRef.current = setTimeout(() => {
+        const olLayer = operationalLayersRef.current[editingStyleLayer.id];
+        if (olLayer) {
+          const newSld = applyStyleChanges(styleData.sldBody, newProps);
+          olLayer.getSource().updateParams({
+            ...olLayer.getSource().getParams(),
+            SLD_BODY: newSld,
+            _t: Date.now()
+          });
+        }
+      }, 50); // Faster debounce for "synchronous" feel
+    }
+
+    if (autoSave) {
+      handleSaveStyle(newProps);
+    }
   };
 
   const handleStyleFileUpload = async (e) => {
@@ -1580,6 +1643,7 @@ function GISMap() {
         const show = isMeasurement ? showAnalysisLabelsRef.current : showDrawingLabelsRef.current;
         return styleFunction(feature, true, null, null, animationOffsetRef.current, measurementUnitsRef.current, show);
       },
+      zIndex: 9999 // User requested "top layer of all layers"
     });
     vectorLayerRef.current = vectorLayer;
 
@@ -1589,7 +1653,7 @@ function GISMap() {
     const selectionLayer = new VectorLayer({
       source: selectionSource,
       style: (feature) => highlightStyleFunction(feature, animationOffsetRef.current),
-      zIndex: 2000 // Always on top
+      zIndex: 10000 // Always on top of everything, including drawings
     });
     selectionLayerRef.current = selectionLayer;
 
@@ -2534,6 +2598,7 @@ function GISMap() {
             handleClearDrawings={handleClearDrawings}
             handlePrintClick={handlePrintClick}
             onOpenLayerManagement={handleOpenLayerManagement}
+            isLayerManagementOpen={showLayerManagement}
             layoutMode={layoutMode}
             onToggleLayout={toggleLayoutMode}
             isLocked={isLocked}
