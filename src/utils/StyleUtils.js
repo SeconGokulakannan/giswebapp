@@ -313,6 +313,54 @@ export const parseSLD = (sldBody) => {
             availableProps.fontWeight = true; availableProps.fontStyle = true;
         }
 
+        // ══ Parse Conditional Rules ══════════════════════════════════════
+        props.conditions = [];
+        const allRules = Array.from(doc.getElementsByTagNameNS('*', 'Rule'));
+        allRules.forEach(rule => {
+            const titleEl = getEl(rule, 'Title');
+            const title = titleEl?.textContent?.trim() || '';
+            if (title.startsWith('GeneratedConditionRule_')) {
+                // Parse: attribute, operator, value, fillColor from child elements
+                const filterEl = getEl(rule, 'Filter');
+                if (!filterEl) return;
+
+                let attribute = '', operator = '=', value = '', fillColor = '#ff4444', strokeColor = '';
+
+                // Try PropertyIsEqualTo / PropertyIsGreaterThan / etc.
+                const comparisons = [
+                    'PropertyIsEqualTo', 'PropertyIsNotEqualTo', 'PropertyIsGreaterThan',
+                    'PropertyIsGreaterThanOrEqualTo', 'PropertyIsLessThan',
+                    'PropertyIsLessThanOrEqualTo', 'PropertyIsLike'
+                ];
+                for (const compName of comparisons) {
+                    const compEl = filterEl.getElementsByTagNameNS('*', compName)[0];
+                    if (compEl) {
+                        attribute = compEl.getElementsByTagNameNS('*', 'PropertyName')[0]?.textContent?.trim() || '';
+                        value = compEl.getElementsByTagNameNS('*', 'Literal')[0]?.textContent?.trim() || '';
+                        const opMap = {
+                            PropertyIsEqualTo: '=', PropertyIsNotEqualTo: '!=',
+                            PropertyIsGreaterThan: '>', PropertyIsGreaterThanOrEqualTo: '>=',
+                            PropertyIsLessThan: '<', PropertyIsLessThanOrEqualTo: '<=',
+                            PropertyIsLike: 'LIKE'
+                        };
+                        operator = opMap[compName] || '=';
+                        break;
+                    }
+                }
+
+                // Extract fill color from symbolizer
+                const polyEl = getEl(rule, 'PolygonSymbolizer') || getEl(rule, 'PointSymbolizer') || getEl(rule, 'LineSymbolizer');
+                if (polyEl) {
+                    const fillEl = getEl(polyEl, 'Fill');
+                    fillColor = getParam(fillEl, 'fill') || fillColor;
+                    const strokeEl = getEl(polyEl, 'Stroke');
+                    strokeColor = getParam(strokeEl, 'stroke') || '';
+                }
+
+                props.conditions.push({ attribute, operator, value, fillColor, strokeColor });
+            }
+        });
+
     } catch (err) {
         console.error('[SLD Parse] Error:', err);
         return parseSLDFallback(sldBody);
@@ -499,6 +547,113 @@ export const applyStyleChanges = (sldBody, props) => {
         if (fillEl && props.fill !== undefined) setDomParam(doc, fillEl, 'fill', props.fill, paramTag);
         const strokeEl = getEl(markEl, 'Stroke');
         if (strokeEl && props.stroke !== undefined) setDomParam(doc, strokeEl, 'stroke', props.stroke, paramTag);
+    }
+
+    // ── Conditional Rules ─────────────────────────────────────────────────────
+    // Remove any previously generated condition rules
+    const allRulesSnapshot = Array.from(doc.getElementsByTagNameNS('*', 'Rule'));
+    for (const rule of allRulesSnapshot) {
+        const titleEl = getEl(rule, 'Title');
+        const title = titleEl?.textContent?.trim() || '';
+        if (title.startsWith('GeneratedConditionRule_') || title === 'GeneratedElseRule') {
+            rule.parentNode?.removeChild(rule);
+        }
+    }
+
+    const conditions = props.conditions || [];
+    if (conditions.length > 0) {
+        const ftsEl = doc.getElementsByTagNameNS('*', 'FeatureTypeStyle')[0];
+        if (ftsEl) {
+            const sldNs = ftsEl.namespaceURI || 'http://www.opengis.net/sld';
+            const ogcNs = 'http://www.opengis.net/ogc';
+            const createSldEl = (n) => doc.createElementNS(sldNs, n);
+            const createOgcEl = (n) => doc.createElementNS(ogcNs, n);
+            const createParam2 = (name, value) => {
+                const el = createSldEl(paramTag);
+                el.setAttribute('name', name);
+                el.textContent = String(value);
+                return el;
+            };
+
+            // Detect geometry type from existing symbolizer
+            const hasPolySymbol = doc.getElementsByTagNameNS('*', 'PolygonSymbolizer').length > 0;
+            const hasPointSymbol = doc.getElementsByTagNameNS('*', 'PointSymbolizer').length > 0;
+
+            // Operator to OGC element name mapping
+            const opToOgc = {
+                '=': 'PropertyIsEqualTo', '!=': 'PropertyIsNotEqualTo',
+                '>': 'PropertyIsGreaterThan', '>=': 'PropertyIsGreaterThanOrEqualTo',
+                '<': 'PropertyIsLessThan', '<=': 'PropertyIsLessThanOrEqualTo',
+                'LIKE': 'PropertyIsLike'
+            };
+
+            conditions.forEach((cond, i) => {
+                if (!cond.attribute || cond.value === undefined || cond.value === '') return;
+
+                const ruleEl = createSldEl('Rule');
+                const titleEl = createSldEl('Title');
+                titleEl.textContent = `GeneratedConditionRule_${i}`;
+                ruleEl.appendChild(titleEl);
+
+                // OGC Filter
+                const filterEl = createOgcEl('Filter');
+                const ogcCompTag = opToOgc[cond.operator] || 'PropertyIsEqualTo';
+                const compEl = createOgcEl(ogcCompTag);
+                if (cond.operator === 'LIKE') compEl.setAttribute('wildCard', '*');
+                const propNameEl = createOgcEl('PropertyName');
+                propNameEl.textContent = cond.attribute;
+                const litEl = createOgcEl('Literal');
+                litEl.textContent = cond.value;
+                compEl.appendChild(propNameEl);
+                compEl.appendChild(litEl);
+                filterEl.appendChild(compEl);
+                ruleEl.appendChild(filterEl);
+
+                // Symbolizer (same type as the layer)
+                if (hasPolySymbol) {
+                    const polyEl = createSldEl('PolygonSymbolizer');
+                    const fillEl = createSldEl('Fill');
+                    fillEl.appendChild(createParam2('fill', cond.fillColor || '#ff4444'));
+                    fillEl.appendChild(createParam2('fill-opacity', '1'));
+                    polyEl.appendChild(fillEl);
+                    if (cond.strokeColor) {
+                        const strokeEl2 = createSldEl('Stroke');
+                        strokeEl2.appendChild(createParam2('stroke', cond.strokeColor));
+                        strokeEl2.appendChild(createParam2('stroke-width', '1'));
+                        polyEl.appendChild(strokeEl2);
+                    }
+                    ruleEl.appendChild(polyEl);
+                } else if (hasPointSymbol) {
+                    const pointEl = createSldEl('PointSymbolizer');
+                    const graphicEl = createSldEl('Graphic');
+                    const markEl = createSldEl('Mark');
+                    const wknEl = createSldEl('WellKnownName');
+                    wknEl.textContent = props.wellKnownName || 'circle';
+                    markEl.appendChild(wknEl);
+                    const fillEl = createSldEl('Fill');
+                    fillEl.appendChild(createParam2('fill', cond.fillColor || '#ff4444'));
+                    markEl.appendChild(fillEl);
+                    const sizeEl = createSldEl('Size');
+                    sizeEl.textContent = String(props.size || 10);
+                    graphicEl.appendChild(markEl);
+                    graphicEl.appendChild(sizeEl);
+                    pointEl.appendChild(graphicEl);
+                    ruleEl.appendChild(pointEl);
+                } else {
+                    // Line fallback
+                    const lineEl = createSldEl('LineSymbolizer');
+                    const strokeEl2 = createSldEl('Stroke');
+                    strokeEl2.appendChild(createParam2('stroke', cond.fillColor || '#ff4444'));
+                    strokeEl2.appendChild(createParam2('stroke-width', String(props.strokeWidth || 2)));
+                    lineEl.appendChild(strokeEl2);
+                    ruleEl.appendChild(lineEl);
+                }
+
+                // Insert BEFORE the base rule (so it draws on top)
+                const firstRule = ftsEl.getElementsByTagNameNS('*', 'Rule')[0];
+                ftsEl.insertBefore(ruleEl, firstRule || null);
+            });
+        }
     }
 
     // ── Labels ────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Brush, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Save, Loader2, Brush, Info, ChevronLeft, ChevronRight, Plus, Trash2, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const DASH_STYLES = {
@@ -36,21 +36,41 @@ const StyleEditorCard = ({
     onFileUpload
 }) => {
     const [isMinimized, setIsMinimized] = useState(false);
-    const [activeTab, setActiveTab] = useState('symbology'); // symbology, labels
     const [localProperties, setLocalProperties] = useState({});
+    const [conditions, setConditions] = useState([]); // [{attribute, operator, value, fillColor, strokeColor}]
 
     // Sync local properties when style data or layer changes.
-    // We include isOpen and styleData.properties to ensure that whenever the
-    // modal is opened or the underlying data is refreshed from the server,
-    // the local UI state is updated.
     useEffect(() => {
         if (isOpen && styleData?.properties) {
             setLocalProperties({ ...styleData.properties });
+            setConditions(styleData.properties?.conditions || []);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, styleData?.properties, editingLayer?.id]);
 
     if (!isOpen || !editingLayer || !styleData) return null;
+
+    const addCondition = () => {
+        setConditions(prev => [...prev, {
+            attribute: layerAttributes[0] || '',
+            operator: '=',
+            value: '',
+            fillColor: '#ef4444',
+            strokeColor: ''
+        }]);
+    };
+
+    const removeCondition = (idx) => {
+        setConditions(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const updateCondition = (idx, field, value) => {
+        setConditions(prev => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], [field]: value };
+            return next;
+        });
+    };
 
     const getDashName = (dashArray) => {
         if (!dashArray) return 'Solid';
@@ -86,7 +106,7 @@ const StyleEditorCard = ({
     };
 
     const handleSave = () => {
-        onSave(localProperties);
+        onSave({ ...localProperties, conditions });
     };
 
     return (
@@ -384,7 +404,126 @@ const StyleEditorCard = ({
                                 )}
                             </div>
                         </div>
+                        {/* CONDITIONS SECTION */}
+                        <div className="qb-conditions-list" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+                            <div style={{ margin: '0 0 12px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Filter size={14} /> CONDITIONAL STYLING
+                                </div>
+                                <button
+                                    onClick={addCondition}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', fontSize: '0.7rem', fontWeight: 700, border: '1px solid var(--color-primary)', borderRadius: '8px', background: 'rgba(var(--color-primary-rgb, 99,102,241),0.08)', color: 'var(--color-primary)', cursor: 'pointer' }}
+                                >
+                                    <Plus size={12} /> Add Rule
+                                </button>
+                            </div>
+
+                            {conditions.length === 0 && (
+                                <div style={{ padding: '16px', background: 'var(--color-bg-secondary)', borderRadius: '10px', border: '1px dashed var(--color-border)', textAlign: 'center', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                                    No conditional rules. Click <strong>+ Add Rule</strong> to highlight specific features.
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {conditions.map((cond, idx) => (
+                                    <div key={idx} className="qb-condition-card-clean" style={{ position: 'relative', paddingRight: '40px' }}>
+                                        {/* Delete */}
+                                        <button
+                                            onClick={() => removeCondition(idx)}
+                                            style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: '2px' }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+
+                                        {/* Row 1: Attribute + Operator */}
+                                        <div className="qb-field-row" style={{ marginBottom: '10px' }}>
+                                            <div className="qb-field-group" style={{ flex: 1.5 }}>
+                                                <label className="qb-field-label">Attribute</label>
+                                                <select
+                                                    className="qb-select"
+                                                    value={cond.attribute}
+                                                    onChange={e => updateCondition(idx, 'attribute', e.target.value)}
+                                                >
+                                                    {layerAttributes.map(attr => <option key={attr} value={attr}>{attr}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="qb-field-group" style={{ flex: 0.9 }}>
+                                                <label className="qb-field-label">Operator</label>
+                                                <select
+                                                    className="qb-select"
+                                                    value={cond.operator}
+                                                    onChange={e => updateCondition(idx, 'operator', e.target.value)}
+                                                >
+                                                    <option value="=">=</option>
+                                                    <option value="!=">!=</option>
+                                                    <option value=">">&gt;</option>
+                                                    <option value=">=">&gt;=</option>
+                                                    <option value="<">&lt;</option>
+                                                    <option value="<=">&lt;=</option>
+                                                    <option value="LIKE">LIKE</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Row 2: Value + Fill Color */}
+                                        <div className="qb-field-row">
+                                            <div className="qb-field-group" style={{ flex: 1 }}>
+                                                <label className="qb-field-label">Match Value</label>
+                                                <input
+                                                    type="text"
+                                                    className="qb-input"
+                                                    placeholder="e.g. Maharashtra"
+                                                    value={cond.value}
+                                                    onChange={e => updateCondition(idx, 'value', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="qb-field-group" style={{ flex: 0 }}>
+                                                <label className="qb-field-label">Fill Color</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: cond.fillColor, border: '2px solid var(--color-border)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+                                                        <input
+                                                            type="color"
+                                                            value={cond.fillColor}
+                                                            onChange={e => updateCondition(idx, 'fillColor', e.target.value)}
+                                                            style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Preview badge */}
+                                        {cond.attribute && cond.value && (
+                                            <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: cond.fillColor, flexShrink: 0 }} />
+                                                Features where <strong style={{ margin: '0 3px' }}>{cond.attribute}</strong> {cond.operator} <strong style={{ margin: '0 3px' }}>{cond.value}</strong> → highlighted in <span style={{ color: cond.fillColor, fontWeight: 700 }}>{cond.fillColor}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {conditions.length > 0 && (
+                                <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(99,102,241,0.06)', borderRadius: '8px', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                                    ℹ️ Features not matching any rule will use the default symbology above.
+                                </div>
+                            )}
+                        </div>
+
                     </div>
+                </div>
+
+                {/* Save Footer */}
+                <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                        className="qb-apply-btn"
+                        style={{ height: '36px', padding: '0 20px', background: 'linear-gradient(135deg, #22c55e, #10b981)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={handleSave}
+                        disabled={isSaving}
+                    >
+                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        {isSaving ? 'SAVING...' : 'SAVE STYLE'}
+                    </button>
                 </div>
             </div>
         </div>
