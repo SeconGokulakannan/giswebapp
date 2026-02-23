@@ -528,15 +528,23 @@ export const applyStyleChanges = (sldBody, props) => {
                 return el;
             };
 
-            // <Rule>
-            const ruleEl = createSldEl('Rule');
+            // ── Labels ────────────────────────────────────────────────────────────────
 
-            // <Title>GeneratedLabelRule</Title>
+            const ruleEl = createSldEl('Rule');
             const titleEl = createSldEl('Title');
             titleEl.textContent = 'GeneratedLabelRule';
             ruleEl.appendChild(titleEl);
 
-            // <TextSymbolizer>
+            // Scale Filter (Visibility Zoom)
+            if (props.staticLabel === false) {
+                const minZoom = props.minZoom || 14;
+                // Standard OSM scale formula: 559082264 / 2^zoom
+                const scale = 559082264 / Math.pow(2, minZoom);
+                const maxScaleEl = createSldEl('MaxScaleDenominator');
+                maxScaleEl.textContent = String(Math.round(scale));
+                ruleEl.appendChild(maxScaleEl);
+            }
+
             const textEl = createSldEl('TextSymbolizer');
 
             // <Label><ogc:PropertyName>attr</ogc:PropertyName></Label>
@@ -578,6 +586,8 @@ export const applyStyleChanges = (sldBody, props) => {
             };
             addVendor('group', 'yes');
             addVendor('spaceAround', '10');
+            addVendor('conflictResolution', 'true');
+            addVendor('partials', 'false');
 
             ruleEl.appendChild(textEl);
             ftsEl.appendChild(ruleEl);

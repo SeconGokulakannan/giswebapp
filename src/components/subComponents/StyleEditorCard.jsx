@@ -347,6 +347,39 @@ const StyleEditorCard = ({
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <div className="qb-field-row" style={{ alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-bg-secondary)', padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--color-border)', marginTop: '4px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <Info size={14} color="var(--color-primary)" />
+                                                <label className="qb-field-label" style={{ margin: 0 }}>Static Label</label>
+                                            </div>
+                                            <label className="toggle-switch" style={{ transform: 'scale(0.8)' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={localProperties.staticLabel !== false}
+                                                    onChange={(e) => handleLocalPropUpdate('staticLabel', e.target.checked)}
+                                                />
+                                                <span className="toggle-slider"></span>
+                                            </label>
+                                        </div>
+
+                                        {localProperties.staticLabel === false && (
+                                            <div className="qb-field-group" style={{ marginTop: '4px', padding: '0 4px' }}>
+                                                <label className="qb-field-label">Visibility Zoom (Level {localProperties.minZoom || 14}+)</label>
+                                                <div className="density-control" style={{ width: '100%', justifyContent: 'space-between' }}>
+                                                    <input
+                                                        type="range" min="0" max="20" step="1"
+                                                        value={localProperties.minZoom || 14}
+                                                        onChange={(e) => handleLocalPropUpdate('minZoom', parseInt(e.target.value))}
+                                                        className="layer-opacity-slider"
+                                                        style={{ flex: 1 }}
+                                                    />
+                                                    <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
+                                                        {localProperties.minZoom || 14}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
