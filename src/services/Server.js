@@ -141,6 +141,7 @@ export const getLayerBBox = async (fullLayerName) => {
 export const getLayerStyle = async (fullLayerName) => {
     try {
         const [ws, name] = fullLayerName.split(':');
+        console.log(`[SLD Fetch] Initiating fetch for layer: ${fullLayerName}`);
 
         // Use workspace-qualified URL for layer info to be precise
         const layerResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/layers/${name}.json?t=${Date.now()}`,
@@ -152,21 +153,27 @@ export const getLayerStyle = async (fullLayerName) => {
             });
 
         if (!layerResponse.ok) {
-            console.warn(`Layer ${fullLayerName} not found in workspace context, trying global...`);
+            console.warn(`[SLD Fetch] Layer ${fullLayerName} not found in workspace context (Status: ${layerResponse.status}), trying global...`);
             const globalLayerRes = await fetch(`${GEOSERVER_URL}/rest/layers/${name}.json?t=${Date.now()}`, {
                 headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
             });
-            if (!globalLayerRes.ok) return null;
+            if (!globalLayerRes.ok) {
+                console.error(`[SLD Fetch] Layer ${name} not found globally either (Status: ${globalLayerRes.status})`);
+                return null;
+            }
             const data = await globalLayerRes.json();
-            return fetchSLD(data.layer.defaultStyle.name, ws);
+            const defaultStyle = data.layer.defaultStyle.name;
+            console.log(`[SLD Fetch] Found global layer. Default style: ${defaultStyle}`);
+            return fetchSLD(defaultStyle, ws);
         }
 
         const layerData = await layerResponse.json();
         const styleName = layerData.layer.defaultStyle.name;
+        console.log(`[SLD Fetch] Found layer in workspace. Default style: ${styleName}`);
         return fetchSLD(styleName, ws);
     }
     catch (err) {
-        console.error('Failed to fetch layer style:', err);
+        console.error('[SLD Fetch] Failed to fetch layer style:', err);
     }
     return null;
 };
@@ -176,25 +183,46 @@ const fetchSLD = async (styleName, workspace) => {
     try {
         // Strip workspace prefix if present (e.g., "cite:States" -> "States")
         const cleanStyleName = styleName.includes(':') ? styleName.split(':')[1] : styleName;
+        console.log(`[SLD Fetch] Fetching body for style: ${styleName} (Clean: ${cleanStyleName}) in workspace ${workspace}`);
 
-        // 1. Try workspace style first
+        // 1. Try workspace style first (with .sld)
         let sldResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${workspace}/styles/${cleanStyleName}.sld?t=${Date.now()}`, {
             headers: { 'Authorization': AUTH_HEADER }
         });
 
-        // 2. Try global style (with original or clean name) if workspace style doesn't exist or 404s
+        // 2. Try workspace style without .sld extension
         if (!sldResponse.ok) {
+            console.warn(`[SLD Fetch] Workspace SLD (.sld) failed for ${cleanStyleName}, trying without extension...`);
+            sldResponse = await fetch(`${GEOSERVER_URL}/rest/workspaces/${workspace}/styles/${cleanStyleName}?t=${Date.now()}`, {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+        }
+
+        // 3. Try global style (with original or clean name) if workspace style doesn't exist
+        if (!sldResponse.ok) {
+            console.warn(`[SLD Fetch] Workspace style fetch failed for ${cleanStyleName}, trying global...`);
             sldResponse = await fetch(`${GEOSERVER_URL}/rest/styles/${styleName}.sld?t=${Date.now()}`, {
+                headers: { 'Authorization': AUTH_HEADER }
+            });
+        }
+
+        // 4. Try global style without extension
+        if (!sldResponse.ok) {
+            console.warn(`[SLD Fetch] Global SLD (.sld) failed for ${styleName}, trying without extension...`);
+            sldResponse = await fetch(`${GEOSERVER_URL}/rest/styles/${styleName}?t=${Date.now()}`, {
                 headers: { 'Authorization': AUTH_HEADER }
             });
         }
 
         if (sldResponse.ok) {
             const sldBody = await sldResponse.text();
+            console.log(`[SLD Fetch] Successfully retrieved SLD body for ${styleName}. Size: ${sldBody.length} chars.`);
             return { styleName, sldBody };
+        } else {
+            console.error(`[SLD Fetch] All attempts to fetch SLD for ${styleName} failed. Final Status: ${sldResponse.status}`);
         }
     } catch (err) {
-        console.error(`Error fetching SLD for style ${styleName}:`, err);
+        console.error(`[SLD Fetch] Error fetching SLD for style ${styleName}:`, err);
     }
     return null;
 };

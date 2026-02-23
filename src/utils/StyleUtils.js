@@ -1,34 +1,110 @@
 /**
  * Utility functions for SLD (Styled Layer Descriptor) parsing and manipulation
+ * Uses DOMParser for both parsing and applying style changes to ensure correctness.
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM HELPERS (namespace-aware)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Get the first child element with the given local name (any namespace). */
+const getEl = (root, localName) => {
+    if (!root) return null;
+    return root.getElementsByTagNameNS('*', localName)[0] ?? null;
+};
+
+/** Get ALL child elements with the given local name (any namespace). */
+const getEls = (root, localName) => {
+    if (!root) return [];
+    return Array.from(root.getElementsByTagNameNS('*', localName));
+};
+
+/** Get a CssParameter/SvgParameter value by name within a DIRECT parent only. */
+const getParam = (parentEl, paramName) => {
+    if (!parentEl) return null;
+    const candidates = [
+        ...Array.from(parentEl.getElementsByTagNameNS('*', 'CssParameter')),
+        ...Array.from(parentEl.getElementsByTagNameNS('*', 'SvgParameter')),
+    ].filter(el => el.parentNode === parentEl); // DIRECT children only
+    for (const el of candidates) {
+        if (el.getAttribute('name') === paramName) return el.textContent?.trim() ?? null;
+    }
+    return null;
+};
+
+/** Get text content of the first tag with the given local name. */
+const getTagText = (root, localName) => {
+    const el = getEl(root, localName);
+    return el ? el.textContent?.trim() ?? null : null;
+};
+
+/** Set a CssParameter/SvgParameter value within a direct parent. Creates if missing. */
+const setDomParam = (doc, parentEl, paramName, value, paramTagName) => {
+    if (!parentEl) return;
+    const allParams = [
+        ...Array.from(parentEl.getElementsByTagNameNS('*', 'CssParameter')),
+        ...Array.from(parentEl.getElementsByTagNameNS('*', 'SvgParameter')),
+    ].filter(el => el.parentNode === parentEl);
+
+    let found = null;
+    for (const el of allParams) {
+        if (el.getAttribute('name') === paramName) { found = el; break; }
+    }
+
+    if (found) {
+        found.textContent = String(value);
+    } else {
+        const ns = parentEl.namespaceURI;
+        const prefix = parentEl.prefix ? `${parentEl.prefix}:` : '';
+        const newEl = doc.createElementNS(ns, `${prefix}${paramTagName || 'CssParameter'}`);
+        newEl.setAttribute('name', paramName);
+        newEl.textContent = String(value);
+        parentEl.appendChild(newEl);
+    }
+};
+
+/** Remove a CssParameter/SvgParameter from a direct parent. */
+const removeDomParam = (parentEl, paramName) => {
+    if (!parentEl) return;
+    const allParams = [
+        ...Array.from(parentEl.getElementsByTagNameNS('*', 'CssParameter')),
+        ...Array.from(parentEl.getElementsByTagNameNS('*', 'SvgParameter')),
+    ].filter(el => el.parentNode === parentEl && el.getAttribute('name') === paramName);
+    allParams.forEach(el => el.parentNode.removeChild(el));
+};
+
+/** Set text content of a tag. */
+const setDomTagText = (el, value) => { if (el) el.textContent = String(value); };
+
+/** Create a new element in the same namespace as the parent. */
+const createEl = (doc, parentEl, localName) => {
+    const ns = parentEl?.namespaceURI ?? '';
+    const prefix = parentEl?.prefix ? `${parentEl.prefix}:` : '';
+    return doc.createElementNS(ns, `${prefix}${localName}`);
+};
+
+/** Serialize an XML Document back to string. */
+const serializeDoc = (doc) => {
+    const s = new XMLSerializer();
+    return s.serializeToString(doc);
+};
+
+/** Detect whether the SLD uses SvgParameter or CssParameter. */
+const detectParamTag = (sldBody) => sldBody.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARSE SLD
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const parseSLD = (sldBody) => {
     const props = {
-        fill: '#cccccc',
-        fillOpacity: 1,
-        stroke: '#333333',
-        strokeWidth: 1,
-        strokeOpacity: 1,
-        strokeDasharray: '',
-        strokeLinecap: 'butt',
-        strokeLinejoin: 'miter',
-        size: 10,
-        rotation: 0,
-        wellKnownName: 'circle',
-        externalGraphicUrl: '',
-        hatchPattern: '', // e.g., 'shape://horizline', 'shape://vertline', 'shape://slash', 'shape://backslash', 'shape://dot', 'shape://plus', 'shape://times'
-
-        fontSize: 12,
-        fontColor: '#000000',
-        fontFamily: 'Arial',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        haloRadius: 1, // Default to 1 if not present, but UI removed
-        haloColor: '#ffffff',
-        staticLabel: true,
-        minZoom: 14, // Default min zoom
-        preventDuplicates: true, // VendorOption group
-        labelRepeat: 0 // VendorOption repeat
+        fill: '#cccccc', fillOpacity: 1, stroke: '#333333', strokeWidth: 1, strokeOpacity: 1,
+        strokeDasharray: '', strokeLinecap: 'butt', strokeLinejoin: 'miter',
+        size: 10, rotation: 0, wellKnownName: 'circle', externalGraphicUrl: '', hatchPattern: '',
+        fontSize: 12, fontColor: '#000000', fontFamily: 'Arial', fontWeight: 'normal', fontStyle: 'normal',
+        haloRadius: 1, haloColor: '#ffffff', staticLabel: true, minZoom: 14,
+        preventDuplicates: true, labelRepeat: 0, labelAttribute: ''
     };
     const availableProps = {
         fill: false, fillOpacity: false, stroke: false, strokeWidth: false,
@@ -38,524 +114,423 @@ export const parseSLD = (sldBody) => {
         fontWeight: false, fontStyle: false, haloRadius: false, haloColor: false
     };
 
-    const extract = (name, defaultValue, parentContext = null) => {
-        let searchTarget = sldBody;
-        if (parentContext) {
-            const contextRegex = new RegExp(`<([\\w-]*:)?${parentContext}[\\s\\S]*?>([\\s\\S]*?)</(?:[\\w-]*:)?${parentContext}>`, 'i');
-            const contextMatch = sldBody.match(contextRegex);
-            if (contextMatch) {
-                searchTarget = contextMatch[2];
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(sldBody, 'text/xml');
+
+        if (doc.querySelector('parsererror')) {
+            console.error('[SLD Parse] XML invalid, trying regex fallback');
+            return parseSLDFallback(sldBody);
+        }
+
+        const hasPolygon = doc.getElementsByTagNameNS('*', 'PolygonSymbolizer').length > 0;
+        const hasLine = doc.getElementsByTagNameNS('*', 'LineSymbolizer').length > 0;
+        const hasPoint = doc.getElementsByTagNameNS('*', 'PointSymbolizer').length > 0;
+        const hasText = doc.getElementsByTagNameNS('*', 'TextSymbolizer').length > 0;
+
+        // ══ Polygon ══════════════════════════════════════════════════
+        if (hasPolygon) {
+            const polyEl = doc.getElementsByTagNameNS('*', 'PolygonSymbolizer')[0];
+
+            // Fill — check for hatch (GraphicFill) first
+            const fillEl = getEl(polyEl, 'Fill');
+            const graphicFillEl = fillEl ? getEl(fillEl, 'GraphicFill') : null;
+
+            if (graphicFillEl) {
+                // Hatch pattern
+                const markEl = getEl(graphicFillEl, 'Mark');
+                const wkn = getTagText(markEl, 'WellKnownName');
+                if (wkn) { props.hatchPattern = wkn; availableProps.hatchPattern = true; }
+
+                // Color = stroke of the inner Mark
+                const markStrokeEl = getEl(markEl, 'Stroke');
+                const col = getParam(markStrokeEl, 'stroke');
+                if (col) { props.fill = col; availableProps.fill = true; }
+
+                // Opacity = stroke-opacity of the inner Mark's Stroke
+                const op = getParam(markStrokeEl, 'stroke-opacity');
+                if (op !== null) { props.fillOpacity = parseFloat(op); availableProps.fillOpacity = true; }
+            } else if (fillEl) {
+                // Solid fill
+                const col = getParam(fillEl, 'fill');
+                if (col) { props.fill = col; availableProps.fill = true; }
+                const op = getParam(fillEl, 'fill-opacity');
+                if (op !== null) { props.fillOpacity = parseFloat(op); availableProps.fillOpacity = true; }
+            }
+
+            // Polygon outline Stroke (direct child of PolygonSymbolizer)
+            const strokeEl = getEls(polyEl, 'Stroke').find(s => s.parentNode === polyEl);
+            if (strokeEl) {
+                const col = getParam(strokeEl, 'stroke');
+                if (col) { props.stroke = col; availableProps.stroke = true; }
+                const sw = getParam(strokeEl, 'stroke-width');
+                if (sw !== null) { props.strokeWidth = parseFloat(sw); availableProps.strokeWidth = true; }
+                const so = getParam(strokeEl, 'stroke-opacity');
+                if (so !== null) { props.strokeOpacity = parseFloat(so); }
+                const da = getParam(strokeEl, 'stroke-dasharray');
+                if (da) { props.strokeDasharray = da.replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); availableProps.strokeDasharray = true; }
+                const lc = getParam(strokeEl, 'stroke-linecap');
+                if (lc) { props.strokeLinecap = lc; }
+                const lj = getParam(strokeEl, 'stroke-linejoin');
+                if (lj) { props.strokeLinejoin = lj; }
+            }
+        }
+
+        // ══ Point ═════════════════════════════════════════════════════
+        if (hasPoint && !hasPolygon) {
+            const pointEl = doc.getElementsByTagNameNS('*', 'PointSymbolizer')[0];
+            const markEl = getEl(pointEl, 'Mark');
+            if (markEl) {
+                const fillEl = getEl(markEl, 'Fill');
+                const col = getParam(fillEl, 'fill');
+                if (col) { props.fill = col; availableProps.fill = true; }
+                const op = getParam(fillEl, 'fill-opacity');
+                if (op !== null) { props.fillOpacity = parseFloat(op); availableProps.fillOpacity = true; }
+                const strokeEl = getEl(markEl, 'Stroke');
+                const sc = getParam(strokeEl, 'stroke');
+                if (sc) { props.stroke = sc; availableProps.stroke = true; }
+                const sw = getParam(strokeEl, 'stroke-width');
+                if (sw !== null) { props.strokeWidth = parseFloat(sw); availableProps.strokeWidth = true; }
+            }
+            const wkn = getTagText(pointEl, 'WellKnownName');
+            if (wkn) { props.wellKnownName = wkn; availableProps.wellKnownName = true; }
+            const size = getTagText(pointEl, 'Size');
+            if (size) { props.size = parseFloat(size); availableProps.size = true; }
+            const rot = getTagText(pointEl, 'Rotation');
+            if (rot) { props.rotation = parseFloat(rot); availableProps.rotation = true; }
+            const ogcRes = getEl(pointEl, 'OnlineResource');
+            if (ogcRes) {
+                const href = ogcRes.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || ogcRes.getAttribute('xlink:href');
+                if (href) { props.externalGraphicUrl = href; availableProps.externalGraphicUrl = true; }
+            }
+        }
+
+        // ══ Line ══════════════════════════════════════════════════════
+        if (hasLine && !hasPolygon) {
+            const lineEl = doc.getElementsByTagNameNS('*', 'LineSymbolizer')[0];
+            const strokeEl = getEl(lineEl, 'Stroke');
+            if (strokeEl) {
+                const col = getParam(strokeEl, 'stroke');
+                if (col) { props.stroke = col; availableProps.stroke = true; }
+                const sw = getParam(strokeEl, 'stroke-width');
+                if (sw !== null) { props.strokeWidth = parseFloat(sw); availableProps.strokeWidth = true; }
+                const da = getParam(strokeEl, 'stroke-dasharray');
+                if (da) { props.strokeDasharray = da.replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); availableProps.strokeDasharray = true; }
+            }
+        }
+
+        // ══ Text (Label) ══════════════════════════════════════════════
+        if (hasText) {
+            // Only parse from our generated GeneratedLabelRule
+            const allRules = getEls(doc, 'Rule');
+            const labelRule = allRules.find(r => {
+                const titleEl = getEl(r, 'Title');
+                return titleEl?.textContent?.trim() === 'GeneratedLabelRule';
+            });
+            const textEl = labelRule ? getEl(labelRule, 'TextSymbolizer') : doc.getElementsByTagNameNS('*', 'TextSymbolizer')[0];
+
+            const labelEl = getEl(textEl, 'Label');
+            if (labelEl) {
+                const propName = getEl(labelEl, 'PropertyName');
+                if (propName) props.labelAttribute = propName.textContent.trim();
+            }
+            const fontEl = getEl(textEl, 'Font');
+            if (fontEl) {
+                const ff = getParam(fontEl, 'font-family');
+                if (ff) { props.fontFamily = ff; availableProps.fontFamily = true; }
+                const fs = getParam(fontEl, 'font-size');
+                if (fs) { props.fontSize = parseFloat(fs); availableProps.fontSize = true; }
+                const fw = getParam(fontEl, 'font-weight');
+                if (fw) { props.fontWeight = fw; availableProps.fontWeight = true; }
+                const fst = getParam(fontEl, 'font-style');
+                if (fst) { props.fontStyle = fst; availableProps.fontStyle = true; }
+            }
+            const haloEl = getEl(textEl, 'Halo');
+            if (haloEl) {
+                const hr = getTagText(haloEl, 'Radius');
+                if (hr) { props.haloRadius = parseFloat(hr); availableProps.haloRadius = true; }
+                const hFillEl = getEl(haloEl, 'Fill');
+                const hc = getParam(hFillEl, 'fill');
+                if (hc) { props.haloColor = hc; availableProps.haloColor = true; }
+            }
+            // Font color — Fill directly under TextSymbolizer (NOT under Halo)
+            const textFills = getEls(textEl, 'Fill').filter(f => f.parentNode === textEl);
+            if (textFills.length > 0) {
+                const fc = getParam(textFills[0], 'fill');
+                if (fc) { props.fontColor = fc; availableProps.fontColor = true; }
+            }
+
+            // Scale-based label
+            if (labelRule) {
+                const maxScaleEl = getEl(labelRule, 'MaxScaleDenominator');
+                if (maxScaleEl) {
+                    const scale = parseFloat(maxScaleEl.textContent);
+                    if (scale > 0) {
+                        props.minZoom = Math.round(Math.log2(559082264 / scale));
+                        props.staticLabel = false;
+                    }
+                } else {
+                    props.staticLabel = true;
+                }
             } else {
-                return defaultValue;
+                props.staticLabel = true;
             }
         }
 
-        // Expanded regex to handle namespaces better and ensuring value capture
-        const regex = new RegExp(`<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name=["']${name}["'][^>]*>([\\s\\S]*?)</(?:[\\w-]*:)?(?:Css|Svg)Parameter>`, 'i');
-        const match = searchTarget.match(regex);
-        if (match) {
-            const propKey = name.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-            availableProps[propKey] = true;
-            let val = match[1].trim();
-            // Normalize dash-array
-            if (name === 'stroke-dasharray') val = val.replace(/,/g, ' ').replace(/\s+/g, ' ');
-            return val;
+        // ══ VendorOptions ════════════════════════════════════════════════
+        for (const vo of getEls(doc, 'VendorOption')) {
+            const name = vo.getAttribute('name');
+            if (name === 'group') props.preventDuplicates = vo.textContent.trim() === 'yes';
+            if (name === 'repeat') props.labelRepeat = parseInt(vo.textContent.trim()) || 0;
         }
-        return defaultValue;
-    };
 
-    const extractTag = (tagName, defaultValue, parentContext = null) => {
-        let regex;
-        if (parentContext) {
-            regex = new RegExp(`<([\\w-]*:)?${parentContext}[\\s\\S]*?<([\\w-]*:)?${tagName}>([\\s\\S]*?)</(?:[\\w-]*:)?${tagName}>`, 'i');
-            const match = sldBody.match(regex);
-            if (match) {
-                const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
-                availableProps[propKey] = true;
-                return match[3].trim();
-            }
-        } else {
-            regex = new RegExp(`<([\\w-]*:)?${tagName}>([\\s\\S]*?)</(?:[\\w-]*:)?${tagName}>`, 'i');
-            const match = sldBody.match(regex);
-            if (match) {
-                const propKey = tagName.charAt(0).toLowerCase() + tagName.slice(1);
-                availableProps[propKey] = true;
-                return match[2].trim();
-            }
+        // ══ availableProps gates based on symbolizer type ════════════════
+        if (hasPolygon || (!hasPoint && !hasLine)) {
+            availableProps.fill = true; availableProps.fillOpacity = true;
+            availableProps.stroke = true; availableProps.strokeWidth = true;
+            availableProps.strokeDasharray = true; availableProps.hatchPattern = true;
         }
-        return defaultValue;
-    };
-
-    const extractExternalGraphic = () => {
-        const regex = /<([\\w-]*:)?ExternalGraphic>[\s\S]*?<([\\w-]*:)?OnlineResource[\s\S]*?href="([^"]+)"[\s\S]*?\/>/i;
-        const match = sldBody.match(regex);
-        if (match) {
-            availableProps.externalGraphicUrl = true;
-            return match[3].trim();
+        if (hasLine && !hasPolygon) {
+            availableProps.stroke = true; availableProps.strokeWidth = true;
+            availableProps.strokeDasharray = true; availableProps.strokeLinecap = true;
+            availableProps.strokeLinejoin = true;
         }
-        return '';
-    };
-
-    const extractLabelProp = () => {
-        const regex = /<([\\w-]*:)?Label>\s*<([\\w-]*:)?PropertyName>([\s\S]*?)<\/(?:[\\w-]*:)?PropertyName>\s*<\/(?:[\\w-]*:)?Label>/i;
-        const match = sldBody.match(regex);
-        if (match) {
-            availableProps.labelAttribute = true;
-            return match[3].trim();
+        if (hasPoint) {
+            availableProps.size = true; availableProps.wellKnownName = true;
+            availableProps.stroke = true; availableProps.fill = true;
+            availableProps.externalGraphicUrl = true; availableProps.rotation = true;
         }
-        return '';
-    };
-
-    const extractHatch = () => {
-        // More specific regex to ensure we are inside a GraphicFill/Graphic/Mark structure
-        // Relaxed whitespace handling and tag attributes
-        const regex = /<([\\w-]*:)?Fill>[\s\S]*?<([\\w-]*:)?GraphicFill>[\s\S]*?<([\\w-]*:)?Graphic>[\s\S]*?<([\\w-]*:)?Mark>[\s\S]*?<([\\w-]*:)?WellKnownName>([^<]+)<\/(?:[\\w-]*:)?WellKnownName>/i;
-        const match = sldBody.match(regex);
-        if (match) {
-            availableProps.hatchPattern = true;
-            return match[6].trim();
+        if (hasText) {
+            availableProps.fontSize = true; availableProps.haloRadius = true;
+            availableProps.fontColor = true; availableProps.fontFamily = true;
+            availableProps.fontWeight = true; availableProps.fontStyle = true;
         }
-        return '';
-    };
 
-    props.fill = extract('fill', props.fill);
-    props.fillOpacity = parseFloat(extract('fill-opacity', props.fillOpacity));
-    props.stroke = extract('stroke', props.stroke);
-    props.strokeWidth = parseFloat(extract('stroke-width', props.strokeWidth));
-    props.strokeOpacity = parseFloat(extract('stroke-opacity', props.strokeOpacity));
-    props.strokeDasharray = extract('stroke-dasharray', props.strokeDasharray);
-    props.strokeLinecap = extract('stroke-linecap', props.strokeLinecap);
-    props.strokeLinejoin = extract('stroke-linejoin', props.strokeLinejoin);
-
-    props.size = parseFloat(extractTag('Size', props.size));
-    props.rotation = parseFloat(extractTag('Rotation', props.rotation));
-    props.wellKnownName = extractTag('WellKnownName', props.wellKnownName);
-    props.externalGraphicUrl = extractExternalGraphic();
-
-    // Hatch Pattern Detection
-    const hatch = extractHatch();
-    if (hatch) {
-        props.hatchPattern = hatch;
-    } else if (props.fillOpacity === 0 && availableProps.fillOpacity) {
-        // Detect Outline from 0 opacity
-        props.hatchPattern = 'outline';
-        availableProps.hatchPattern = true;
-    }
-
-    props.fontSize = parseFloat(extract('font-size', props.fontSize, 'TextSymbolizer'));
-    props.fontFamily = extract('font-family', props.fontFamily, 'TextSymbolizer');
-    props.fontWeight = extract('font-weight', props.fontWeight, 'TextSymbolizer');
-    props.fontStyle = extract('font-style', props.fontStyle, 'TextSymbolizer');
-
-    props.fontColor = extract('fill', props.fontColor, 'TextSymbolizer'); // Now context-aware
-    props.haloRadius = parseFloat(extractTag('Radius', props.haloRadius));
-    props.haloColor = extract('fill', props.haloColor, 'Halo'); // Specific to Halo
-    props.labelAttribute = extractLabelProp();
-
-    // Parse GeneratedLabelRule for Scale
-    const labelRuleRegex = /<([\\w-]*:)?Rule>[\s\S]*?<([\\w-]*:)?Title>GeneratedLabelRule<\/([\\w-]*:)?Title>([\s\S]*?)<\/([\\w-]*:)?Rule>/i;
-    const labelRuleMatch = sldBody.match(labelRuleRegex);
-    if (labelRuleMatch) {
-        const ruleBody = labelRuleMatch[4];
-        const maxScaleRegex = /<([\\w-]*:)?MaxScaleDenominator>([\d.]+)<\/([\\w-]*:)?MaxScaleDenominator>/i;
-        const maxScaleMatch = ruleBody.match(maxScaleRegex);
-        if (maxScaleMatch) {
-            const scale = parseFloat(maxScaleMatch[2]);
-            // Approximate conversion: Scale = 559082264 / (2 ^ Zoom)
-            if (scale > 0) {
-                const zoom = Math.log2(559082264 / scale);
-                props.minZoom = Math.round(zoom);
-                props.staticLabel = false;
-            }
-        } else {
-            props.staticLabel = true;
-        }
-    } else {
-        props.staticLabel = true;
-    }
-
-    // Parse VendorOptions for Duplicates and Repeat
-    const groupOptionRegex = /<([\\w-]*:)?VendorOption name=["']group["']>([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
-    const repeatOptionRegex = /<([\\w-]*:)?VendorOption name=["']repeat["']>([^<]+)<\/(?:[\\w-]*:)?VendorOption>/i;
-
-    const groupMatch = sldBody.match(groupOptionRegex);
-    props.preventDuplicates = groupMatch ? (groupMatch[2] === 'yes') : false;
-
-    const repeatMatch = sldBody.match(repeatOptionRegex);
-    props.labelRepeat = repeatMatch ? parseInt(repeatMatch[2]) : 0;
-
-
-    const hasPoint = sldBody.includes('PointSymbolizer');
-    const hasLine = sldBody.includes('LineSymbolizer');
-    const hasPolygon = sldBody.includes('PolygonSymbolizer');
-    const hasText = sldBody.includes('TextSymbolizer');
-
-    if (hasPolygon || (!hasPoint && !hasLine)) {
-        availableProps.fill = true; availableProps.fillOpacity = true;
-        availableProps.stroke = true; availableProps.strokeWidth = true;
-        availableProps.strokeDasharray = true; availableProps.hatchPattern = true;
-    }
-    if (hasPoint) {
-        availableProps.size = true; availableProps.wellKnownName = true;
-        availableProps.stroke = true; availableProps.fill = true;
-        availableProps.externalGraphicUrl = true; availableProps.rotation = true;
-    }
-    if (hasLine) {
-        availableProps.stroke = true; availableProps.strokeWidth = true;
-        availableProps.strokeDasharray = true; availableProps.strokeLinecap = true;
-        availableProps.strokeLinejoin = true;
-    }
-    if (hasText) {
-        availableProps.fontSize = true; availableProps.haloRadius = true;
-        availableProps.fontColor = true; availableProps.fontFamily = true;
-        availableProps.fontWeight = true; availableProps.fontStyle = true;
+    } catch (err) {
+        console.error('[SLD Parse] Error:', err);
+        return parseSLDFallback(sldBody);
     }
 
     return { props, availableProps };
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIMPLE REGEX FALLBACK (last resort)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const parseSLDFallback = (sldBody) => {
+    const props = {
+        fill: '#cccccc', fillOpacity: 1, stroke: '#333333', strokeWidth: 1, strokeOpacity: 1,
+        strokeDasharray: '', strokeLinecap: 'butt', strokeLinejoin: 'miter',
+        size: 10, rotation: 0, wellKnownName: 'circle', externalGraphicUrl: '', hatchPattern: '',
+        fontSize: 12, fontColor: '#000000', fontFamily: 'Arial', fontWeight: 'normal', fontStyle: 'normal',
+        haloRadius: 1, haloColor: '#ffffff', staticLabel: true, minZoom: 14, preventDuplicates: true, labelRepeat: 0, labelAttribute: ''
+    };
+    const availableProps = {
+        fill: true, fillOpacity: true, stroke: true, strokeWidth: true,
+        strokeOpacity: false, strokeDasharray: true, strokeLinecap: false, strokeLinejoin: false,
+        size: false, rotation: false, wellKnownName: false, externalGraphicUrl: false,
+        hatchPattern: true, fontSize: false, fontColor: false, fontFamily: false,
+        fontWeight: false, fontStyle: false, haloRadius: false, haloColor: false
+    };
+    const get = (n) => {
+        const m = sldBody.match(new RegExp(`<(?:[\\w-]*:)?(?:Css|Svg)Parameter[^>]*name=["']${n}["'][^>]*>([\\s\\S]*?)</`, 'i'));
+        return m ? m[1].trim() : null;
+    };
+    const v = get('fill'); if (v) props.fill = v;
+    const fo = get('fill-opacity'); if (fo) props.fillOpacity = parseFloat(fo);
+    const s = get('stroke'); if (s) props.stroke = s;
+    const sw = get('stroke-width'); if (sw) props.strokeWidth = parseFloat(sw);
+    const da = get('stroke-dasharray'); if (da) props.strokeDasharray = da;
+    return { props, availableProps };
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPLY STYLE CHANGES — DOM-based so Fill/Stroke targets are precise
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const applyStyleChanges = (sldBody, props) => {
-    console.log("StyleUtils: Applying Changes. Props:", props);
-    let newSld = sldBody;
-    let pendingLabelRule = null;
+    console.log('[StyleUtils] Applying changes:', props);
 
-    const ensureParent = (parentTag, containerTag, beforeTag = null) => {
-        const tagRegex = new RegExp(`<([\\w-]*:)?${parentTag}[^>]*>`, 'i');
-        if (!newSld.match(tagRegex)) {
-            const containerRegex = new RegExp(`(<([\\w-]*:)?${containerTag}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${containerTag}>)`, 'i');
-            const match = newSld.match(containerRegex);
-            if (match) {
-                const prefix = match[2] || '';
-                const content = match[3];
-                const newParent = `\n            <${prefix}${parentTag}></${prefix}${parentTag}>`;
+    const paramTag = detectParamTag(sldBody);
 
-                if (beforeTag) {
-                    const beforeRegex = new RegExp(`<([\\w-]*:)?${beforeTag}[^>]*>`, 'i');
-                    if (content.match(beforeRegex)) {
-                        const updatedContent = content.replace(beforeRegex, `${newParent}\n            $&`);
-                        newSld = newSld.replace(containerRegex, `$1${updatedContent}$4`);
-                        return;
-                    }
-                }
-                newSld = newSld.replace(containerRegex, `$1$3${newParent}$4`);
-            }
-        }
-    };
+    // Parse into DOM
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sldBody, 'text/xml');
 
-    const replace = (name, value, parentTagName) => {
-        if (value === undefined) return;
+    if (doc.querySelector('parsererror')) {
+        console.error('[ApplySLD] Failed to parse SLD XML');
+        return sldBody; // Return original if we can't parse
+    }
 
-        if (parentTagName) {
-            const parentRegex = new RegExp(`(<([\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'gi');
+    const hasPolygon = doc.getElementsByTagNameNS('*', 'PolygonSymbolizer').length > 0;
+    const hasLine = doc.getElementsByTagNameNS('*', 'LineSymbolizer').length > 0;
+    const hasPoint = doc.getElementsByTagNameNS('*', 'PointSymbolizer').length > 0;
 
-            newSld = newSld.replace(parentRegex, (match, startTag, prefix, content, endTag) => {
-                const paramRegex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name=["']${name}["'][^>]*>)([^<]*)(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'i');
+    // ── Strip scale denominators ──────────────────────────────────────────────
+    for (const el of [...getEls(doc, 'MinScaleDenominator'), ...getEls(doc, 'MaxScaleDenominator')]) {
+        el.parentNode?.removeChild(el);
+    }
 
-                if (value === null) {
-                    return `${startTag}${content.replace(paramRegex, '')}${endTag}`;
-                } else {
-                    if (paramRegex.test(content)) {
-                        return `${startTag}${content.replace(paramRegex, `$1${value}$5`)}${endTag}`;
-                    } else {
-                        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-                        const internalPrefix = prefix || '';
-                        const newParam = `<${internalPrefix}${tagType} name="${name}">${value}</${internalPrefix}${tagType}>`;
-                        return `${startTag}${content}${newParam}${endTag}`;
-                    }
-                }
-            });
-        } else {
-            const regex = new RegExp(`(<([\\w-]*:)?(Css|Svg)Parameter[^>]*name=["']${name}["'][^>]*>)[^<]*(</(?:[\\w-]*:)?(?:Css|Svg)Parameter>)`, 'gi');
-            if (value === null) {
-                if (newSld.match(regex)) newSld = newSld.replace(regex, '');
-            } else {
-                if (newSld.match(regex)) newSld = newSld.replace(regex, `$1${value}$4`);
-            }
-        }
-    };
-
-    const replaceTag = (tagName, value, parentTagName) => {
-        if (value === undefined || value === null) return;
-        const regex = new RegExp(`(<([\\w-]*:)?${tagName}[^>]*>)[^<]*(</(?:[\\w-]*:)?${tagName}>)`, 'i');
-        if (newSld.match(regex)) {
-            newSld = newSld.replace(regex, `$1${value}$3`);
-        } else if (parentTagName) {
-            const parentRegex = new RegExp(`(<([\\w-]*:)?${parentTagName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${parentTagName}>)`, 'i');
-            const match = newSld.match(parentRegex);
-            if (match) {
-                const prefix = match[2] || '';
-                const newTag = `\n            <${prefix}${tagName}>${value}</${prefix}${tagName}>`;
-                newSld = newSld.replace(parentRegex, `$1$3${newTag}$4`);
-            }
-        }
-    };
-
-    // -------------------------------------------------------------------------
-    // 1. Structural Robustness
-    // -------------------------------------------------------------------------
-    // -------------------------------------------------------------------------
-    // 1. Structural Robustness (Order Matters for Schema Compliance)
-    // -------------------------------------------------------------------------
-    ensureParent('Fill', 'PolygonSymbolizer', 'Stroke'); // Fill before Stroke
-    ensureParent('Stroke', 'PolygonSymbolizer');
-
-    ensureParent('Stroke', 'LineSymbolizer');
-
-    ensureParent('Fill', 'Mark', 'Stroke');
-    ensureParent('Stroke', 'Mark');
-
-    ensureParent('Halo', 'TextSymbolizer', 'Fill');
-    ensureParent('Font', 'TextSymbolizer', 'Halo');
-    ensureParent('Fill', 'TextSymbolizer');
-
-    // -------------------------------------------------------------------------
-    // 2. Generic Property Replacements (First pass)
-    // -------------------------------------------------------------------------
-    // -------------------------------------------------------------------------
-    // 2. Generic Property Replacements (First pass - excluded from GraphicFill)
-    // -------------------------------------------------------------------------
-    // We delay 'fill' and 'stroke' for Polygon if a pattern is active
-    // We delay 'fill' and 'stroke' for Polygon if a pattern is active
-    const isGraphicPattern = props.hatchPattern && props.hatchPattern !== '' && props.hatchPattern !== 'outline';
+    const isPattern = props.hatchPattern && props.hatchPattern !== '' && props.hatchPattern !== 'outline';
     const isOutline = props.hatchPattern === 'outline';
-    console.log("StyleUtils: isGraphicPattern:", isGraphicPattern, "isOutline:", isOutline, "hatchPattern:", props.hatchPattern);
 
-    if (!isGraphicPattern && !isOutline) {
-        console.log("StyleUtils: Applying generic fill (no pattern)");
-        replace('fill', props.fill, 'Fill');
-        replace('fill-opacity', props.fillOpacity, 'Fill');
-    } else {
-        console.log("StyleUtils: Skipping generic fill for pattern or outline");
-    }
+    // ── Polygon ───────────────────────────────────────────────────────────────
+    if (hasPolygon) {
+        const polyEl = doc.getElementsByTagNameNS('*', 'PolygonSymbolizer')[0];
 
-    replace('stroke', props.stroke, 'Stroke');
-    replace('stroke-width', props.strokeWidth, 'Stroke');
-    replace('stroke-opacity', props.strokeOpacity, 'Stroke');
-    replace('stroke-dasharray', props.strokeDasharray, 'Stroke');
-    replace('stroke-linecap', props.strokeLinecap, 'Stroke');
-    replace('stroke-linejoin', props.strokeLinejoin, 'Stroke');
+        // ── Fill (inside PolygonSymbolizer) ───────────────────────────────
+        let fillEl = getEls(polyEl, 'Fill').find(f => f.parentNode === polyEl);
 
-    replaceTag('Size', props.size, 'Graphic');
-    replaceTag('Rotation', props.rotation, 'Graphic');
-    replaceTag('WellKnownName', props.wellKnownName, 'Mark');
+        if (isOutline) {
+            // Remove fill entirely
+            if (fillEl) fillEl.parentNode.removeChild(fillEl);
+        } else if (isPattern) {
+            // Build a GraphicFill structure
+            const pTag = paramTag;
+            const ns = polyEl.namespaceURI ?? '';
+            const prefix = polyEl.prefix ? `${polyEl.prefix}:` : '';
 
-    // -------------------------------------------------------------------------
-    // 2. Specialized Replacements (Second pass - can overwrite generic tags)
-    // -------------------------------------------------------------------------
+            const newFillXml = `<${prefix}Fill xmlns="${ns}"><${prefix}GraphicFill><${prefix}Graphic><${prefix}Mark><${prefix}WellKnownName>${props.hatchPattern}</${prefix}WellKnownName><${prefix}Stroke><${prefix}${pTag} name="stroke">${props.fill || '#000000'}</${prefix}${pTag}><${prefix}${pTag} name="stroke-width">1</${prefix}${pTag}><${prefix}${pTag} name="stroke-opacity">${props.fillOpacity !== undefined ? props.fillOpacity : 1}</${prefix}${pTag}></${prefix}Stroke></${prefix}Mark><${prefix}Size>8</${prefix}Size></${prefix}Graphic></${prefix}GraphicFill></${prefix}Fill>`;
 
-    // Handle Dash Array (Remove if null/Solid)
-    if (props.strokeDasharray === null || props.strokeDasharray === '') {
-        const strokeRegex = /(<([\w-]*:)?Stroke[^>]*>)([\s\S]*?)(<\/([\w-]*:)?Stroke>)/gi;
-        newSld = newSld.replace(strokeRegex, (match, start, prefix, content, end) => {
-            const dashRegex = /<([\w-]*:)?(Css|Svg)Parameter[^>]*name=["']stroke-dasharray["'][^>]*>([\s\S]*?)<\/([\w-]*:)?\2Parameter>/i;
-            return `${start}${content.replace(dashRegex, '')}${end}`;
-        });
-    }
+            const tempDoc = parser.parseFromString(newFillXml, 'text/xml');
+            const newFillEl = doc.importNode(tempDoc.documentElement, true);
 
-    // Handle SVG Icons
-    if (props.externalGraphicUrl) {
-        const pointSymbolizerRegex = /(<([\\w-]*:)?PointSymbolizer[^>]*>[\s\S]*?<([\\w-]*:)?Graphic[^>]*>)([\s\S]*?)(<\/([\\w-]*:)?Graphic>[\s\S]*?<\/([\\w-]*:)?PointSymbolizer>)/i;
-        const match = newSld.match(pointSymbolizerRegex);
-        if (match) {
-            const prefix = match[2] || '';
-            const svgTag = `<${prefix}ExternalGraphic><${prefix}OnlineResource xlink:type="simple" xlink:href="${props.externalGraphicUrl}" /><${prefix}Format>image/svg+xml</${prefix}Format></${prefix}ExternalGraphic>`;
-            const cleanGraphic = match[4].replace(/<([\\w-]*:)?(Mark|ExternalGraphic)>[\s\S]*?<\/(?:[\\w-]*:)?(?:\2)>/i, svgTag);
-            newSld = newSld.replace(pointSymbolizerRegex, `$1${cleanGraphic}$5`);
-        }
-    } else if (props.wellKnownName) {
-        const pointSymbolizerRegex = /(<([\\w-]*:)?PointSymbolizer[^>]*>[\s\S]*?<([\\w-]*:)?Graphic[^>]*>)([\s\S]*?)(<\/([\\w-]*:)?Graphic>[\s\S]*?<\/([\\w-]*:)?PointSymbolizer>)/i;
-        const match = newSld.match(pointSymbolizerRegex);
-        if (match && match[4].includes('ExternalGraphic')) {
-            const prefix = match[2] || '';
-            const markTag = `<${prefix}Mark><${prefix}WellKnownName>${props.wellKnownName}</${prefix}WellKnownName><${prefix}Fill/><${prefix}Stroke/></${prefix}Mark>`;
-            const cleanGraphic = match[4].replace(/<([\\w-]*:)?ExternalGraphic>[\s\S]*?<\/(?:[\\w-]*:)?ExternalGraphic>/i, markTag);
-            newSld = newSld.replace(pointSymbolizerRegex, `$1${cleanGraphic}$5`);
-        }
-    }
-
-    // 2. Handle Hatch Patterns for Polygons
-    // -------------------------------------------------------------------------
-    // Improved Regex to find existing Fill within PolygonSymbolizer
-    const polyFillRegex = /(<([\w-]*:)?PolygonSymbolizer[^>]*>)([\s\S]*?)(<([\w-]*:)?Fill>[\s\S]*?<\/(?:[\w-]*:)?Fill>)([\s\S]*?)(<\/(?:[\w-]*:)?PolygonSymbolizer>)/i;
-    const polyFillMatch = newSld.match(polyFillRegex);
-
-    // We also need a regex to just find ANY Fill inside PolygonSymbolizer for removal if the specific match above fails but we want to insert
-    const simplePolyFillRegex = /<([\w-]*:)?Fill>[\s\S]*?<\/(?:[\w-]*:)?Fill>/i;
-
-    // isGraphicPattern is already declared above
-
-    if (isGraphicPattern) {
-        console.log("StyleUtils: Entering pattern replacement block");
-
-        // Determine prefix safely
-        let prefix = '';
-        if (polyFillMatch && polyFillMatch[3]) {
-            prefix = polyFillMatch[3];
+            if (fillEl) {
+                polyEl.replaceChild(newFillEl, fillEl);
+            } else {
+                // Insert before Stroke (schema compliance)
+                const strokeEl = getEls(polyEl, 'Stroke').find(s => s.parentNode === polyEl);
+                if (strokeEl) polyEl.insertBefore(newFillEl, strokeEl);
+                else polyEl.appendChild(newFillEl);
+            }
+            fillEl = newFillEl;
         } else {
-            const polySymMatch = newSld.match(/(<([\w-]*:)?PolygonSymbolizer[^>]*>)/i);
-            if (polySymMatch && polySymMatch[2]) {
-                prefix = polySymMatch[2];
+            // Solid Fill
+            const gfEl = fillEl ? getEl(fillEl, 'GraphicFill') : null;
+
+            if (gfEl) {
+                // Transitioning from pattern to solid — rebuild fill element
+                const ns = polyEl.namespaceURI ?? '';
+                const prefix = polyEl.prefix ? `${polyEl.prefix}:` : '';
+                const pTag = paramTag;
+                const op = props.fillOpacity !== undefined ? props.fillOpacity : 1;
+
+                const newFillXml = `<${prefix}Fill xmlns="${ns}"><${prefix}${pTag} name="fill">${props.fill || '#cccccc'}</${prefix}${pTag}><${prefix}${pTag} name="fill-opacity">${op}</${prefix}${pTag}></${prefix}Fill>`;
+                const tempDoc = parser.parseFromString(newFillXml, 'text/xml');
+                const newFillEl = doc.importNode(tempDoc.documentElement, true);
+
+                if (fillEl) polyEl.replaceChild(newFillEl, fillEl);
+                else polyEl.appendChild(newFillEl);
+                fillEl = newFillEl;
+            } else {
+                // Update existing solid fill params or create fill element
+                if (!fillEl) {
+                    const ns = polyEl.namespaceURI ?? '';
+                    const prefix = polyEl.prefix ? `${polyEl.prefix}:` : '';
+                    fillEl = doc.createElementNS(ns, `${prefix}Fill`);
+                    const strokeEl = getEls(polyEl, 'Stroke').find(s => s.parentNode === polyEl);
+                    if (strokeEl) polyEl.insertBefore(fillEl, strokeEl);
+                    else polyEl.appendChild(fillEl);
+                }
+                if (props.fill !== undefined) setDomParam(doc, fillEl, 'fill', props.fill, paramTag);
+                if (props.fillOpacity !== undefined) setDomParam(doc, fillEl, 'fill-opacity', props.fillOpacity, paramTag);
             }
         }
-        prefix = (prefix || '').trim();
-        console.log("StyleUtils: Using prefix:", `'${prefix}'`);
 
-        // Create the new Fill Tag
-        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-        const graphicFill = `<${prefix}Fill>
-          <${prefix}GraphicFill>
-            <${prefix}Graphic>
-              <${prefix}Mark>
-                <${prefix}WellKnownName>${props.hatchPattern}</${prefix}WellKnownName>
-                <${prefix}Stroke>
-                  <${prefix}${tagType} name="stroke">${props.fill || '#000000'}</${prefix}${tagType}>
-                  <${prefix}${tagType} name="stroke-width">1</${prefix}${tagType}>
-                </${prefix}Stroke>
-              </${prefix}Mark>
-              <${prefix}Size>8</${prefix}Size>
-            </${prefix}Graphic>
-          </${prefix}GraphicFill>
-        </${prefix}Fill>`;
-
-        // Robust Replacement Strategy:
-        // 1. Find the PolygonSymbolizer block
-        const polySymRegex = /(<([\w-]*:)?PolygonSymbolizer[^>]*>)([\s\S]*?)(<\/([\w-]*:)?PolygonSymbolizer>)/i;
-        const symMatch = newSld.match(polySymRegex);
-
-        if (symMatch) {
-            const startTag = symMatch[1];
-            let content = symMatch[3];
-            const endTag = symMatch[4];
-
-            // 2. Remove ANY existing Fill tag from the content
-            // Matches <sld:Fill>...</sld:Fill> or <sld:Fill />
-            const fillRegex = /<([\w-]*:)?Fill([\s\S]*?)(<\/(?:[\w-]*:)?Fill>|\/>)/gi;
-            // Also check for simple self-closing if the above is too strict
-            const simpleFillRegex = /<([\w-]*:)?Fill[^>]*>[\s\S]*?<\/(?:[\w-]*:)?Fill>/gi;
-
-            let cleanedContent = content;
-            if (fillRegex.test(content)) {
-                console.log("StyleUtils: Removing existing Fill from content");
-                cleanedContent = content.replace(fillRegex, '');
-            } else if (simpleFillRegex.test(content)) {
-                console.log("StyleUtils: Removing existing Fill (simple regex)");
-                cleanedContent = content.replace(simpleFillRegex, '');
-            }
-
-            // 3. Prepend the new GraphicFill to the cleaned content (Fill usually comes first)
-            // Ensure we don't duplicate newlines excessively
-            const newContent = `\n${graphicFill}\n${cleanedContent.trim()}`;
-
-            console.log("StyleUtils: Reassembling PolygonSymbolizer with new Pattern");
-            newSld = newSld.replace(polySymRegex, `${startTag}${newContent}\n${endTag}`);
-        } else {
-            console.warn("StyleUtils: No PolygonSymbolizer found to apply pattern!");
+        // ── Stroke (DIRECT child of PolygonSymbolizer only) ───────────────
+        let strokeEl = getEls(polyEl, 'Stroke').find(s => s.parentNode === polyEl);
+        if (!strokeEl) {
+            const ns = polyEl.namespaceURI ?? '';
+            const prefix = polyEl.prefix ? `${polyEl.prefix}:` : '';
+            strokeEl = doc.createElementNS(ns, `${prefix}Stroke`);
+            polyEl.appendChild(strokeEl);
         }
-    } else if (isOutline) {
-        console.log("StyleUtils: Applying Outline (Removing Fill)");
-        if (polyFillMatch) {
-            newSld = newSld.replace(polyFillRegex, `$1$3$6$7`);
-        } else {
-            newSld = newSld.replace(simplePolyFillRegex, '');
+        if (props.stroke !== undefined) setDomParam(doc, strokeEl, 'stroke', props.stroke, paramTag);
+        if (props.strokeWidth !== undefined) setDomParam(doc, strokeEl, 'stroke-width', props.strokeWidth, paramTag);
+        if (props.strokeOpacity !== undefined) setDomParam(doc, strokeEl, 'stroke-opacity', props.strokeOpacity, paramTag);
+        if (props.strokeDasharray === null || props.strokeDasharray === '') {
+            removeDomParam(strokeEl, 'stroke-dasharray');
+        } else if (props.strokeDasharray) {
+            setDomParam(doc, strokeEl, 'stroke-dasharray', props.strokeDasharray, paramTag);
         }
-    } else if (polyFillMatch && polyFillMatch[4].includes('GraphicFill')) {
-        const prefix = polyFillMatch[3] || '';
-        const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
-        const solidFill = `<${prefix}Fill>
-          <${prefix}${tagType} name="fill">${props.fill || '#cccccc'}</${prefix}${tagType}>
-          <${prefix}${tagType} name="fill-opacity">${props.fillOpacity || 1}</${prefix}${tagType}>
-        </${prefix}Fill>`;
-        newSld = newSld.replace(polyFillRegex, `$1${solidFill}`);
+        if (props.strokeLinecap) setDomParam(doc, strokeEl, 'stroke-linecap', props.strokeLinecap, paramTag);
+        if (props.strokeLinejoin) setDomParam(doc, strokeEl, 'stroke-linejoin', props.strokeLinejoin, paramTag);
     }
 
-    // Handle Labels
-    newSld = newSld.replace(/<([\\w-]*:)?TextSymbolizer>[\s\S]*?<\/(?:[\\w-]*:)?TextSymbolizer>/gi, '');
-    newSld = newSld.replace(/<([\\w-]*:)?Rule>[\s\S]*?<([\\w-]*:)?Title>GeneratedLabelRule<\/([\\w-]*:)?Title>[\s\S]*?<\/([\\w-]*:)?Rule>/gi, '');
+    // ── Line ──────────────────────────────────────────────────────────────────
+    if (hasLine) {
+        const lineEl = doc.getElementsByTagNameNS('*', 'LineSymbolizer')[0];
+        const strokeEl = getEl(lineEl, 'Stroke');
+        if (strokeEl) {
+            if (props.stroke !== undefined) setDomParam(doc, strokeEl, 'stroke', props.stroke, paramTag);
+            if (props.strokeWidth !== undefined) setDomParam(doc, strokeEl, 'stroke-width', props.strokeWidth, paramTag);
+            if (props.strokeDasharray === null || props.strokeDasharray === '') {
+                removeDomParam(strokeEl, 'stroke-dasharray');
+            } else if (props.strokeDasharray) {
+                setDomParam(doc, strokeEl, 'stroke-dasharray', props.strokeDasharray, paramTag);
+            }
+        }
+    }
+
+    // ── Point ─────────────────────────────────────────────────────────────────
+    if (hasPoint) {
+        const pointEl = doc.getElementsByTagNameNS('*', 'PointSymbolizer')[0];
+        setDomTagText(getEl(pointEl, 'WellKnownName'), props.wellKnownName);
+        setDomTagText(getEl(pointEl, 'Size'), props.size);
+        setDomTagText(getEl(pointEl, 'Rotation'), props.rotation);
+        const markEl = getEl(pointEl, 'Mark');
+        const fillEl = getEl(markEl, 'Fill');
+        if (fillEl && props.fill !== undefined) setDomParam(doc, fillEl, 'fill', props.fill, paramTag);
+        const strokeEl = getEl(markEl, 'Stroke');
+        if (strokeEl && props.stroke !== undefined) setDomParam(doc, strokeEl, 'stroke', props.stroke, paramTag);
+    }
+
+    // ── Labels ────────────────────────────────────────────────────────────────
+    // Remove all existing TextSymbolizers and generated label rules
+    for (const el of getEls(doc, 'TextSymbolizer')) el.parentNode?.removeChild(el);
+    for (const rule of getEls(doc, 'Rule')) {
+        const titleEl = getEl(rule, 'Title');
+        if (titleEl?.textContent?.trim() === 'GeneratedLabelRule') {
+            rule.parentNode?.removeChild(rule);
+        }
+    }
 
     if (props.labelAttribute) {
-        const featureTypeStyleRegex = /(<([\\w-]*:)?FeatureTypeStyle[^>]*>)([\\s\\S]*?)(<\/([\\w-]*:)?FeatureTypeStyle>)/i;
-        const ftMatch = newSld.match(featureTypeStyleRegex);
-        if (ftMatch) {
-            const prefix = ftMatch[2] || '';
-            const tagType = newSld.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
+        // Find FeatureTypeStyle to append the label rule
+        const ftsEl = doc.getElementsByTagNameNS('*', 'FeatureTypeStyle')[0];
+        if (ftsEl) {
+            const ns = ftsEl.namespaceURI ?? '';
+            const prefix = ftsEl.prefix ? `${ftsEl.prefix}:` : '';
+            const pTag = paramTag;
 
             let scaleFilter = '';
-            if (!props.staticLabel) {
+            if (props.staticLabel === false && props.minZoom > 0) {
                 const scale = 559082264 / Math.pow(2, props.minZoom);
-                scaleFilter = `\n            <${prefix}MaxScaleDenominator>${scale}</${prefix}MaxScaleDenominator>`;
+                scaleFilter = `<${prefix}MaxScaleDenominator>${scale}</${prefix}MaxScaleDenominator>`;
             }
 
-            const newLabelRule = `
-    <${prefix}Rule>
-        <${prefix}Title>GeneratedLabelRule</${prefix}Title>${scaleFilter}
-        <${prefix}TextSymbolizer>
-            <${prefix}Label>
-                <ogc:PropertyName>${props.labelAttribute}</ogc:PropertyName>
-            </${prefix}Label>
-            <${prefix}Font>
-                <${prefix}${tagType} name="font-family">${props.fontFamily || 'Arial'}</${prefix}${tagType}>
-                <${prefix}${tagType} name="font-size">${props.fontSize || 12}</${prefix}${tagType}>
-                <${prefix}${tagType} name="font-style">${props.fontStyle || 'normal'}</${prefix}${tagType}>
-                <${prefix}${tagType} name="font-weight">${props.fontWeight || 'normal'}</${prefix}${tagType}>
-            </${prefix}Font>
-            <${prefix}LabelPlacement>
-                <${prefix}PointPlacement>
-                    <${prefix}AnchorPoint>
-                        <${prefix}AnchorPointX>0.5</${prefix}AnchorPointX>
-                        <${prefix}AnchorPointY>0.5</${prefix}AnchorPointY>
-                    </${prefix}AnchorPoint>
-                </${prefix}PointPlacement>
-            </${prefix}LabelPlacement>
-            <${prefix}Halo>
-                <${prefix}Radius>${props.haloRadius || 1}</${prefix}Radius>
-                <${prefix}Fill>
-                    <${prefix}${tagType} name="fill">${props.haloColor || '#FFFFFF'}</${prefix}${tagType}>
-                </${prefix}Fill>
-            </${prefix}Halo>
-            <${prefix}Fill>
-               <${prefix}${tagType} name="fill">${props.fontColor || '#000000'}</${prefix}${tagType}>
-            </${prefix}Fill>
-            <${prefix}VendorOption name="group">${props.staticLabel ? 'yes' : 'no'}</${prefix}VendorOption>
-            <${prefix}VendorOption name="labelAllGroup">false</${prefix}VendorOption>
-            <${prefix}VendorOption name="partials">true</${prefix}VendorOption>
-            <${prefix}VendorOption name="repeat">${props.staticLabel ? '0' : (props.labelRepeat || '0')}</${prefix}VendorOption>
-            <${prefix}VendorOption name="spaceAround">10</${prefix}VendorOption>
-            <${prefix}VendorOption name="conflictResolution">true</${prefix}VendorOption>
-            <${prefix}VendorOption name="goodnessOfFit">0</${prefix}VendorOption>
-            <${prefix}VendorOption name="maxDisplacement">40</${prefix}VendorOption>
-            <${prefix}VendorOption name="autoWrap">100</${prefix}VendorOption>
-        </${prefix}TextSymbolizer>
-    </${prefix}Rule>`;
-            newSld = newSld.replace(featureTypeStyleRegex, `$1$3${newLabelRule}$4`);
+            const labelXml = `<${prefix}Rule xmlns="${ns}"><${prefix}Title>GeneratedLabelRule</${prefix}Title>${scaleFilter}<${prefix}TextSymbolizer><${prefix}Label><ogc:PropertyName xmlns:ogc="http://www.opengis.net/ogc">${props.labelAttribute}</ogc:PropertyName></${prefix}Label><${prefix}Font><${prefix}${pTag} name="font-family">${props.fontFamily || 'Arial'}</${prefix}${pTag}><${prefix}${pTag} name="font-size">${props.fontSize || 12}</${prefix}${pTag}><${prefix}${pTag} name="font-style">${props.fontStyle || 'normal'}</${prefix}${pTag}><${prefix}${pTag} name="font-weight">${props.fontWeight || 'normal'}</${prefix}${pTag}></${prefix}Font><${prefix}LabelPlacement><${prefix}PointPlacement><${prefix}AnchorPoint><${prefix}AnchorPointX>0.5</${prefix}AnchorPointX><${prefix}AnchorPointY>0.5</${prefix}AnchorPointY></${prefix}AnchorPoint></${prefix}PointPlacement></${prefix}LabelPlacement><${prefix}Halo><${prefix}Radius>${props.haloRadius || 1}</${prefix}Radius><${prefix}Fill><${prefix}${pTag} name="fill">${props.haloColor || '#FFFFFF'}</${prefix}${pTag}></${prefix}Fill></${prefix}Halo><${prefix}Fill><${prefix}${pTag} name="fill">${props.fontColor || '#000000'}</${prefix}${pTag}></${prefix}Fill><${prefix}VendorOption name="group">${props.staticLabel ? 'yes' : 'no'}</${prefix}VendorOption><${prefix}VendorOption name="partials">true</${prefix}VendorOption><${prefix}VendorOption name="repeat">${props.staticLabel ? '0' : (props.labelRepeat || '0')}</${prefix}VendorOption><${prefix}VendorOption name="spaceAround">10</${prefix}VendorOption><${prefix}VendorOption name="conflictResolution">true</${prefix}VendorOption><${prefix}VendorOption name="goodnessOfFit">0</${prefix}VendorOption><${prefix}VendorOption name="maxDisplacement">40</${prefix}VendorOption><${prefix}VendorOption name="autoWrap">100</${prefix}VendorOption></${prefix}TextSymbolizer></${prefix}Rule>`;
+
+            const tempDoc = parser.parseFromString(labelXml, 'text/xml');
+            if (!tempDoc.querySelector('parsererror')) {
+                const newRule = doc.importNode(tempDoc.documentElement, true);
+                ftsEl.appendChild(newRule);
+            }
         }
     }
 
-    // Final Pass: Ensure Tag Order (Schema Compliance)
-    const reorderTags = (symbolizerName, tagsOrder) => {
-        const symRegex = new RegExp(`(<([\\w-]*:)?${symbolizerName}[^>]*>)([\\s\\S]*?)(</(?:[\\w-]*:)?${symbolizerName}>)`, 'gi');
-        newSld = newSld.replace(symRegex, (match, start, prefix, content, end) => {
-            const tags = [];
-            tagsOrder.forEach(tagName => {
-                const tagRegex = new RegExp(`[\\s]*<([\\w-]*:)?${tagName}[\\s\\S]*?\\/?>`, 'i');
-                const tagFullRegex = new RegExp(`[\\s]*<([\\w-]*:)?${tagName}[\\s\\S]*?</(?:[\\w-]*:)?${tagName}>`, 'i');
+    // Serialize back to string
+    let result = serializeDoc(doc);
 
-                let tagMatch = content.match(tagFullRegex);
-                if (!tagMatch) tagMatch = content.match(tagRegex); // Try self-closing
+    // Clean up the xmlns="" that XMLSerializer may add
+    result = result.replace(/\s*xmlns=""/g, '');
+    // Ensure xml declaration is present
+    if (!result.startsWith('<?xml')) {
+        result = '<?xml version="1.0" encoding="UTF-8"?>\n' + result;
+    }
 
-                if (tagMatch) {
-                    tags.push(tagMatch[0]);
-                    content = content.replace(tagMatch[0], ''); // Remove found tag
-                }
-            });
-            // Append remaining content (like VendorOptions) and return reordered
-            return `${start}${tags.join('')}${content}${end}`;
-        });
-    };
-
-    reorderTags('PolygonSymbolizer', ['Geometry', 'Fill', 'Stroke']);
-    reorderTags('PointSymbolizer', ['Geometry', 'Graphic']);
-    reorderTags('LineSymbolizer', ['Geometry', 'Stroke']);
-    reorderTags('TextSymbolizer', ['Label', 'Font', 'LabelPlacement', 'Halo', 'Fill']);
-
-    return newSld;
+    return result;
 };

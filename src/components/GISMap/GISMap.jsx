@@ -1339,33 +1339,42 @@ function GISMap() {
 
   // Debounce for style previews
   const previewTimeoutRef = useRef(null);
+  // Keep a ref to the latest styleData so closures in updateStyleProp never go stale
+  const styleDataRef = useRef(null);
+  useEffect(() => { styleDataRef.current = styleData; }, [styleData]);
 
   const updateStyleProp = (key, value, autoSave = false) => {
     if (!styleData) return;
 
     const newProps = { ...styleData.properties, [key]: value };
 
-    // Update state first
+    // Update state first (this will also update styleDataRef via the useEffect above)
     setStyleData(prev => ({
       ...prev,
       properties: newProps
     }));
 
-    // REAL-TIME PREVIEW
+    // REAL-TIME PREVIEW — reads sldBody from ref so it's never stale
     if (editingStyleLayer) {
       if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
 
       previewTimeoutRef.current = setTimeout(() => {
+        const currentSldBody = styleDataRef.current?.sldBody;
+        if (!currentSldBody) return;
         const olLayer = operationalLayersRef.current[editingStyleLayer.id];
         if (olLayer) {
-          const newSld = applyStyleChanges(styleData.sldBody, newProps);
-          olLayer.getSource().updateParams({
-            ...olLayer.getSource().getParams(),
-            SLD_BODY: newSld,
-            _t: Date.now()
-          });
+          try {
+            const newSld = applyStyleChanges(currentSldBody, newProps);
+            olLayer.getSource().updateParams({
+              ...olLayer.getSource().getParams(),
+              SLD_BODY: newSld,
+              _t: Date.now()
+            });
+          } catch (err) {
+            console.error('[PreApply] Error generating SLD for preview:', err);
+          }
         }
-      }, 50); // Faster debounce for "synchronous" feel
+      }, 80); // 80ms debounce for responsive but not too jumpy feel
     }
 
     if (autoSave) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Brush, Info, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Save, Loader2, Brush, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const DASH_STYLES = {
@@ -20,10 +20,6 @@ const HATCH_PATTERNS = {
     'Times': 'shape://times'
 };
 
-const MARKER_SHAPES = [
-    'circle', 'square', 'triangle', 'star', 'cross', 'x'
-];
-
 const FONT_FAMILIES = [
     'Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Serif', 'Sans-Serif'
 ];
@@ -43,12 +39,16 @@ const StyleEditorCard = ({
     const [activeTab, setActiveTab] = useState('symbology'); // symbology, labels
     const [localProperties, setLocalProperties] = useState({});
 
-    // Sync local properties when style data or layer changes
+    // Sync local properties when style data or layer changes.
+    // We use styleName + layer.id as the deps since they change when a new
+    // layer is selected, guaranteeing a full re-sync even if the properties
+    // object reference happens to be "the same shape" by coincidence.
     useEffect(() => {
         if (styleData?.properties) {
-            setLocalProperties(styleData.properties);
+            setLocalProperties({ ...styleData.properties });
         }
-    }, [styleData?.properties, editingLayer?.id]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [styleData?.styleName, editingLayer?.id]);
 
     if (!isOpen || !editingLayer || !styleData) return null;
 
@@ -258,79 +258,6 @@ const StyleEditorCard = ({
                                 )}
                             </div>
 
-                            {styleData.availableProps.wellKnownName && (
-                                <div className="qb-condition-card-clean">
-                                    <div className="qb-field-group">
-                                        <label className="qb-field-label">Marker Shape</label>
-                                        <select
-                                            className="qb-select"
-                                            value={localProperties.wellKnownName || 'circle'}
-                                            onChange={(e) => handleLocalPropUpdate('wellKnownName', e.target.value)}
-                                        >
-                                            {MARKER_SHAPES.map(shape => (
-                                                <option key={shape} value={shape}>{shape.charAt(0).toUpperCase() + shape.slice(1)}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="qb-field-row" style={{ marginTop: '12px' }}>
-                                        <div className="qb-field-group" style={{ flex: 1 }}>
-                                            <label className="qb-field-label">Marker Size</label>
-                                            <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
-                                                <input
-                                                    type="range" min="1" max="50" step="1"
-                                                    value={localProperties.size || 10}
-                                                    onChange={(e) => handleLocalPropUpdate('size', parseFloat(e.target.value))}
-                                                    className="layer-opacity-slider"
-                                                    style={{ flex: 1 }}
-                                                />
-                                                <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{localProperties.size || 10}px</span>
-                                            </div>
-                                        </div>
-                                        <div className="qb-field-group" style={{ flex: 1 }}>
-                                            <label className="qb-field-label">Rotation</label>
-                                            <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
-                                                <input
-                                                    type="range" min="0" max="360" step="1"
-                                                    value={localProperties.rotation || 0}
-                                                    onChange={(e) => handleLocalPropUpdate('rotation', parseFloat(e.target.value))}
-                                                    className="layer-opacity-slider"
-                                                    style={{ flex: 1 }}
-                                                />
-                                                <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{localProperties.rotation || 0}°</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Dynamic Symbology (SVG/Markers) */}
-                            {styleData.availableProps.externalGraphicUrl && (
-                                <div className="qb-condition-card-clean">
-                                    <label className="qb-field-label">Dynamic Symbology</label>
-                                    <div className="qb-field-row" style={{ marginTop: '8px' }}>
-                                        <input
-                                            type="text"
-                                            placeholder="Icon URL or filename"
-                                            className="qb-input"
-                                            style={{ flex: 1 }}
-                                            value={localProperties.externalGraphicUrl || ''}
-                                            onChange={(e) => handleLocalPropUpdate('externalGraphicUrl', e.target.value)}
-                                        />
-                                        <label className="qb-apply-btn" style={{ width: 'auto', padding: '0 12px', cursor: 'pointer', height: '36px' }}>
-                                            <Upload size={14} />
-                                            <input
-                                                type="file"
-                                                accept=".svg,.png,.jpg,.jpeg,.gif"
-                                                style={{ display: 'none' }}
-                                                onChange={onFileUpload}
-                                            />
-                                        </label>
-                                    </div>
-                                    <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '6px' }}>
-                                        Supports SVG, PNG based on server capability.
-                                    </p>
-                                </div>
-                            )}
                         </div>
 
                         {/* LABELS SECTION */}
@@ -393,17 +320,6 @@ const StyleEditorCard = ({
                                                     <option value="bold">Bold</option>
                                                 </select>
                                             </div>
-                                            <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Text Style</label>
-                                                <select
-                                                    className="qb-select"
-                                                    value={localProperties.fontStyle || 'normal'}
-                                                    onChange={(e) => handleLocalPropUpdate('fontStyle', e.target.value)}
-                                                >
-                                                    <option value="normal">Regular</option>
-                                                    <option value="italic">Italic</option>
-                                                </select>
-                                            </div>
                                         </div>
 
                                         <div className="qb-field-row">
@@ -425,39 +341,6 @@ const StyleEditorCard = ({
                                                     <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
                                                         {localProperties.fontColor?.toUpperCase()}
                                                     </span>
-                                                </div>
-                                            </div>
-                                            <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Halo Color</label>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                    <div style={{
-                                                        width: '32px', height: '32px', borderRadius: '8px',
-                                                        background: localProperties.haloColor || '#FFFFFF', position: 'relative', overflow: 'hidden',
-                                                        border: '2px solid var(--color-border)', flexShrink: 0
-                                                    }}>
-                                                        <input
-                                                            type="color"
-                                                            value={localProperties.haloColor || '#FFFFFF'}
-                                                            onChange={(e) => handleLocalPropUpdate('haloColor', e.target.value)}
-                                                            style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
-                                                        />
-                                                    </div>
-                                                    <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
-                                                        {localProperties.haloColor?.toUpperCase()}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Halo Radius</label>
-                                                <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
-                                                    <input
-                                                        type="range" min="0" max="10" step="0.5"
-                                                        value={localProperties.haloRadius || 1}
-                                                        onChange={(e) => handleLocalPropUpdate('haloRadius', parseFloat(e.target.value))}
-                                                        className="layer-opacity-slider"
-                                                        style={{ flex: 1 }}
-                                                    />
-                                                    <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>{localProperties.haloRadius || 1}px</span>
                                                 </div>
                                             </div>
                                         </div>
