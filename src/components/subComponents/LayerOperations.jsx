@@ -12,8 +12,7 @@ import {
     MessageSquareCode,
     FileJson,
     MessageSquareShare,
-    SquaresSubtract,
-    Combine
+    SquaresSubtract
 } from 'lucide-react';
 
 const LayerOperations = ({

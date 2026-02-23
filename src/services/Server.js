@@ -1339,3 +1339,162 @@ export const DeleteLayerInGeoServer = async (layerName) => {
         return false;
     }
 };
+
+/**
+ * Fetches all UNPUBLISHED tables from a GeoServer DataStore.
+ */
+export const getAvailableStoreTables = async (storeName) => {
+    try {
+        // Sanitize storeName: if it contains a colon (like gisweb:webgisstore), take only the part after the colon
+        const sanitizedStoreName = storeName.includes(':') ? storeName.split(':').pop() : storeName;
+
+        const url = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes.json?list=available`;
+        const res = await fetch(url, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+        if (!res.ok) return [];
+        const data = await res.json();
+
+        let tables = data.list?.string || [];
+        // Normalization: GeoServer returns a string if there's only 1 item, or an array if there are many.
+        if (typeof tables === 'string') {
+            tables = [tables];
+        }
+        return tables;
+    }
+    catch (err) {
+        console.error("Failed to fetch available tables:", err);
+        return [];
+    }
+};
+
+/**
+ * Fetches the schema (attributes) for a table in a DataStore.
+ * Works for both published and unpublished tables.
+ */
+export const getTableSchema = async (storeName, tableName) => {
+    try {
+        const sanitizedStoreName = storeName.includes(':') ? storeName.split(':').pop() : storeName;
+        // Try to fetch as published featuretype first
+        let url = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${tableName}.json`;
+        let res = await fetch(url, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+
+        if (res.ok) {
+            const data = await res.json();
+            return data.featureType?.attributes?.attribute || [];
+        }
+
+        // If not published, try probing via the datastore featuretype endpoint (some stores support this)
+        url = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes/${tableName}.json`;
+        res = await fetch(url, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+
+        if (res.ok) {
+            const data = await res.json();
+            return data.featureType?.attributes?.attribute || [];
+        }
+
+        return [];
+    } catch (err) {
+        console.error("Failed to fetch table schema:", err);
+        return [];
+    }
+};
+
+/**
+ * Specifically probes an unpublished table's columns by creating a temporary virtual featuretype.
+ */
+export const probeStoreTableSchema = async (storeName, tableName) => {
+    try {
+        const sanitizedStoreName = storeName.includes(':') ? storeName.split(':').pop() : storeName;
+        const tempName = `probe_${tableName}_${Math.floor(Math.random() * 1000)}`;
+
+        // 1. Create a temporary SQL View just to get attributes
+        const body = {
+            featureType: {
+                name: tempName,
+                nativeName: tempName,
+                virtualTable: {
+                    name: tempName,
+                    sql: `SELECT * FROM ${tableName} LIMIT 0`,
+                    escapeSql: false,
+                    keyAttributes: []
+                }
+            }
+        };
+
+        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes`, {
+            method: 'POST',
+            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) return [];
+
+        // 2. Fetch the attributes
+        const attrRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${tempName}.json`, {
+            headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
+        });
+
+        let attributes = [];
+        if (attrRes.ok) {
+            const attrData = await attrRes.json();
+            attributes = attrData.featureType?.attributes?.attribute || [];
+        }
+
+        // 3. Delete the temporary layer
+        await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${tempName}.json`, { method: 'DELETE', headers: { 'Authorization': AUTH_HEADER } });
+        await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${tempName}.json?recurse=true`, { method: 'DELETE', headers: { 'Authorization': AUTH_HEADER } });
+
+        return attributes;
+    } catch (err) {
+        console.error("Probing failed:", err);
+        return [];
+    }
+};
+
+/**
+ * Publishes a new Layer based on a SQL Join (SQL View).
+ */
+export const publishSQLView = async (params) => {
+    const { layerName, sql, storeName, geometryName, geometryType, srid } = params;
+
+    try {
+        const body = {
+            featureType: {
+                name: layerName,
+                nativeName: layerName,
+                title: layerName,
+                srs: `EPSG:${srid || '4326'}`,
+                virtualTable: {
+                    name: layerName,
+                    sql: sql,
+                    escapeSql: false,
+                    keyAttributes: ['fid'], // Default key
+                    geometry: {
+                        name: geometryName || 'geom',
+                        type: geometryType || 'Point',
+                        srid: srid || '4326'
+                    }
+                }
+            }
+        };
+
+        const sanitizedStoreName = storeName.includes(':') ? storeName.split(':').pop() : storeName;
+        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(err);
+        }
+
+        return true;
+    } catch (err) {
+        console.error("Failed to publish SQL View:", err);
+        throw err;
+    }
+};

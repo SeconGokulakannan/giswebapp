@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fetchLayerStatuses, WORKSPACE } from '../../services/Server';
-import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server } from 'lucide-react';
+import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server, Database } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import LayerPartitioningModal from './LayerPartitioningModal';
 
 const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature, onUpdateFeatures, onSaveNewFeature, onRefresh, onOpenLoadTempModal, onOpenCreateLayer, onOpenDataManipulation, onOpenServerInfo }) => {
 
@@ -9,6 +10,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     const [pendingChanges, setPendingChanges] = useState({});
     const [newRows, setNewRows] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
+    const [showPartitioning, setShowPartitioning] = useState(false);
 
 
     const loadLayers = async () => {
@@ -185,6 +187,9 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                         <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)' }}>
                             <Server size={14} />Server Info
                         </button>
+                        <button className="elite-btn primary" onClick={() => setShowPartitioning(true)} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}>
+                            <Database size={14} />Layer Partitioning
+                        </button>
                         <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
                             <Plus size={14} />Add Layer Config
                         </button>
@@ -243,6 +248,12 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                 .row-input { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 4px; outline: none; }
                 .row-input:focus { border-color: var(--color-primary); }
             `}</style>
+
+            <LayerPartitioningModal
+                isOpen={showPartitioning}
+                onClose={() => setShowPartitioning(false)}
+                refreshLayers={onRefresh}
+            />
         </div>
     );
 };
