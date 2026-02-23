@@ -40,27 +40,36 @@ const StyleEditorCard = ({
     const [localProperties, setLocalProperties] = useState({});
 
     // Sync local properties when style data or layer changes.
-    // We use styleName + layer.id as the deps since they change when a new
-    // layer is selected, guaranteeing a full re-sync even if the properties
-    // object reference happens to be "the same shape" by coincidence.
+    // We include isOpen and styleData.properties to ensure that whenever the
+    // modal is opened or the underlying data is refreshed from the server,
+    // the local UI state is updated.
     useEffect(() => {
-        if (styleData?.properties) {
+        if (isOpen && styleData?.properties) {
             setLocalProperties({ ...styleData.properties });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [styleData?.styleName, editingLayer?.id]);
+    }, [isOpen, styleData?.properties, editingLayer?.id]);
 
     if (!isOpen || !editingLayer || !styleData) return null;
 
     const getDashName = (dashArray) => {
         if (!dashArray) return 'Solid';
-        // Normalize input: replace spaces/commas with single space
-        const normalizedInput = dashArray.toString().replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        const str = dashArray.toString().replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        if (str === '' || str === 'null') return 'Solid';
 
+        // Normalize: "5.0, 5" -> ["5", "5"] -> "5 5"
+        const normalize = (val) => {
+            if (!val) return '';
+            return val.toString().split(/[,\s]+/)
+                .map(n => parseFloat(n).toString())
+                .filter(n => n !== 'NaN')
+                .join(' ');
+        };
+
+        const inputNorm = normalize(str);
         const entry = Object.entries(DASH_STYLES).find(([name, val]) => {
             if (!val) return false;
-            const normalizedVal = val.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
-            return normalizedVal === normalizedInput;
+            return normalize(val) === inputNorm;
         });
         return entry ? entry[0] : 'Solid';
     };

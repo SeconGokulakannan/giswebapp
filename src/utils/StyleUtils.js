@@ -100,7 +100,7 @@ const detectParamTag = (sldBody) => sldBody.includes('SvgParameter') ? 'SvgParam
 export const parseSLD = (sldBody) => {
     const props = {
         fill: '#cccccc', fillOpacity: 1, stroke: '#333333', strokeWidth: 1, strokeOpacity: 1,
-        strokeDasharray: '', strokeLinecap: 'butt', strokeLinejoin: 'miter',
+        strokeDasharray: null, strokeLinecap: 'butt', strokeLinejoin: 'miter',
         size: 10, rotation: 0, wellKnownName: 'circle', externalGraphicUrl: '', hatchPattern: '',
         fontSize: 12, fontColor: '#000000', fontFamily: 'Arial', fontWeight: 'normal', fontStyle: 'normal',
         haloRadius: 1, haloColor: '#ffffff', staticLabel: true, minZoom: 14,
@@ -168,7 +168,13 @@ export const parseSLD = (sldBody) => {
                 const so = getParam(strokeEl, 'stroke-opacity');
                 if (so !== null) { props.strokeOpacity = parseFloat(so); }
                 const da = getParam(strokeEl, 'stroke-dasharray');
-                if (da) { props.strokeDasharray = da.replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); availableProps.strokeDasharray = true; }
+                if (da) {
+                    props.strokeDasharray = da.toString().split(/[,\s]+/)
+                        .map(n => parseFloat(n).toString())
+                        .filter(n => n !== 'NaN' && n !== '')
+                        .join(' ');
+                    availableProps.strokeDasharray = true;
+                }
                 const lc = getParam(strokeEl, 'stroke-linecap');
                 if (lc) { props.strokeLinecap = lc; }
                 const lj = getParam(strokeEl, 'stroke-linejoin');
@@ -215,7 +221,13 @@ export const parseSLD = (sldBody) => {
                 const sw = getParam(strokeEl, 'stroke-width');
                 if (sw !== null) { props.strokeWidth = parseFloat(sw); availableProps.strokeWidth = true; }
                 const da = getParam(strokeEl, 'stroke-dasharray');
-                if (da) { props.strokeDasharray = da.replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); availableProps.strokeDasharray = true; }
+                if (da) {
+                    props.strokeDasharray = da.toString().split(/[,\s]+/)
+                        .map(n => parseFloat(n).toString())
+                        .filter(n => n !== 'NaN' && n !== '')
+                        .join(' ');
+                    availableProps.strokeDasharray = true;
+                }
             }
         }
 
@@ -322,7 +334,7 @@ export const parseSLD = (sldBody) => {
 const parseSLDFallback = (sldBody) => {
     const props = {
         fill: '#cccccc', fillOpacity: 1, stroke: '#333333', strokeWidth: 1, strokeOpacity: 1,
-        strokeDasharray: '', strokeLinecap: 'butt', strokeLinejoin: 'miter',
+        strokeDasharray: null, strokeLinecap: 'butt', strokeLinejoin: 'miter',
         size: 10, rotation: 0, wellKnownName: 'circle', externalGraphicUrl: '', hatchPattern: '',
         fontSize: 12, fontColor: '#000000', fontFamily: 'Arial', fontWeight: 'normal', fontStyle: 'normal',
         haloRadius: 1, haloColor: '#ffffff', staticLabel: true, minZoom: 14, preventDuplicates: true, labelRepeat: 0, labelAttribute: ''
@@ -342,7 +354,13 @@ const parseSLDFallback = (sldBody) => {
     const fo = get('fill-opacity'); if (fo) props.fillOpacity = parseFloat(fo);
     const s = get('stroke'); if (s) props.stroke = s;
     const sw = get('stroke-width'); if (sw) props.strokeWidth = parseFloat(sw);
-    const da = get('stroke-dasharray'); if (da) props.strokeDasharray = da;
+    const da = get('stroke-dasharray');
+    if (da) {
+        props.strokeDasharray = da.toString().split(/[,\s]+/)
+            .map(n => parseFloat(n).toString())
+            .filter(n => n !== 'NaN' && n !== '')
+            .join(' ');
+    }
     return { props, availableProps };
 };
 
