@@ -244,7 +244,10 @@ export const parseSLD = (sldBody) => {
             const labelEl = getEl(textEl, 'Label');
             if (labelEl) {
                 const propName = getEl(labelEl, 'PropertyName');
-                if (propName) props.labelAttribute = propName.textContent.trim();
+                if (propName) {
+                    props.labelAttribute = propName.textContent.trim();
+                    availableProps.labelAttribute = true;
+                }
             }
             const fontEl = getEl(textEl, 'Font');
             if (fontEl) {
@@ -257,15 +260,7 @@ export const parseSLD = (sldBody) => {
                 const fst = getParam(fontEl, 'font-style');
                 if (fst) { props.fontStyle = fst; availableProps.fontStyle = true; }
             }
-            const haloEl = getEl(textEl, 'Halo');
-            if (haloEl) {
-                const hr = getTagText(haloEl, 'Radius');
-                if (hr) { props.haloRadius = parseFloat(hr); availableProps.haloRadius = true; }
-                const hFillEl = getEl(haloEl, 'Fill');
-                const hc = getParam(hFillEl, 'fill');
-                if (hc) { props.haloColor = hc; availableProps.haloColor = true; }
-            }
-            // Font color — Fill directly under TextSymbolizer (NOT under Halo)
+            // Font color — Fill directly under TextSymbolizer
             const textFills = getEls(textEl, 'Fill').filter(f => f.parentNode === textEl);
             if (textFills.length > 0) {
                 const fc = getParam(textFills[0], 'fill');
@@ -507,9 +502,9 @@ export const applyStyleChanges = (sldBody, props) => {
     }
 
     // ── Labels ────────────────────────────────────────────────────────────────
-    // Remove all existing TextSymbolizers and generated label rules
-    for (const el of getEls(doc, 'TextSymbolizer')) el.parentNode?.removeChild(el);
-    for (const rule of getEls(doc, 'Rule')) {
+    // Safely remove managed label rule (snapshot array first to avoid live-collection mutation)
+    const allRulesForRemoval = Array.from(doc.getElementsByTagNameNS('*', 'Rule'));
+    for (const rule of allRulesForRemoval) {
         const titleEl = getEl(rule, 'Title');
         if (titleEl?.textContent?.trim() === 'GeneratedLabelRule') {
             rule.parentNode?.removeChild(rule);
@@ -517,26 +512,75 @@ export const applyStyleChanges = (sldBody, props) => {
     }
 
     if (props.labelAttribute) {
-        // Find FeatureTypeStyle to append the label rule
         const ftsEl = doc.getElementsByTagNameNS('*', 'FeatureTypeStyle')[0];
         if (ftsEl) {
-            const ns = ftsEl.namespaceURI ?? '';
-            const prefix = ftsEl.prefix ? `${ftsEl.prefix}:` : '';
-            const pTag = paramTag;
+            // Detect namespace info from existing SLD elements to ensure consistency
+            const sldNs = ftsEl.namespaceURI || 'http://www.opengis.net/sld';
+            const ogcNs = 'http://www.opengis.net/ogc';
 
-            let scaleFilter = '';
-            if (props.staticLabel === false && props.minZoom > 0) {
-                const scale = 559082264 / Math.pow(2, props.minZoom);
-                scaleFilter = `<${prefix}MaxScaleDenominator>${scale}</${prefix}MaxScaleDenominator>`;
-            }
+            // Build using DOM API directly — avoids ALL namespace/prefix parsing issues
+            const createSldEl = (localName) => doc.createElementNS(sldNs, localName);
+            const createOgcEl = (localName) => doc.createElementNS(ogcNs, localName);
+            const createParam = (name, value) => {
+                const el = createSldEl(paramTag);
+                el.setAttribute('name', name);
+                el.textContent = String(value);
+                return el;
+            };
 
-            const labelXml = `<${prefix}Rule xmlns="${ns}"><${prefix}Title>GeneratedLabelRule</${prefix}Title>${scaleFilter}<${prefix}TextSymbolizer><${prefix}Label><ogc:PropertyName xmlns:ogc="http://www.opengis.net/ogc">${props.labelAttribute}</ogc:PropertyName></${prefix}Label><${prefix}Font><${prefix}${pTag} name="font-family">${props.fontFamily || 'Arial'}</${prefix}${pTag}><${prefix}${pTag} name="font-size">${props.fontSize || 12}</${prefix}${pTag}><${prefix}${pTag} name="font-style">${props.fontStyle || 'normal'}</${prefix}${pTag}><${prefix}${pTag} name="font-weight">${props.fontWeight || 'normal'}</${prefix}${pTag}></${prefix}Font><${prefix}LabelPlacement><${prefix}PointPlacement><${prefix}AnchorPoint><${prefix}AnchorPointX>0.5</${prefix}AnchorPointX><${prefix}AnchorPointY>0.5</${prefix}AnchorPointY></${prefix}AnchorPoint></${prefix}PointPlacement></${prefix}LabelPlacement><${prefix}Halo><${prefix}Radius>${props.haloRadius || 1}</${prefix}Radius><${prefix}Fill><${prefix}${pTag} name="fill">${props.haloColor || '#FFFFFF'}</${prefix}${pTag}></${prefix}Fill></${prefix}Halo><${prefix}Fill><${prefix}${pTag} name="fill">${props.fontColor || '#000000'}</${prefix}${pTag}></${prefix}Fill><${prefix}VendorOption name="group">${props.staticLabel ? 'yes' : 'no'}</${prefix}VendorOption><${prefix}VendorOption name="partials">true</${prefix}VendorOption><${prefix}VendorOption name="repeat">${props.staticLabel ? '0' : (props.labelRepeat || '0')}</${prefix}VendorOption><${prefix}VendorOption name="spaceAround">10</${prefix}VendorOption><${prefix}VendorOption name="conflictResolution">true</${prefix}VendorOption><${prefix}VendorOption name="goodnessOfFit">0</${prefix}VendorOption><${prefix}VendorOption name="maxDisplacement">40</${prefix}VendorOption><${prefix}VendorOption name="autoWrap">100</${prefix}VendorOption></${prefix}TextSymbolizer></${prefix}Rule>`;
+            // <Rule>
+            const ruleEl = createSldEl('Rule');
 
-            const tempDoc = parser.parseFromString(labelXml, 'text/xml');
-            if (!tempDoc.querySelector('parsererror')) {
-                const newRule = doc.importNode(tempDoc.documentElement, true);
-                ftsEl.appendChild(newRule);
-            }
+            // <Title>GeneratedLabelRule</Title>
+            const titleEl = createSldEl('Title');
+            titleEl.textContent = 'GeneratedLabelRule';
+            ruleEl.appendChild(titleEl);
+
+            // <TextSymbolizer>
+            const textEl = createSldEl('TextSymbolizer');
+
+            // <Label><ogc:PropertyName>attr</ogc:PropertyName></Label>
+            const labelEl = createSldEl('Label');
+            const propNameEl = createOgcEl('PropertyName');
+            propNameEl.textContent = props.labelAttribute;
+            labelEl.appendChild(propNameEl);
+            textEl.appendChild(labelEl);
+
+            // <Font>
+            const fontEl = createSldEl('Font');
+            fontEl.appendChild(createParam('font-family', 'Arial'));
+            fontEl.appendChild(createParam('font-size', props.fontSize || 12));
+            fontEl.appendChild(createParam('font-style', props.fontStyle || 'normal'));
+            fontEl.appendChild(createParam('font-weight', props.fontWeight || 'normal'));
+            textEl.appendChild(fontEl);
+
+            // <LabelPlacement><PointPlacement><AnchorPoint>
+            const placementEl = createSldEl('LabelPlacement');
+            const pointPlaceEl = createSldEl('PointPlacement');
+            const anchorEl = createSldEl('AnchorPoint');
+            const axEl = createSldEl('AnchorPointX'); axEl.textContent = '0.5'; anchorEl.appendChild(axEl);
+            const ayEl = createSldEl('AnchorPointY'); ayEl.textContent = '0.5'; anchorEl.appendChild(ayEl);
+            pointPlaceEl.appendChild(anchorEl);
+            placementEl.appendChild(pointPlaceEl);
+            textEl.appendChild(placementEl);
+
+            // <Fill><CssParameter name="fill">#000000</CssParameter></Fill>
+            const fillEl = createSldEl('Fill');
+            fillEl.appendChild(createParam('fill', props.fontColor || '#000000'));
+            textEl.appendChild(fillEl);
+
+            // VendorOptions
+            const addVendor = (name, value) => {
+                const vo = createSldEl('VendorOption');
+                vo.setAttribute('name', name);
+                vo.textContent = String(value);
+                textEl.appendChild(vo);
+            };
+            addVendor('group', 'yes');
+            addVendor('spaceAround', '10');
+
+            ruleEl.appendChild(textEl);
+            ftsEl.appendChild(ruleEl);
         }
     }
 

@@ -291,35 +291,20 @@ const StyleEditorCard = ({
                                 </div>
 
                                 {localProperties.labelAttribute && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                                        {/* Font Properties Row 1 */}
                                         <div className="qb-field-row">
                                             <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Font Family</label>
-                                                <select
-                                                    className="qb-select"
-                                                    value={localProperties.fontFamily || 'Arial'}
-                                                    onChange={(e) => handleLocalPropUpdate('fontFamily', e.target.value)}
-                                                >
-                                                    {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
-                                                </select>
+                                                <label className="qb-field-label">Size</label>
+                                                <input
+                                                    type="number"
+                                                    className="qb-input"
+                                                    value={localProperties.fontSize || 12}
+                                                    onChange={(e) => handleLocalPropUpdate('fontSize', parseFloat(e.target.value))}
+                                                />
                                             </div>
                                             <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Font Size</label>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                    <input
-                                                        type="number"
-                                                        className="qb-input"
-                                                        value={localProperties.fontSize || 12}
-                                                        onChange={(e) => handleLocalPropUpdate('fontSize', parseFloat(e.target.value))}
-                                                    />
-                                                    <span style={{ fontSize: '11px', color: '#64748b' }}>pt</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="qb-field-row">
-                                            <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Text Weight</label>
+                                                <label className="qb-field-label">Weight</label>
                                                 <select
                                                     className="qb-select"
                                                     value={localProperties.fontWeight || 'normal'}
@@ -331,10 +316,22 @@ const StyleEditorCard = ({
                                             </div>
                                         </div>
 
+                                        {/* Font Properties Row 2 */}
                                         <div className="qb-field-row">
                                             <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Font Color</label>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <label className="qb-field-label">Style</label>
+                                                <select
+                                                    className="qb-select"
+                                                    value={localProperties.fontStyle || 'normal'}
+                                                    onChange={(e) => handleLocalPropUpdate('fontStyle', e.target.value)}
+                                                >
+                                                    <option value="normal">Normal</option>
+                                                    <option value="italic">Italic</option>
+                                                </select>
+                                            </div>
+                                            <div className="qb-field-group" style={{ flex: 1 }}>
+                                                <label className="qb-field-label">Color</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <div style={{
                                                         width: '32px', height: '32px', borderRadius: '8px',
                                                         background: localProperties.fontColor || '#000000', position: 'relative', overflow: 'hidden',
@@ -347,26 +344,8 @@ const StyleEditorCard = ({
                                                             style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
                                                         />
                                                     </div>
-                                                    <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
-                                                        {localProperties.fontColor?.toUpperCase()}
-                                                    </span>
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="qb-field-row" style={{ alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-bg-secondary)', padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--color-border)' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <Info size={14} color="var(--color-primary)" />
-                                                <label className="qb-field-label" style={{ margin: 0 }}>Static Label</label>
-                                            </div>
-                                            <label className="toggle-switch" style={{ transform: 'scale(0.8)' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={localProperties.staticLabel || false}
-                                                    onChange={(e) => handleLocalPropUpdate('staticLabel', e.target.checked)}
-                                                />
-                                                <span className="toggle-slider"></span>
-                                            </label>
                                         </div>
                                     </div>
                                 )}
