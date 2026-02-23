@@ -1407,60 +1407,69 @@ export const getTableSchema = async (storeName, tableName) => {
 };
 
 /**
- * Specifically probes an unpublished table's columns by creating a temporary virtual featuretype.
+ * Specifically probes an unpublished table's columns by:
+ * 1) Temporarily publishing it as a featureType in GeoServer
+ * 2) Reading its schema via WFS DescribeFeatureType
+ * 3) Cleaning up the temporary layer/featureType
+ *
+ * This follows the "temporarily publish, then query via WFS" workflow.
  */
 export const probeStoreTableSchema = async (storeName, tableName) => {
     try {
         const sanitizedStoreName = storeName.includes(':') ? storeName.split(':').pop() : storeName;
-        const tempName = `probe_${tableName}_${Math.floor(Math.random() * 1000)}`;
+        const safeTableId = tableName.replace(/[^a-zA-Z0-9_]/g, '_');
+        const tempName = `probe_${safeTableId}_${Math.floor(Math.random() * 1000)}`;
 
-        // Build a safe, PostGIS‑friendly SELECT for arbitrary table identifiers.
-        // Supports both "table" and "schema.table" forms and avoids issues with
-        // uppercase names or reserved keywords by quoting identifiers.
-        let probeSql;
-        if (tableName.includes('.')) {
-            const [schemaPart, tablePart] = tableName.split('.');
-            probeSql = `SELECT * FROM "${schemaPart}"."${tablePart}" LIMIT 0`;
-        } else {
-            probeSql = `SELECT * FROM "${tableName}" LIMIT 0`;
-        }
-
-        // 1. Create a temporary SQL View just to get attributes
+        // 1. Temporarily publish the underlying table as a featureType
         const body = {
             featureType: {
                 name: tempName,
-                nativeName: tempName,
-                virtualTable: {
-                    name: tempName,
-                    sql: probeSql,
-                    escapeSql: false,
-                    keyAttributes: []
-                }
+                nativeName: tableName,
+                title: tempName
             }
         };
 
-        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes`, {
+        const createRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes`, {
             method: 'POST',
             headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
 
-        if (!response.ok) return [];
-
-        // 2. Fetch the attributes
-        const attrRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${tempName}.json`, {
-            headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
-        });
-
-        let attributes = [];
-        if (attrRes.ok) {
-            const attrData = await attrRes.json();
-            attributes = attrData.featureType?.attributes?.attribute || [];
+        if (!createRes.ok) {
+            const errText = await createRes.text().catch(() => '');
+            console.error("Probe publish failed:", createRes.status, errText);
+            return [];
         }
 
-        // 3. Delete the temporary layer
-        await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${tempName}.json`, { method: 'DELETE', headers: { 'Authorization': AUTH_HEADER } });
-        await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${tempName}.json?recurse=true`, { method: 'DELETE', headers: { 'Authorization': AUTH_HEADER } });
+        // 2. Read schema via WFS DescribeFeatureType on the temporary layer
+        const typeName = `${WORKSPACE}:${tempName}`;
+        const descUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=DescribeFeatureType&typeName=${encodeURIComponent(typeName)}&outputFormat=application/json`;
+        const descRes = await fetch(descUrl, { headers: { 'Authorization': AUTH_HEADER } });
+
+        let attributes = [];
+        if (descRes.ok) {
+            const data = await descRes.json();
+            const props = data.featureTypes?.[0]?.properties || [];
+            attributes = props.map(p => ({
+                name: p.name,
+                // Map the DescribeFeatureType "type" field into a pseudo-binding string
+                // so existing UI code can derive a simple type label.
+                binding: p.type || 'xsd:string'
+            }));
+        } else {
+            const errText = await descRes.text().catch(() => '');
+            console.error("Probe DescribeFeatureType failed:", descRes.status, errText);
+        }
+
+        // 3. Delete the temporary layer + featureType
+        await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${tempName}.json`, {
+            method: 'DELETE',
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+        await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${tempName}.json?recurse=true`, {
+            method: 'DELETE',
+            headers: { 'Authorization': AUTH_HEADER }
+        });
 
         return attributes;
     } catch (err) {
