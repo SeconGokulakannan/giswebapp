@@ -599,11 +599,26 @@ export const applyStyleChanges = (sldBody, props) => {
                 const filterEl = createOgcEl('Filter');
                 const ogcCompTag = opToOgc[cond.operator] || 'PropertyIsEqualTo';
                 const compEl = createOgcEl(ogcCompTag);
-                if (cond.operator === 'LIKE') compEl.setAttribute('wildCard', '*');
+
+                // Configure LIKE operator to behave as a "contains" match
+                if (cond.operator === 'LIKE') {
+                    // GeoServer expects wildCard/singleChar/escape for PropertyIsLike
+                    compEl.setAttribute('wildCard', '*');
+                    compEl.setAttribute('singleChar', '.');
+                    compEl.setAttribute('escape', '!');
+                    // Make matching more user-friendly by default: "*value*"
+                    // so that it matches substrings rather than exact pattern.
+                }
+
                 const propNameEl = createOgcEl('PropertyName');
                 propNameEl.textContent = cond.attribute;
                 const litEl = createOgcEl('Literal');
-                litEl.textContent = cond.value;
+                if (cond.operator === 'LIKE') {
+                    const raw = String(cond.value || '').trim();
+                    litEl.textContent = raw ? `*${raw}*` : '*';
+                } else {
+                    litEl.textContent = cond.value;
+                }
                 compEl.appendChild(propNameEl);
                 compEl.appendChild(litEl);
                 filterEl.appendChild(compEl);
@@ -649,9 +664,9 @@ export const applyStyleChanges = (sldBody, props) => {
                     ruleEl.appendChild(lineEl);
                 }
 
-                // Insert BEFORE the base rule (so it draws on top)
-                const firstRule = ftsEl.getElementsByTagNameNS('*', 'Rule')[0];
-                ftsEl.insertBefore(ruleEl, firstRule || null);
+                // Insert AFTER existing rules so conditional styles render on top
+                // (GeoServer draws later rules last, so they visually override base symbology)
+                ftsEl.appendChild(ruleEl);
             });
         }
     }

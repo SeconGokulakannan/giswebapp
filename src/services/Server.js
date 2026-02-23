@@ -1379,19 +1379,27 @@ export const getTableSchema = async (storeName, tableName) => {
 
         if (res.ok) {
             const data = await res.json();
-            return data.featureType?.attributes?.attribute || [];
+            const attrs = data.featureType?.attributes?.attribute || [];
+            if (attrs.length > 0) {
+                return attrs;
+            }
         }
 
-        // If not published, try probing via the datastore featuretype endpoint (some stores support this)
+        // If not published (or no attributes returned), try via the datastore featuretype endpoint
         url = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${sanitizedStoreName}/featuretypes/${tableName}.json`;
         res = await fetch(url, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
 
         if (res.ok) {
             const data = await res.json();
-            return data.featureType?.attributes?.attribute || [];
+            const attrs = data.featureType?.attributes?.attribute || [];
+            if (attrs.length > 0) {
+                return attrs;
+            }
         }
 
-        return [];
+        // FINAL FALLBACK: actively probe the underlying PostGIS table by creating a temporary virtual featuretype
+        // This works even when the table is not yet exposed as a GeoServer layer.
+        return await probeStoreTableSchema(storeName, tableName);
     } catch (err) {
         console.error("Failed to fetch table schema:", err);
         return [];
@@ -1406,6 +1414,17 @@ export const probeStoreTableSchema = async (storeName, tableName) => {
         const sanitizedStoreName = storeName.includes(':') ? storeName.split(':').pop() : storeName;
         const tempName = `probe_${tableName}_${Math.floor(Math.random() * 1000)}`;
 
+        // Build a safe, PostGIS‑friendly SELECT for arbitrary table identifiers.
+        // Supports both "table" and "schema.table" forms and avoids issues with
+        // uppercase names or reserved keywords by quoting identifiers.
+        let probeSql;
+        if (tableName.includes('.')) {
+            const [schemaPart, tablePart] = tableName.split('.');
+            probeSql = `SELECT * FROM "${schemaPart}"."${tablePart}" LIMIT 0`;
+        } else {
+            probeSql = `SELECT * FROM "${tableName}" LIMIT 0`;
+        }
+
         // 1. Create a temporary SQL View just to get attributes
         const body = {
             featureType: {
@@ -1413,7 +1432,7 @@ export const probeStoreTableSchema = async (storeName, tableName) => {
                 nativeName: tempName,
                 virtualTable: {
                     name: tempName,
-                    sql: `SELECT * FROM ${tableName} LIMIT 0`,
+                    sql: probeSql,
                     escapeSql: false,
                     keyAttributes: []
                 }
