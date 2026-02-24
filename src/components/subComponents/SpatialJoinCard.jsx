@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, MessageSquareShare, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, MessageSquareShare, Zap, ChevronLeft, ChevronRight, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes } from '../../services/Server';
 
@@ -129,14 +129,16 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
 
     return (
         <div className={`sj-panel-wrapper ${isMinimized ? 'sj-panel-minimized' : ''}`}>
-            {/* Collapse Toggle Handle */}
-            <button
-                onClick={() => setIsMinimized(!isMinimized)}
-                className="sj-collapse-handle"
-                title={isMinimized ? 'Expand Spatial Join' : 'Minimize Spatial Join'}
-            >
-                {isMinimized ? <ChevronRight size={18} strokeWidth={2.5} /> : <ChevronLeft size={18} strokeWidth={2.5} />}
-            </button>
+            {/* Floating Expand Button (shown only when minimized) */}
+            {isMinimized && (
+                <button
+                    onClick={() => setIsMinimized(false)}
+                    className="card-expand-float-btn"
+                    title="Expand Spatial Join"
+                >
+                    <Zap size={24} strokeWidth={2.5} />
+                </button>
+            )}
 
             {/* Main Card */}
             <div className="sj-card">
@@ -151,9 +153,18 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
                             <p className="sj-subtitle">Attribute Matching</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="sj-close-btn" title="Close">
-                        <X size={16} strokeWidth={2.5} />
-                    </button>
+                    <div className="sj-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                            onClick={() => setIsMinimized(true)}
+                            className="card-minimize-btn"
+                            title="Minimize"
+                        >
+                            <Minimize2 size={16} strokeWidth={2.5} />
+                        </button>
+                        <button onClick={onClose} className="sj-close-btn" title="Close">
+                            <X size={16} strokeWidth={2.5} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}

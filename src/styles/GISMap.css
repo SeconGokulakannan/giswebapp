@@ -5765,9 +5765,97 @@ input:checked:hover+.toggle-slider::before {
   transform: scale(1.1) rotate(5deg) !important;
 }
 
-[data-theme='dark'] .qb-delete-floating {
-  background: #1e2024 !important;
-  border-color: rgba(239, 68, 68, 0.2) !important;
+/* ===== SHARED CARD MINIMIZATION UI ===== */
+.se-panel-wrapper,
+.ac-panel-wrapper,
+.sj-panel-wrapper,
+.qb-panel-wrapper {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.se-panel-minimized .se-card,
+.ac-panel-minimized .ac-card,
+.sj-panel-minimized .sj-card,
+.qb-panel-minimized .qb-card {
+  opacity: 0 !important;
+  transform: scale(0.9) translateY(10px) !important;
+  pointer-events: none !important;
+}
+
+.card-minimize-btn {
+  width: 32px;
+  height: 32px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .card-minimize-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+
+.card-minimize-btn:hover {
+  background: #e2e8f0;
+  color: #3b82f6;
+  border-color: #3b82f6;
+  transform: translateY(-1px);
+}
+
+[data-theme='dark'] .card-minimize-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border-color: #60a5fa;
+}
+
+.card-expand-float-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: white;
+  color: var(--color-primary);
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1300;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+  border: 1.5px solid var(--color-border);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: auto !important;
+}
+
+[data-theme='dark'] .card-expand-float-btn {
+  background: #1e293b;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.card-expand-float-btn:hover {
+  transform: scale(1.1) rotate(5deg);
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+  box-shadow: 0 12px 30px rgba(var(--color-primary-rgb, 59, 130, 246), 0.4);
+}
+
+/* Hide legacy collapse handles */
+.se-collapse-handle,
+.ac-collapse-handle,
+.sj-collapse-handle,
+.qb-collapse-handle {
+  display: none !important;
 }
 
 /* ===== LAYER STYLE EDITOR PANEL — NATURAL CLEAN UI ===== */

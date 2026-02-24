@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, DatabaseZap, RefreshCw, Loader2, ChevronLeft, ChevronRight, Filter, Trash2 } from 'lucide-react';
+import { X, Plus, DatabaseZap, RefreshCw, Loader2, ChevronLeft, ChevronRight, Filter, Trash2, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes, QueryBuilderFilter } from '../../services/Server';
 
@@ -152,14 +152,16 @@ const QueryBuilderCard = ({
 
     return (
         <div className={`qb-panel-wrapper ${isMinimized ? 'qb-panel-minimized' : ''}`}>
-            {/* Collapse Toggle Handle */}
-            <button
-                onClick={() => setIsMinimized(!isMinimized)}
-                className="qb-collapse-handle"
-                title={isMinimized ? 'Expand Query Builder' : 'Minimize Query Builder'}
-            >
-                {isMinimized ? <ChevronRight size={18} strokeWidth={2.5} /> : <ChevronLeft size={18} strokeWidth={2.5} />}
-            </button>
+            {/* Floating Expand Button (shown only when minimized) */}
+            {isMinimized && (
+                <button
+                    onClick={() => setIsMinimized(false)}
+                    className="card-expand-float-btn"
+                    title="Expand Query Builder"
+                >
+                    <Filter size={24} strokeWidth={2.5} />
+                </button>
+            )}
 
             {/* Main Card */}
             <div className="qb-card">
@@ -174,9 +176,18 @@ const QueryBuilderCard = ({
                             <p className="qb-subtitle">Filter map data by attributes</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="qb-close-btn" title="Close">
-                        <X size={16} strokeWidth={2.5} />
-                    </button>
+                    <div className="qb-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                            onClick={() => setIsMinimized(true)}
+                            className="card-minimize-btn"
+                            title="Minimize"
+                        >
+                            <Minimize2 size={16} strokeWidth={2.5} />
+                        </button>
+                        <button onClick={onClose} className="qb-close-btn" title="Close">
+                            <X size={16} strokeWidth={2.5} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}

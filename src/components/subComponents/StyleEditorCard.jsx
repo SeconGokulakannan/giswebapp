@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Brush, Info, ChevronLeft, ChevronRight, Plus, Trash2, Filter } from 'lucide-react';
+import { X, Save, Loader2, Brush, Info, ChevronLeft, ChevronRight, Plus, Trash2, Filter, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const DASH_STYLES = {
@@ -111,14 +111,16 @@ const StyleEditorCard = ({
 
     return (
         <div className={`se-panel-wrapper ${isMinimized ? 'se-panel-minimized' : ''}`}>
-            {/* Collapse Toggle Handle */}
-            <button
-                onClick={() => setIsMinimized(!isMinimized)}
-                className="se-collapse-handle"
-                title={isMinimized ? 'Expand Style Editor' : 'Minimize Style Editor'}
-            >
-                {isMinimized ? <ChevronRight size={18} strokeWidth={2.5} /> : <ChevronLeft size={18} strokeWidth={2.5} />}
-            </button>
+            {/* Floating Expand Button (shown only when minimized) */}
+            {isMinimized && (
+                <button
+                    onClick={() => setIsMinimized(false)}
+                    className="card-expand-float-btn"
+                    title="Expand Style Editor"
+                >
+                    <Brush size={24} strokeWidth={2.5} />
+                </button>
+            )}
 
             {/* Main Card */}
             <div className="se-card">
@@ -135,24 +137,13 @@ const StyleEditorCard = ({
                     </div>
 
                     <div className="se-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {/* <button
-                            className="qb-apply-btn"
-                            style={{
-                                height: '36px',
-                                padding: '0 16px',
-                                background: 'linear-gradient(135deg, #22c55e, #10b981)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '10px',
-                                fontSize: '13px',
-                                fontWeight: '700'
-                            }}
-                            onClick={handleSave}
-                            disabled={isSaving}
+                        <button
+                            onClick={() => setIsMinimized(true)}
+                            className="card-minimize-btn"
+                            title="Minimize"
                         >
-                            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            {isSaving ? 'SAVING...' : 'SAVE'}
-                        </button> */}
+                            <Minimize2 size={16} strokeWidth={2.5} />
+                        </button>
                         <button onClick={onClose} className="se-close-btn" title="Close">
                             <X size={16} strokeWidth={2.5} />
                         </button>

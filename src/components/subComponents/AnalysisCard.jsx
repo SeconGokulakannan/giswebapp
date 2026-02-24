@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes } from '../../services/Server';
 
@@ -123,14 +123,16 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefresh
 
     return (
         <div className={`ac-panel-wrapper ${isMinimized ? 'ac-panel-minimized' : ''}`}>
-            {/* Collapse Toggle Handle */}
-            <button
-                onClick={() => setIsMinimized(!isMinimized)}
-                className="ac-collapse-handle"
-                title={isMinimized ? 'Expand Analysis' : 'Minimize Analysis'}
-            >
-                {isMinimized ? <ChevronRight size={18} strokeWidth={2.5} /> : <ChevronLeft size={18} strokeWidth={2.5} />}
-            </button>
+            {/* Floating Expand Button (shown only when minimized) */}
+            {isMinimized && (
+                <button
+                    onClick={() => setIsMinimized(false)}
+                    className="card-expand-float-btn"
+                    title="Expand Analysis"
+                >
+                    <Activity size={24} strokeWidth={2.5} />
+                </button>
+            )}
 
             {/* Main Card */}
             <div className="ac-card">
@@ -145,9 +147,18 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefresh
                             <p className="ac-subtitle">Analyze layer dynamics</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="ac-close-btn" title="Close">
-                        <X size={16} strokeWidth={2.5} />
-                    </button>
+                    <div className="ac-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                            onClick={() => setIsMinimized(true)}
+                            className="card-minimize-btn"
+                            title="Minimize"
+                        >
+                            <Minimize2 size={16} strokeWidth={2.5} />
+                        </button>
+                        <button onClick={onClose} className="ac-close-btn" title="Close">
+                            <X size={16} strokeWidth={2.5} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}
