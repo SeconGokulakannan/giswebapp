@@ -77,7 +77,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     const SaveLayerMetaData = async () => {
         let successCount = 0;
-        const layerFullName = `${WORKSPACE}: Layer`;
+        const layerFullName = `${WORKSPACE}:Layer`;
 
         const newRowIds = Object.keys(newRows);
         if (newRowIds.length > 0) {
@@ -129,7 +129,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     const DeleteLayerConfig = async () => {
         if (selectedIds.length === 0) return;
-        const layerFullName = `${WORKSPACE}: Layer`;
+        const layerFullName = `${WORKSPACE}:Layer`;
         if (window.confirm(`Delete ${selectedIds.length} items ? `)) {
             for (const id of selectedIds) {
                 const config = allConfigs.find(c => c.id == id);

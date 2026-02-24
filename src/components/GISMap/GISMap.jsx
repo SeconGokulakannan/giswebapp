@@ -255,19 +255,17 @@ function GISMap() {
   const [swipeLayerIds, setSwipeLayerIds] = useState([]); // Array of layer IDs
   const [swipePosition, setSwipePosition] = useState(50); // Percentage
   const swipeLayersRef = useRef(new Map()); // Map of layerId -> olLayer
-  const preSwipeVisibilitiesRef = useRef({}); // Store visibility state before swipe
 
   // ELITE: Toggle Swipe Mode - Multi-layer support
   const handleToggleSwipe = (layerId) => {
     setSwipeLayerIds(prev => {
-      if (!Array.isArray(prev)) return [layerId]; // Safety fallback
-
-      if (prev.includes(layerId)) {
+      const isSelected = prev.includes(layerId);
+      if (isSelected) {
         return prev.filter(id => id !== layerId);
       } else {
-        // Auto-enable visibility if needed
-        const olLayer = operationalLayersRef.current[layerId];
-        if (olLayer && !olLayer.getVisible()) {
+        // Auto-enable visibility if the layer is currently hidden
+        const layerData = [...geoServerLayers, ...localVectorLayers].find(l => l.id === layerId);
+        if (layerData && !layerData.visible) {
           handleToggleGeoLayer(layerId);
         }
         return [...prev, layerId];
@@ -296,56 +294,6 @@ function GISMap() {
     });
   };
 
-  // ELITE: Exclusive Swipe Visibility Logic
-  useEffect(() => {
-    const isSwiping = swipeLayerIds.length > 0;
-    const wasSwiping = Object.keys(preSwipeVisibilitiesRef.current).length > 0;
-
-    if (isSwiping && !wasSwiping) {
-      // ENTRANCE: Save state and hide others
-      const snapshot = {};
-      [...geoServerLayers, ...localVectorLayers].forEach(l => {
-        snapshot[l.id] = l.visible;
-      });
-      preSwipeVisibilitiesRef.current = snapshot;
-
-      // Hide non-swiped, Show swiped
-      setGeoServerLayers(prev => prev.map(l => ({
-        ...l,
-        visible: swipeLayerIds.includes(l.id)
-      })));
-      setLocalVectorLayers(prev => prev.map(l => ({
-        ...l,
-        visible: swipeLayerIds.includes(l.id)
-      })));
-
-    } else if (isSwiping && wasSwiping) {
-      // UPDATE: Ensure new swiped layers are visible, others hidden
-      setGeoServerLayers(prev => prev.map(l => ({
-        ...l,
-        visible: swipeLayerIds.includes(l.id)
-      })));
-      setLocalVectorLayers(prev => prev.map(l => ({
-        ...l,
-        visible: swipeLayerIds.includes(l.id)
-      })));
-
-    } else if (!isSwiping && wasSwiping) {
-      // EXIT: Restore original visibilities
-      const snapshot = preSwipeVisibilitiesRef.current;
-
-      setGeoServerLayers(prev => prev.map(l => ({
-        ...l,
-        visible: snapshot[l.id] !== undefined ? snapshot[l.id] : l.visible
-      })));
-      setLocalVectorLayers(prev => prev.map(l => ({
-        ...l,
-        visible: snapshot[l.id] !== undefined ? snapshot[l.id] : l.visible
-      })));
-
-      preSwipeVisibilitiesRef.current = {};
-    }
-  }, [swipeLayerIds]);
 
   // ELITE: Cleanup Swipe when tool is changed
   useEffect(() => {
@@ -432,7 +380,7 @@ function GISMap() {
       });
       map.render();
     };
-  }, [swipeLayerIds, swipePosition]);
+  }, [swipeLayerIds, swipePosition, geoServerLayers, localVectorLayers]);
 
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;

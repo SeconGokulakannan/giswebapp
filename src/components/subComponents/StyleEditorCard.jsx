@@ -135,7 +135,7 @@ const StyleEditorCard = ({
                     </div>
 
                     <div className="se-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <button
+                        {/* <button
                             className="qb-apply-btn"
                             style={{
                                 height: '36px',
@@ -152,7 +152,7 @@ const StyleEditorCard = ({
                         >
                             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                             {isSaving ? 'SAVING...' : 'SAVE'}
-                        </button>
+                        </button> */}
                         <button onClick={onClose} className="se-close-btn" title="Close">
                             <X size={16} strokeWidth={2.5} />
                         </button>
@@ -478,7 +478,7 @@ const StyleEditorCard = ({
                                                 />
                                             </div>
                                             <div className="qb-field-group" style={{ flex: 0 }}>
-                                                <label className="qb-field-label">Fill Color</label>
+                                                <label className="qb-field-label">Color</label>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: cond.fillColor, border: '2px solid var(--color-border)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
                                                         <input
@@ -496,7 +496,7 @@ const StyleEditorCard = ({
                                         {cond.attribute && cond.value && (
                                             <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: cond.fillColor, flexShrink: 0 }} />
-                                                Features where <strong style={{ margin: '0 3px' }}>{cond.attribute}</strong> {cond.operator} <strong style={{ margin: '0 3px' }}>{cond.value}</strong> → highlighted in <span style={{ color: cond.fillColor, fontWeight: 700 }}>{cond.fillColor}</span>
+                                                <strong style={{ margin: '0 3px' }}>{cond.attribute}</strong> {cond.operator} <strong style={{ margin: '0 3px' }}>{cond.value}</strong>
                                             </div>
                                         )}
                                     </div>
@@ -517,7 +517,7 @@ const StyleEditorCard = ({
                 <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                         className="qb-apply-btn"
-                        style={{ height: '36px', padding: '0 20px', background: 'linear-gradient(135deg, #22c55e, #10b981)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        style={{ width: "auto", height: '36px', padding: '0 20px', background: 'linear-gradient(135deg, #22c55e, #10b981)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}
                         onClick={handleSave}
                         disabled={isSaving}
                     >

@@ -12,7 +12,8 @@ import {
     MessageSquareCode,
     FileJson,
     MessageSquareShare,
-    SquaresSubtract
+    SquaresSubtract,
+    Combine
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -621,7 +622,7 @@ const LayerOperations = ({
                     {(() => {
                         const sourceLayers = activeLayerTool === 'reorder' ? localLayers : serverLayers;
 
-                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'styles' || activeLayerTool === 'attribute' || activeLayerTool === 'swipe')
+                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'styles' || activeLayerTool === 'attribute')
                             ? sourceLayers.filter(l => l.visible)
                             : sourceLayers;
 
@@ -637,7 +638,7 @@ const LayerOperations = ({
                                     activeLayerTool === 'swipe' ||
                                     activeLayerTool === 'attribute';
                                 if (!isToolSupported) return false;
-                                if (activeLayerTool && activeLayerTool !== 'visibility' && !layer.visible) return false;
+                                if (activeLayerTool && activeLayerTool !== 'visibility' && activeLayerTool !== 'swipe' && !layer.visible) return false;
                                 return true;
                             });
                         })();
