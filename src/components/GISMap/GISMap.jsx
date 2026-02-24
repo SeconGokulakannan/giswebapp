@@ -2538,6 +2538,10 @@ function GISMap() {
     }
   }, []);
 
+  useEffect(() => {
+    setBaseLayer(theme === 'dark' ? 'dark' : 'osm');
+  }, [theme]);
+
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
@@ -2910,6 +2914,7 @@ function GISMap() {
               currentFrameIndex={analysisFrameIndex}
               onPlaybackToggle={() => setIsAnalysisPlaying(!isAnalysisPlaying)}
               onFrameChange={(index) => setAnalysisFrameIndex(index)}
+              isParentPanelMinimized={isPanelMinimized}
             />
 
 
@@ -2924,6 +2929,7 @@ function GISMap() {
               handleApplyLayerFilter={handleApplyLayerFilter}
               selectedLayerIds={selectedQueryLayerIds}
               setSelectedLayerIds={setSelectedQueryLayerIds}
+              isParentPanelMinimized={isPanelMinimized}
             />
 
             <SpatialJoinCard
@@ -2934,6 +2940,7 @@ function GISMap() {
               onPerformSpatialJoin={handlePerformSpatialJoin}
               onResetSpatialJoin={handleResetSpatialJoin}
               targetLayerId={activeSpatialJoinLayerId}
+              isParentPanelMinimized={isPanelMinimized}
             />
 
             <StyleEditorCard
@@ -2949,6 +2956,7 @@ function GISMap() {
               onSave={handleSaveStyle}
               onUpdateProp={updateStyleProp}
               onFileUpload={handleStyleFileUpload}
+              isParentPanelMinimized={isPanelMinimized}
             />
 
             <CreateLayerCard

@@ -12,7 +12,7 @@ const getRandomColor = (exclude = null) => {
     return available[Math.floor(Math.random() * available.length)];
 };
 
-const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLayerIds = [], onPerformSpatialJoin, onResetSpatialJoin, targetLayerId
+const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLayerIds = [], onPerformSpatialJoin, onResetSpatialJoin, targetLayerId, isParentPanelMinimized = false
 }) => {
     const [isMinimized, setIsMinimized] = useState(false);
     const [layerA, setLayerA] = useState('');
@@ -128,12 +128,12 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
     if (!isOpen) return null;
 
     return (
-        <div className={`sj-panel-wrapper ${isMinimized ? 'sj-panel-minimized' : ''}`}>
+        <div className={`sj-panel-wrapper ${isMinimized ? 'sj-panel-minimized' : ''} ${isParentPanelMinimized ? 'sj-parent-panel-minimized' : ''}`}>
             {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
                 <button
                     onClick={() => setIsMinimized(false)}
-                    className="card-expand-float-btn"
+                    className="card-expand-float-btn card-expand-float-btn-spatial"
                     title="Expand Spatial Join"
                 >
                     <Zap size={24} strokeWidth={2.5} />

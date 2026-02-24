@@ -21,7 +21,8 @@ const QueryBuilderCard = ({
     availableLayers,
     handleApplyLayerFilter,
     selectedLayerIds,
-    setSelectedLayerIds
+    setSelectedLayerIds,
+    isParentPanelMinimized = false
 }) => {
     const [qbConditions, setQbConditions] = useState([{ layerId: '', field: '', operator: '=', value: '', logic: 'AND' }]);
     const [layerAttributesMap, setLayerAttributesMap] = useState({});
@@ -151,12 +152,12 @@ const QueryBuilderCard = ({
     if (!isOpen) return null;
 
     return (
-        <div className={`qb-panel-wrapper ${isMinimized ? 'qb-panel-minimized' : ''}`}>
+        <div className={`qb-panel-wrapper ${isMinimized ? 'qb-panel-minimized' : ''} ${isParentPanelMinimized ? 'qb-parent-panel-minimized' : ''}`}>
             {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
                 <button
                     onClick={() => setIsMinimized(false)}
-                    className="card-expand-float-btn"
+                    className="card-expand-float-btn card-expand-float-btn-query"
                     title="Expand Query Builder"
                 >
                     <Filter size={24} strokeWidth={2.5} />

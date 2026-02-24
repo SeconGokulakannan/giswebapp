@@ -7,7 +7,7 @@ const PRESET_COLORS = [
     '#22c55e', '#ef4444', '#3b82f6', '#eab308', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#64748b'
 ];
 
-const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset }) => {
+const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset, isParentPanelMinimized = false }) => {
     const [selectedLayerId, setSelectedLayerId] = useState('');
 
     // Dynamic State
@@ -122,12 +122,12 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefresh
     if (!isOpen) return null;
 
     return (
-        <div className={`ac-panel-wrapper ${isMinimized ? 'ac-panel-minimized' : ''}`}>
+        <div className={`ac-panel-wrapper ${isMinimized ? 'ac-panel-minimized' : ''} ${isParentPanelMinimized ? 'ac-parent-panel-minimized' : ''}`}>
             {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
                 <button
                     onClick={() => setIsMinimized(false)}
-                    className="card-expand-float-btn"
+                    className="card-expand-float-btn card-expand-float-btn-analysis"
                     title="Expand Analysis"
                 >
                     <Activity size={24} strokeWidth={2.5} />

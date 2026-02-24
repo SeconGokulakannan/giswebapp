@@ -4527,6 +4527,22 @@ input:checked:hover+.toggle-slider::before {
   pointer-events: none;
 }
 
+.ac-panel-wrapper.ac-parent-panel-minimized {
+  left: 72px;
+}
+
+.ac-panel-wrapper.ac-parent-panel-minimized.ac-panel-minimized {
+  left: 12px;
+}
+
+.ac-panel-wrapper.ac-parent-panel-minimized.ac-panel-minimized .card-expand-float-btn {
+  top: 0;
+  left: 56px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
 .ac-panel-minimized .ac-card {
   opacity: 0;
   pointer-events: none;
@@ -4690,6 +4706,22 @@ input:checked:hover+.toggle-slider::before {
   justify-content: flex-start;
   font-family: 'Inter', -apple-system, sans-serif;
   pointer-events: none;
+}
+
+.sj-panel-wrapper.sj-parent-panel-minimized {
+  left: 72px;
+}
+
+.sj-panel-wrapper.sj-parent-panel-minimized.sj-panel-minimized {
+  left: 12px;
+}
+
+.sj-panel-wrapper.sj-parent-panel-minimized.sj-panel-minimized .card-expand-float-btn {
+  top: 0;
+  left: 56px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
 }
 
 .sj-panel-minimized .sj-card {
@@ -4883,6 +4915,22 @@ input:checked:hover+.toggle-slider::before {
   justify-content: flex-start;
   font-family: 'Inter', -apple-system, sans-serif;
   pointer-events: none;
+}
+
+.qb-panel-wrapper.qb-parent-panel-minimized {
+  left: 72px;
+}
+
+.qb-panel-wrapper.qb-parent-panel-minimized.qb-panel-minimized {
+  left: 12px;
+}
+
+.qb-panel-wrapper.qb-parent-panel-minimized.qb-panel-minimized .card-expand-float-btn {
+  top: 0;
+  left: 56px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
 }
 
 .qb-panel-minimized .qb-card {
@@ -5820,34 +5868,85 @@ input:checked:hover+.toggle-slider::before {
   position: absolute;
   top: 10px;
   left: 10px;
-  width: 52px;
-  height: 52px;
-  border-radius: 18px;
-  background: white;
-  color: var(--color-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
   display: flex !important;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 1300;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-  border: 1.5px solid var(--color-border);
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 0 rgba(5, 150, 105, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  transition: all 0.3s ease;
+  animation: child-floating-pulse 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: auto !important;
 }
 
 [data-theme='dark'] .card-expand-float-btn {
-  background: #1e293b;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(135deg, #10b981, #047857);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 8px 16px rgba(16, 185, 129, 0.35), 0 0 0 0 rgba(16, 185, 129, 0.45);
+}
+
+[data-theme='dark'] .card-expand-float-btn-analysis {
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+}
+
+[data-theme='dark'] .card-expand-float-btn-query {
+  background: linear-gradient(135deg, #22d3ee, #0e7490);
+}
+
+[data-theme='dark'] .card-expand-float-btn-spatial {
+  background: linear-gradient(135deg, #fb923c, #c2410c);
+}
+
+[data-theme='dark'] .card-expand-float-btn-style {
+  background: linear-gradient(135deg, #34d399, #047857);
 }
 
 .card-expand-float-btn:hover {
-  transform: scale(1.1) rotate(5deg);
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
-  box-shadow: 0 12px 30px rgba(var(--color-primary-rgb, 59, 130, 246), 0.4);
+  transform: scale(1.08);
+  box-shadow: 0 12px 22px rgba(5, 150, 105, 0.45);
+}
+
+.card-expand-float-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.card-expand-float-btn-analysis {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.35), 0 0 0 0 rgba(37, 99, 235, 0.45);
+}
+
+.card-expand-float-btn-query {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  box-shadow: 0 8px 16px rgba(8, 145, 178, 0.35), 0 0 0 0 rgba(8, 145, 178, 0.45);
+}
+
+.card-expand-float-btn-spatial {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  box-shadow: 0 8px 16px rgba(234, 88, 12, 0.35), 0 0 0 0 rgba(234, 88, 12, 0.45);
+}
+
+.card-expand-float-btn-style {
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 0 rgba(5, 150, 105, 0.45);
+}
+
+@keyframes child-floating-pulse {
+  0% {
+    box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 0 rgba(5, 150, 105, 0.45);
+  }
+  70% {
+    box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 10px rgba(5, 150, 105, 0);
+  }
+  100% {
+    box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 0 rgba(5, 150, 105, 0);
+  }
 }
 
 /* Hide legacy collapse handles */
@@ -5872,6 +5971,24 @@ input:checked:hover+.toggle-slider::before {
   justify-content: flex-start;
   font-family: 'Inter', -apple-system, sans-serif;
   pointer-events: none;
+}
+
+/* Keep style editor close to parent panel when parent is minimized */
+.se-panel-wrapper.se-parent-panel-minimized {
+  left: 72px;
+}
+
+/* When both parent + style editor are minimized, keep icon near parent expand icon */
+.se-panel-wrapper.se-parent-panel-minimized.se-panel-minimized {
+  left: 12px;
+}
+
+.se-panel-wrapper.se-parent-panel-minimized.se-panel-minimized .card-expand-float-btn {
+  top: 0;
+  left: 56px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
 }
 
 .se-panel-minimized .se-card {

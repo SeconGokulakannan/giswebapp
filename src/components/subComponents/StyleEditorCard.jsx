@@ -33,7 +33,8 @@ const StyleEditorCard = ({
     isSaving,
     onSave,
     onUpdateProp,
-    onFileUpload
+    onFileUpload,
+    isParentPanelMinimized = false
 }) => {
     const [isMinimized, setIsMinimized] = useState(false);
     const [localProperties, setLocalProperties] = useState({});
@@ -110,12 +111,12 @@ const StyleEditorCard = ({
     };
 
     return (
-        <div className={`se-panel-wrapper ${isMinimized ? 'se-panel-minimized' : ''}`}>
+        <div className={`se-panel-wrapper ${isMinimized ? 'se-panel-minimized' : ''} ${isParentPanelMinimized ? 'se-parent-panel-minimized' : ''}`}>
             {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
                 <button
                     onClick={() => setIsMinimized(false)}
-                    className="card-expand-float-btn"
+                    className="card-expand-float-btn card-expand-float-btn-style"
                     title="Expand Style Editor"
                 >
                     <Brush size={24} strokeWidth={2.5} />
