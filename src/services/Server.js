@@ -164,7 +164,9 @@ export const getLayerStyle = async (fullLayerName) => {
             const data = await globalLayerRes.json();
             const defaultStyle = data.layer.defaultStyle.name;
             console.log(`[SLD Fetch] Found global layer. Default style: ${defaultStyle}`);
-            return fetchSLD(defaultStyle, ws);
+            const sldResult = await fetchSLD(defaultStyle, ws);
+            // Return style meta even when body is missing so caller can bootstrap a first-time style.
+            return sldResult || { styleName: defaultStyle, sldBody: null };
         }
 
         const layerData = await layerResponse.json();
@@ -176,7 +178,9 @@ export const getLayerStyle = async (fullLayerName) => {
         const targetWs = isWorkspaceStyle ? ws : null;
 
         console.log(`[SLD Fetch] Found layer. Style: ${styleName}, Workspace-Specific: ${isWorkspaceStyle}`);
-        return fetchSLD(styleName, targetWs);
+        const sldResult = await fetchSLD(styleName, targetWs);
+        // Return style meta even when body is missing so caller can bootstrap a first-time style.
+        return sldResult || { styleName, sldBody: null };
     }
     catch (err) {
         console.error('[SLD Fetch] Failed to fetch layer style:', err);
@@ -338,6 +342,39 @@ export const updateLayerStyle = async (fullLayerName, styleName, sldBody) => {
     }
     catch (err) {
         console.error('Failed to update unique layer style:', err);
+        return false;
+    }
+};
+
+// Set a layer default style (workspace style preferred)
+export const setLayerDefaultStyle = async (fullLayerName, styleName) => {
+    try {
+        const [layerWs, layerName] = fullLayerName.split(':');
+        const cleanStyleName = styleName.includes(':') ? styleName.split(':')[1] : styleName;
+
+        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${layerWs}/layers/${layerName}.json`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                layer: {
+                    defaultStyle: {
+                        name: cleanStyleName,
+                        workspace: { name: layerWs }
+                    }
+                }
+            })
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to set default style for ${fullLayerName}:`, await response.text());
+        }
+
+        return response.ok;
+    } catch (err) {
+        console.error('Failed to set layer default style:', err);
         return false;
     }
 };

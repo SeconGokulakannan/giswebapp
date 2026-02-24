@@ -51,7 +51,7 @@ import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, forma
 // Service from Server.js
 import {
   searchLocation, getLayerAttributes, getFeaturesForAttributeTable, getGeoServerLayers, getWMSSourceParams, getLayerBBox,
-  getLayerStyle, updateLayerStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
+  getLayerStyle, updateLayerStyle, setLayerDefaultStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
   batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl, uploadIcon
 } from '../../services/Server';
 
@@ -1208,6 +1208,79 @@ function GISMap() {
     toast.success('Spatial join reset. View restored to default.');
   };
 
+  const createDefaultSldForLayer = (fullLayerName, geometryType = '') => {
+    const layerName = fullLayerName.includes(':') ? fullLayerName.split(':')[1] : fullLayerName;
+    const gt = String(geometryType || '').toLowerCase();
+
+    const isPoint = gt.includes('point');
+    const isLine = gt.includes('line');
+
+    let symbolizer = `
+      <PolygonSymbolizer>
+        <Fill>
+          <CssParameter name="fill">#4f86f7</CssParameter>
+          <CssParameter name="fill-opacity">0.35</CssParameter>
+        </Fill>
+        <Stroke>
+          <CssParameter name="stroke">#1e40af</CssParameter>
+          <CssParameter name="stroke-width">1.5</CssParameter>
+        </Stroke>
+      </PolygonSymbolizer>`;
+
+    if (isLine) {
+      symbolizer = `
+      <LineSymbolizer>
+        <Stroke>
+          <CssParameter name="stroke">#2563eb</CssParameter>
+          <CssParameter name="stroke-width">2</CssParameter>
+        </Stroke>
+      </LineSymbolizer>`;
+    } else if (isPoint) {
+      symbolizer = `
+      <PointSymbolizer>
+        <Graphic>
+          <Mark>
+            <WellKnownName>circle</WellKnownName>
+            <Fill>
+              <CssParameter name="fill">#2563eb</CssParameter>
+            </Fill>
+            <Stroke>
+              <CssParameter name="stroke">#ffffff</CssParameter>
+              <CssParameter name="stroke-width">1</CssParameter>
+            </Stroke>
+          </Mark>
+          <Size>10</Size>
+        </Graphic>
+      </PointSymbolizer>`;
+    }
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0"
+  xmlns="http://www.opengis.net/sld"
+  xmlns:ogc="http://www.opengis.net/ogc"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <NamedLayer>
+    <Name>${layerName}</Name>
+    <UserStyle>
+      <Title>Default ${layerName} Style</Title>
+      <FeatureTypeStyle>
+        <Rule>
+          <Title>DefaultRule</Title>
+          ${symbolizer}
+        </Rule>
+      </FeatureTypeStyle>
+    </UserStyle>
+  </NamedLayer>
+</StyledLayerDescriptor>`;
+  };
+
+  const getLayerScopedStyleName = (fullLayerName) => {
+    const raw = fullLayerName.includes(':') ? fullLayerName.split(':')[1] : fullLayerName;
+    const safe = raw.replace(/[^a-zA-Z0-9_]/g, '_');
+    return `${safe}_Styles`;
+  };
+
   const handleLoadStyle = async (layer) => {
     setActiveLayerTool('styles');
     setEditingStyleLayer(layer);
@@ -1229,6 +1302,29 @@ function GISMap() {
         const attrs = await getLayerAttributes(layer.fullName);
         setLayerStyleAttributes(attrs || []);
         toast.success(`Styles loaded for ${layer.name}`, { id: 'style-load' });
+      } else if (result && result.styleName) {
+        // First-time bootstrap: style reference exists but SLD body is missing/unavailable.
+        const defaultSld = createDefaultSldForLayer(layer.fullName, layer.geometryType);
+        const scopedStyleName = getLayerScopedStyleName(layer.fullName);
+        const created = await updateLayerStyle(layer.fullName, scopedStyleName, defaultSld);
+        if (!created) throw new Error('Failed to create default SLD');
+
+        await setLayerDefaultStyle(layer.fullName, scopedStyleName);
+
+        const fresh = await getLayerStyle(layer.fullName);
+        if (!fresh?.sldBody) throw new Error('Default SLD created but fetch failed');
+
+        const parsed = parseSLD(fresh.sldBody);
+        setStyleData({
+          styleName: fresh.styleName,
+          sldBody: fresh.sldBody,
+          properties: parsed.props,
+          availableProps: parsed.availableProps
+        });
+
+        const attrs = await getLayerAttributes(layer.fullName);
+        setLayerStyleAttributes(attrs || []);
+        toast.success(`Default style created and loaded for ${layer.name}`, { id: 'style-load' });
       } else {
         throw new Error('No SLD content received from server');
       }
