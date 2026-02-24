@@ -1178,11 +1178,14 @@ function GISMap() {
 
   const handleResetSpatialJoin = () => {
     if (mapInstanceRef.current) {
+      // 1. Remove Join Layers
       Object.keys(spatialJoinVectorLayersRef.current).forEach(layerId => {
         const vectorLayer = spatialJoinVectorLayersRef.current[layerId];
         if (vectorLayer) {
           mapInstanceRef.current.removeLayer(vectorLayer);
         }
+
+        // 2. Restore Original Visibilities
         const originalVisible = spatialJoinWMSVisibilitiesRef.current[layerId];
         if (originalVisible !== undefined) {
           setGeoServerLayers(prev => prev.map(l =>
@@ -1190,10 +1193,19 @@ function GISMap() {
           ));
         }
       });
+
+      // 3. Reset Map View to Defaults
+      const view = mapInstanceRef.current.getView();
+      view.animate({
+        center: fromLonLat([0, 20]),
+        zoom: 2,
+        duration: 1000
+      });
     }
+
     spatialJoinVectorLayersRef.current = {};
     spatialJoinWMSVisibilitiesRef.current = {};
-    toast.success('Spatial join reset. Layers restored.');
+    toast.success('Spatial join reset. View restored to default.');
   };
 
   const handleLoadStyle = async (layer) => {
