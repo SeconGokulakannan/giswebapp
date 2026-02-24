@@ -1278,7 +1278,7 @@ function GISMap() {
   const getLayerScopedStyleName = (fullLayerName) => {
     const raw = fullLayerName.includes(':') ? fullLayerName.split(':')[1] : fullLayerName;
     const safe = raw.replace(/[^a-zA-Z0-9_]/g, '_');
-    return `${safe}_Styles`;
+    return `${safe}_Style`;
   };
 
   const handleLoadStyle = async (layer) => {
@@ -1286,10 +1286,10 @@ function GISMap() {
     setEditingStyleLayer(layer);
     toast.loading('Loading current styles...', { id: 'style-load' });
     try {
-      // Corrected call: pass the fullName and destructure result
       const result = await getLayerStyle(layer.fullName);
 
-      if (result && result.sldBody) {
+      if (result && result.sldBody && result.isLayerSpecificStyle === true) {
+        // ── Fast path: layer already has its own dedicated style ─────────────────
         const { styleName, sldBody } = result;
         const parsed = parseSLD(sldBody);
         setStyleData({
@@ -1302,17 +1302,25 @@ function GISMap() {
         const attrs = await getLayerAttributes(layer.fullName);
         setLayerStyleAttributes(attrs || []);
         toast.success(`Styles loaded for ${layer.name}`, { id: 'style-load' });
-      } else if (result && result.styleName) {
-        // First-time bootstrap: style reference exists but SLD body is missing/unavailable.
-        const defaultSld = createDefaultSldForLayer(layer.fullName, layer.geometryType);
+      } else {
+        // Bootstrap: create a layer-specific style, seed from existing default SLD body
+        const baseSld = result?.sldBody
+          ? result.sldBody
+          : createDefaultSldForLayer(layer.fullName, layer.geometryType);
+
         const scopedStyleName = getLayerScopedStyleName(layer.fullName);
-        const created = await updateLayerStyle(layer.fullName, scopedStyleName, defaultSld);
-        if (!created) throw new Error('Failed to create default SLD');
+        toast.loading(`Creating dedicated style '${scopedStyleName}'...`, { id: 'style-load' });
+
+        const created = await updateLayerStyle(layer.fullName, scopedStyleName, baseSld);
+        if (!created) throw new Error('Failed to create/upload layer-specific SLD');
 
         await setLayerDefaultStyle(layer.fullName, scopedStyleName);
 
+        // Small delay for GeoServer to finalize the write
+        await new Promise(r => setTimeout(r, 800));
+
         const fresh = await getLayerStyle(layer.fullName);
-        if (!fresh?.sldBody) throw new Error('Default SLD created but fetch failed');
+        if (!fresh?.sldBody) throw new Error('Layer-specific style created but re-fetch failed');
 
         const parsed = parseSLD(fresh.sldBody);
         setStyleData({
@@ -1324,15 +1332,11 @@ function GISMap() {
 
         const attrs = await getLayerAttributes(layer.fullName);
         setLayerStyleAttributes(attrs || []);
-        toast.success(`Default style created and loaded for ${layer.name}`, { id: 'style-load' });
-      } else {
-        throw new Error('No SLD content received from server');
+        toast.success(`Layer style '${scopedStyleName}' created and applied!`, { id: 'style-load' });
       }
     } catch (error) {
       console.error("Failed to load style:", error);
-      toast.error('Could not load existing styles. Please try again.', { id: 'style-load' });
-      // Do NOT set default styles here - let the user retry or see the error
-      // This prevents overwriting valid server styles with local defaults on network blips
+      toast.error('Could not load styles. Please try again.', { id: 'style-load' });
     }
   };
 
