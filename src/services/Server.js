@@ -1076,7 +1076,42 @@ export const publishNewLayer = async (config) => {
     }
 };
 
-// Data Add On
+/**
+ * Force GeoServer to recompute the native and lat/lon bounding boxes for a layer.
+ * This is necessary when GeoServer stores a placeholder [0,0,-1,-1] extent.
+ */
+export const recalculateLayerBBox = async (fullLayerName) => {
+    try {
+        const [ws, name] = fullLayerName.split(':');
+
+        // Find the datastore for this layer to build the REST path
+        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/datastores.json`,
+            { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+
+        if (!dsRes.ok) throw new Error(`Datastore lookup failed: ${dsRes.status}`);
+        const dsData = await dsRes.json();
+        const dataStoreName = dsData.dataStores?.dataStore?.[0]?.name;
+
+        if (!dataStoreName) throw new Error('No datastore found in workspace');
+
+        const url = `${GEOSERVER_URL}/rest/workspaces/${ws}/datastores/${dataStoreName}/featuretypes/${name}?recalculate=nativebbox,latlonbbox`;
+        const recalcRes = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ featureType: { name } })
+        });
+
+        if (!recalcRes.ok) {
+            console.error(`[BBox] Recalculation failed for ${fullLayerName}: ${recalcRes.status}`);
+            return false;
+        }
+        console.log(`[BBox] Successfully recalculated for ${fullLayerName}`);
+        return true;
+    } catch (err) {
+        console.error('[BBox] Error recalculating extent:', err);
+        return false;
+    }
+};
 export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown') => {
     try {
         if (!features || features.length === 0) return true;
@@ -1178,15 +1213,12 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
             const hasException = result.includes('ExceptionText');
             const hasSuccess = result.includes('TransactionSummary');
 
-            if (hasException) {
-                console.error('WFS-T Insert Exception Response:', result);
+            if (hasSuccess && !hasException) {
+                // IMPORTANT: Recalculate BBox after data insertion so GeoServer knows the actual extent
+                await recalculateLayerBBox(fullLayerName);
+                return true;
             }
-
-            if (!hasSuccess) {
-                console.error('WFS-T response missing TransactionSummary:', result);
-            }
-
-            return hasSuccess && !hasException;
+            return false;
         } else {
             const errorText = await response.text();
             console.error(`Batch insert HTTP error (${response.status}):`, errorText);

@@ -659,7 +659,7 @@ function GISMap() {
       // Check for saved extent first
       if (layer.extent) {
         const extentPart = layer.extent.split(',').map(Number);
-        if (extentPart.length === 4 && extentPart.every(val => isFinite(val))) {
+        if (extentPart.length === 4 && extentPart.every(val => isFinite(val)) && !isEmpty(extentPart)) {
           mapInstanceRef.current.getView().fit(extentPart, {
             padding: [50, 50, 50, 50],
             maxZoom: 16,
