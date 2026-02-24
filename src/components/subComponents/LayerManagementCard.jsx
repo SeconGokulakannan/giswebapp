@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fetchLayerStatuses, WORKSPACE } from '../../services/Server';
-import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server, Database } from 'lucide-react';
+import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import LayerPartitioningModal from './LayerPartitioningModal';
 
 const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature, onUpdateFeatures, onSaveNewFeature, onRefresh, onOpenLoadTempModal, onOpenCreateLayer, onOpenDataManipulation, onOpenServerInfo }) => {
 
@@ -10,7 +9,6 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     const [pendingChanges, setPendingChanges] = useState({});
     const [newRows, setNewRows] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
-    const [showPartitioning, setShowPartitioning] = useState(false);
 
 
     const loadLayers = async () => {
@@ -79,7 +77,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     const SaveLayerMetaData = async () => {
         let successCount = 0;
-        const layerFullName = `${WORKSPACE}:Layer`;
+        const layerFullName = `${WORKSPACE}: Layer`;
 
         const newRowIds = Object.keys(newRows);
         if (newRowIds.length > 0) {
@@ -117,7 +115,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     };
 
     const AddNewLayerConfig = () => {
-        const newId = `new-${Date.now()}`;
+        const newId = `new- ${Date.now()} `;
         const initialRow = {};
         attributeKeys.forEach(key => {
             if (key === 'IsShowLayer') initialRow[key] = true;
@@ -131,8 +129,8 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     const DeleteLayerConfig = async () => {
         if (selectedIds.length === 0) return;
-        const layerFullName = `${WORKSPACE}:Layer`;
-        if (window.confirm(`Delete ${selectedIds.length} items?`)) {
+        const layerFullName = `${WORKSPACE}: Layer`;
+        if (window.confirm(`Delete ${selectedIds.length} items ? `)) {
             for (const id of selectedIds) {
                 const config = allConfigs.find(c => c.id == id);
                 if (config && config.feature) await onDeleteFeature(layerFullName, config.feature);
@@ -187,9 +185,6 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                         <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)' }}>
                             <Server size={14} />Server Info
                         </button>
-                        <button className="elite-btn primary" onClick={() => setShowPartitioning(true)} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}>
-                            <Database size={14} />Layer Partitioning
-                        </button>
                         <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
                             <Plus size={14} />Add Layer Config
                         </button>
@@ -215,7 +210,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                     <div style={{ minWidth: 'fit-content' }}>
                         {allConfigs.map((config) => (
                             <div key={config.id} style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '12px', padding: '8px 20px', alignItems: 'center', borderBottom: '1px solid var(--color-border)' }}>
-                                <div onClick={() => toggleSelection(config.id)} style={{ width: '20px', height: '20px', borderRadius: '4px', border: `2px solid ${selectedIds.includes(config.id) ? 'var(--color-primary)' : 'var(--color-border)'}`, background: selectedIds.includes(config.id) ? 'var(--color-primary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                <div onClick={() => toggleSelection(config.id)} style={{ width: '20px', height: '20px', borderRadius: '4px', border: `2px solid ${selectedIds.includes(config.id) ? 'var(--color-primary)' : 'var(--color-border)'} `, background: selectedIds.includes(config.id) ? 'var(--color-primary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                                     {selectedIds.includes(config.id) && <Check size={14} color="white" />}
                                 </div>
                                 {attributeKeys.map(key => {
@@ -245,15 +240,9 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                 </div>
             </div>
             <style>{`
-                .row-input { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 4px; outline: none; }
-                .row-input:focus { border-color: var(--color-primary); }
-            `}</style>
-
-            <LayerPartitioningModal
-                isOpen={showPartitioning}
-                onClose={() => setShowPartitioning(false)}
-                refreshLayers={onRefresh}
-            />
+    .row - input { background: var(--color - bg - secondary); border: 1px solid var(--color - border); border - radius: 4px; outline: none; }
+                .row - input:focus { border - color: var(--color - primary); }
+`}</style>
         </div>
     );
 };
