@@ -173,7 +173,9 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
         const fullLayerName = targetLayer.fullName;
 
         try {
-            toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'} for ${sourceData.features.length} features...`, { id: 'manipulate-toast' });
+            const toastId = 'manipulate-toast';
+            toast.loading(`Preparing ${operation === 'addon' ? 'Addon' : 'Update'} for ${sourceData.features.length} features...`, { id: toastId });
+
             const mappedFeatures = sourceData.features.map(f => {
                 const newProps = {};
                 Object.entries(mapping).forEach(([destKey, srcKey]) => {
@@ -191,22 +193,22 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                 };
             });
 
+            const onProgress = (current, total, batchSize) => {
+                toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'}: Batch ${current} of ${total} (${batchSize} features)...`, { id: toastId });
+            };
+
             let success = false;
             if (operation === 'addon') {
-                success = await batchInsertFeatures(fullLayerName, mappedFeatures, targetGeometryName, '4326', targetGeometryType);
+                success = await batchInsertFeatures(fullLayerName, mappedFeatures, targetGeometryName, '4326', targetGeometryType, onProgress);
             } else {
-                success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey);
+                success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey, onProgress);
             }
 
             if (success) {
-                toast.success(`${operation === 'addon' ? 'Data Addon' : 'Data Update'} successful!`, { id: 'manipulate-toast' });
-                // const olLayer = operationalLayersRef.current[targetLayer.id];
-                // if (olLayer) {
-                //   olLayer.getSource().updateParams({ '_t': Date.now() });
-                // }
+                toast.success(`${operation === 'addon' ? 'Data Addon' : 'Data Update'} completed successfully!`, { id: toastId });
                 return true;
             } else {
-                toast.error("Operation failed. Check server logs.", { id: 'manipulate-toast' });
+                toast.error("Operation failed. Some batches may have failed. Check server logs.", { id: toastId });
                 return false;
             }
         } catch (err) {

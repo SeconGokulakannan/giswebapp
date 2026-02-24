@@ -1084,15 +1084,19 @@ export const recalculateLayerBBox = async (fullLayerName) => {
     try {
         const [ws, name] = fullLayerName.split(':');
 
-        // Find the datastore for this layer to build the REST path
-        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/datastores.json`,
+        // 1. Find the actual datastore for this specific layer
+        const layerRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${ws}/layers/${name}.json`,
             { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
 
-        if (!dsRes.ok) throw new Error(`Datastore lookup failed: ${dsRes.status}`);
-        const dsData = await dsRes.json();
-        const dataStoreName = dsData.dataStores?.dataStore?.[0]?.name;
+        if (!layerRes.ok) throw new Error(`Layer lookup failed: ${layerRes.status}`);
+        const layerData = await layerRes.json();
+        const resourceUrl = layerData.layer.resource.href;
 
-        if (!dataStoreName) throw new Error('No datastore found in workspace');
+        // Extract datastore name from URL: .../datastores/{dsName}/featuretypes/...
+        const dsMatch = resourceUrl.match(/\/datastores\/([^/]+)\//);
+        const dataStoreName = dsMatch ? dsMatch[1] : null;
+
+        if (!dataStoreName) throw new Error('Could not determine datastore for layer');
 
         const url = `${GEOSERVER_URL}/rest/workspaces/${ws}/datastores/${dataStoreName}/featuretypes/${name}?recalculate=nativebbox,latlonbbox`;
         const recalcRes = await fetch(url, {
@@ -1105,200 +1109,227 @@ export const recalculateLayerBBox = async (fullLayerName) => {
             console.error(`[BBox] Recalculation failed for ${fullLayerName}: ${recalcRes.status}`);
             return false;
         }
-        console.log(`[BBox] Successfully recalculated for ${fullLayerName}`);
         return true;
     } catch (err) {
         console.error('[BBox] Error recalculating extent:', err);
         return false;
     }
 };
-export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown') => {
+export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '3857', targetGeometryType = 'Unknown', onProgress = null) => {
     try {
         if (!features || features.length === 0) return true;
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
-        let insertsXml = '';
+
+        // Use the workspace prefix as the namespace URI (matches GeoServer config)
+        const namespaceUri = prefix;
+        const BATCH_SIZE = 50;
+        const totalChunks = Math.ceil(features.length / BATCH_SIZE);
+
         const escapeXml = (str) => {
             if (str === null || str === undefined) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
         };
 
-        for (const feature of features) {
-            let featureContentXml = '';
+        for (let i = 0; i < features.length; i += BATCH_SIZE) {
+            const chunk = features.slice(i, i + BATCH_SIZE);
+            const currentChunkNum = Math.floor(i / BATCH_SIZE) + 1;
 
-            // 1. Process Geometry FIRST (Standard WFS schema often expects geometry first)
-            const geom = feature.geometry;
-            if (geom) {
-                let gmlGeom = '';
-                const type = geom.type;
-                const coords = geom.coordinates;
+            if (onProgress) {
+                onProgress(currentChunkNum, totalChunks, chunk.length);
+            }
 
-                if (coords && Array.isArray(coords) && coords.length > 0) {
-                    if (type === 'Point') {
-                        gmlGeom = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
-                    } else if (type === 'LineString') {
-                        gmlGeom = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
-                    } else if (type === 'Polygon') {
-                        const ring = coords[0].map(c => c.join(' ')).join(' ');
-                        const polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+            let insertsXml = '';
+            for (const feature of chunk) {
+                let featureContentXml = '';
 
-                        // Promotion to MultiPolygon if target requires it
-                        if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
-                            gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
-                        } else {
-                            gmlGeom = polygonXml;
+                // 1. Process Geometry
+                const geom = feature.geometry;
+                if (geom) {
+                    let gmlGeom = '';
+                    const type = geom.type;
+                    const coords = geom.coordinates;
+
+                    if (coords && Array.isArray(coords) && coords.length > 0) {
+                        const fmtCoords = (arr) => arr.map(c => `${c[0]},${c[1]}`).join(' ');
+
+                        if (type === 'Point') {
+                            gmlGeom = `<gml:Point srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:coordinates>${coords[0]},${coords[1]}</gml:coordinates></gml:Point>`;
+                        } else if (type === 'LineString') {
+                            gmlGeom = `<gml:LineString srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:coordinates>${fmtCoords(coords)}</gml:coordinates></gml:LineString>`;
+                        } else if (type === 'Polygon') {
+                            const exterior = `<gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(coords[0])}</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs>`;
+                            let interiors = '';
+                            if (coords.length > 1) {
+                                for (let j = 1; j < coords.length; j++) {
+                                    interiors += `<gml:innerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(coords[j])}</gml:coordinates></gml:LinearRing></gml:innerBoundaryIs>`;
+                                }
+                            }
+                            const polygonXml = `<gml:Polygon srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml">${exterior}${interiors}</gml:Polygon>`;
+
+                            if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
+                                gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
+                            } else {
+                                gmlGeom = polygonXml;
+                            }
+                        } else if (type === 'MultiPolygon') {
+                            let polygonsXml = '';
+                            coords.forEach(poly => {
+                                const exterior = `<gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(poly[0])}</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs>`;
+                                let interiors = '';
+                                if (poly.length > 1) {
+                                    for (let j = 1; j < poly.length; j++) {
+                                        interiors += `<gml:innerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(poly[j])}</gml:coordinates></gml:LinearRing></gml:innerBoundaryIs>`;
+                                    }
+                                }
+                                polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}">${exterior}${interiors}</gml:Polygon></gml:polygonMember>`;
+                            });
+                            gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml">${polygonsXml}</gml:MultiPolygon>`;
                         }
-                    } else if (type === 'MultiPolygon') {
-                        let polygonsXml = '';
-                        coords.forEach(poly => {
-                            const ring = poly[0].map(c => c.join(' ')).join(' ');
-                            polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${ring}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:polygonMember>`;
-                        });
-                        gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}">${polygonsXml}</gml:MultiPolygon>`;
-                    }
 
-                    if (gmlGeom) {
-                        featureContentXml += `<${prefix}:${geometryName}>${gmlGeom}</${prefix}:${geometryName}>`;
+                        if (gmlGeom) {
+                            featureContentXml += `<${prefix}:${geometryName}>${gmlGeom}</${prefix}:${geometryName}>`;
+                        }
                     }
                 }
+
+                // 2. Process properties
+                for (const [key, value] of Object.entries(feature.properties || {})) {
+                    const lowKey = key.trim().toLowerCase();
+                    const lowGeomName = (geometryName || '').trim().toLowerCase();
+                    if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
+                        lowKey === lowGeomName || key.startsWith('_') || value === null || value === undefined) continue;
+
+                    featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
+                }
+
+                insertsXml += `<wfs:Insert><${prefix}:${layerPart}>${featureContentXml}</${prefix}:${layerPart}></wfs:Insert>`;
             }
 
-            // 2. Process properties
-            for (const [key, value] of Object.entries(feature.properties || {})) {
-                const lowKey = key.trim().toLowerCase();
-                const lowGeomName = (geometryName || '').trim().toLowerCase();
-                // Skip system/internal/geometry columns
-                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
-                    lowKey === lowGeomName ||
-                    key.startsWith('_') ||
-                    value === null ||
-                    value === undefined) continue;
+            if (!insertsXml) continue;
 
-                featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
-            }
+            const wfsTransactionXml = `
+            <wfs:Transaction service="WFS" version="1.1.0"
+                xmlns:wfs="http://www.opengis.net/wfs"
+                xmlns:gml="http://www.opengis.net/gml"
+                xmlns:${prefix}="${namespaceUri}"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                ${insertsXml}
+            </wfs:Transaction>`.trim();
 
-            // Build the complete feature XML
-            const featureXml = `<${fullLayerName}>${featureContentXml}</${fullLayerName}>`;
-            insertsXml += `<wfs:Insert>${featureXml}</wfs:Insert>`;
-        }
-
-        // Check if we have any features to insert
-        if (!insertsXml) {
-            console.warn('No valid features to insert after processing');
-            return false;
-        }
-
-        const wfsTransactionXml = `
-        <wfs:Transaction service="WFS" version="1.1.0"
-        xmlns:wfs="http://www.opengis.net/wfs"
-        xmlns:gml="http://www.opengis.net/gml"
-        xmlns:${prefix}="${prefix}"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-            ${insertsXml}
-        </wfs:Transaction>`.trim();
-
-
-        const response = await fetch(`${GEOSERVER_URL}/wfs`,
-            {
+            const response = await fetch(`${GEOSERVER_URL}/wfs`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/xml',
-                    'Authorization': AUTH_HEADER
-                },
+                headers: { 'Content-Type': 'application/xml', 'Authorization': AUTH_HEADER },
                 body: wfsTransactionXml
             });
 
-        if (response.ok) {
             const result = await response.text();
-            const hasException = result.includes('ExceptionText');
-            const hasSuccess = result.includes('TransactionSummary');
-
-            if (hasSuccess && !hasException) {
-                // IMPORTANT: Recalculate BBox after data insertion so GeoServer knows the actual extent
-                await recalculateLayerBBox(fullLayerName);
-                return true;
+            if (response.ok) {
+                const hasException = result.includes('ExceptionText');
+                if (hasException) {
+                    console.error(`[WFS-T] GeoServer Exception in chunk ${currentChunkNum}:`, result);
+                    return false;
+                }
+            } else {
+                console.error(`[WFS-T] HTTP ${response.status} in chunk ${currentChunkNum}:`, result);
+                return false;
             }
-            return false;
-        } else {
-            const errorText = await response.text();
-            console.error(`Batch insert HTTP error (${response.status}):`, errorText);
         }
-        return false;
+
+        // After all chunks are successfully inserted, trigger a bbox recalculation once
+        await recalculateLayerBBox(fullLayerName);
+        return true;
     }
     catch (err) {
-        console.error("Batch insert failed:", err);
+        console.error("[WFS-T] Batch insert failed:", err);
         return false;
     }
 };
 
 //data Updation
-export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingKey) => {
+export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingKey, onProgress = null) => {
     try {
         if (!features || features.length === 0) return true;
 
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
+        const BATCH_SIZE = 50;
+        const totalChunks = Math.ceil(features.length / BATCH_SIZE);
+
         const escapeXml = (str) => {
             if (str === null || str === undefined) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
         };
 
-        let updatesXml = '';
+        for (let i = 0; i < features.length; i += BATCH_SIZE) {
+            const chunk = features.slice(i, i + BATCH_SIZE);
+            const currentChunkNum = Math.floor(i / BATCH_SIZE) + 1;
 
-        for (const feature of features) {
-            const keyValue = feature.properties?.[matchingKey];
-            if (keyValue === undefined || keyValue === null) continue;
-
-            let propertyXml = '';
-            for (const [key, value] of Object.entries(feature.properties || {})) {
-                const lowKey = key.trim().toLowerCase();
-                // Skip system/internal/geometry columns
-                if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
-                    key === matchingKey ||
-                    key.startsWith('_') ||
-                    value === null ||
-                    value === undefined) continue;
-
-                propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${escapeXml(value)}</wfs:Value></wfs:Property>`;
+            if (onProgress) {
+                onProgress(currentChunkNum, totalChunks, chunk.length);
             }
 
-            if (!propertyXml) continue;
+            let updatesXml = '';
+            for (const feature of chunk) {
+                const keyValue = feature.properties?.[matchingKey];
+                if (keyValue === undefined || keyValue === null) continue;
 
-            updatesXml += `
-            <wfs:Update typeName="${fullLayerName}">
-                ${propertyXml}
-                <ogc:Filter>
-                    <ogc:PropertyIsEqualTo>
-                        <ogc:PropertyName>${matchingKey}</ogc:PropertyName>
-                        <ogc:Literal>${escapeXml(keyValue)}</ogc:Literal>
-                    </ogc:PropertyIsEqualTo>
-                </ogc:Filter>
-            </wfs:Update>`;
-        }
+                let propertyXml = '';
+                for (const [key, value] of Object.entries(feature.properties || {})) {
+                    const lowKey = key.trim().toLowerCase();
+                    // Skip system/internal/geometry columns
+                    if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
+                        key === matchingKey ||
+                        key.startsWith('_') ||
+                        value === null ||
+                        value === undefined) continue;
 
-        if (!updatesXml) return true;
+                    propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${escapeXml(value)}</wfs:Value></wfs:Property>`;
+                }
 
-        const wfsTransactionXml = `
-        <wfs:Transaction service="WFS" version="1.1.0"
-        xmlns:wfs="http://www.opengis.net/wfs"
-        xmlns:ogc="http://www.opengis.net/ogc"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:${prefix}="${prefix}"
-        xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-            ${updatesXml}
-        </wfs:Transaction>`.trim();
+                if (!propertyXml) continue;
 
-        const response = await fetch(`${GEOSERVER_URL}/wfs`,
-            {
+                updatesXml += `
+                <wfs:Update typeName="${fullLayerName}">
+                    ${propertyXml}
+                    <ogc:Filter>
+                        <ogc:PropertyIsEqualTo>
+                            <ogc:PropertyName>${matchingKey}</ogc:PropertyName>
+                            <ogc:Literal>${escapeXml(keyValue)}</ogc:Literal>
+                        </ogc:PropertyIsEqualTo>
+                    </ogc:Filter>
+                </wfs:Update>`;
+            }
+
+            if (!updatesXml) continue;
+
+            const wfsTransactionXml = `
+            <wfs:Transaction service="WFS" version="1.1.0"
+            xmlns:wfs="http://www.opengis.net/wfs"
+            xmlns:ogc="http://www.opengis.net/ogc"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xmlns:${prefix}="${prefix}"
+            xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+                ${updatesXml}
+            </wfs:Transaction>`.trim();
+
+            const response = await fetch(`${GEOSERVER_URL}/wfs`, {
                 method: 'POST',
                 headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
                 body: wfsTransactionXml
             });
 
-        if (response.ok) {
-            const result = await response.text();
-            return result.includes('TransactionSummary') && !result.includes('ExceptionText');
+            if (response.ok) {
+                const result = await response.text();
+                if (result.includes('ExceptionText')) {
+                    console.error(`[Batch Update] GeoServer Error in chunk ${currentChunkNum}:`, result);
+                    return false;
+                }
+            } else {
+                console.error(`[Batch Update] HTTP Error ${response.status} in chunk ${currentChunkNum}`);
+                return false;
+            }
         }
-        return false;
+
+        return true;
     }
     catch (err) {
         console.error("Batch update failed:", err);
