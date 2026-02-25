@@ -385,12 +385,6 @@ function GISMap() {
   const saveWorkspace = () => {
     if (!vectorSourceRef.current || !mapInstanceRef.current) return;
 
-    // Save Drawings
-    const format = new GeoJSON();
-    const features = vectorSourceRef.current.getFeatures();
-    const json = format.writeFeatures(features);
-    localStorage.setItem('gis_drawings', json);
-
     // Save Settings
     localStorage.setItem('measurementUnits', measurementUnitsRef.current);
     localStorage.setItem('showDrawingLabels', showDrawingLabelsRef.current);
@@ -1683,18 +1677,6 @@ function GISMap() {
 
     const vectorSource = new VectorSource();
     vectorSourceRef.current = vectorSource;
-
-    // Load saved drawings
-    const savedDrawings = localStorage.getItem('gis_drawings');
-    if (savedDrawings) {
-      try {
-        const format = new GeoJSON();
-        const features = format.readFeatures(savedDrawings);
-        vectorSource.addFeatures(features);
-      } catch (err) {
-        console.error('Error loading drawings:', err);
-      }
-    }
 
     // Initial status update
     updateFeatureStatus(vectorSource);
