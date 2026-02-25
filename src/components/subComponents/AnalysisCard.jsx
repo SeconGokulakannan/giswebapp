@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Minimize2 } from 'lucide-react';
+import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Minimize2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes } from '../../services/Server';
 
@@ -7,7 +7,7 @@ const PRESET_COLORS = [
     '#22c55e', '#ef4444', '#3b82f6', '#eab308', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#64748b'
 ];
 
-const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset, isParentPanelMinimized = false }) => {
+const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportReport, canExportReport = false, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset, isParentPanelMinimized = false }) => {
     const [selectedLayerId, setSelectedLayerId] = useState('');
 
     // Dynamic State
@@ -312,6 +312,17 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onRefresh
                             >
                                 Run Analysis
                             </button>
+                            {canExportReport && (
+                                <button
+                                    onClick={onExportReport}
+                                    className="qb-report-btn"
+                                    style={{ padding: '0 14px' }}
+                                    title="Export Analysis Report"
+                                >
+                                    <FileText size={14} />
+                                    <span>Report</span>
+                                </button>
+                            )}
                         </div>
 
                         {/* Playback Console */}

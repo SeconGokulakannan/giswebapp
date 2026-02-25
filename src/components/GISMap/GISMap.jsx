@@ -205,6 +205,7 @@ function GISMap() {
   const [analysisSLDMap, setAnalysisSLDMap] = useState({}); // layerId -> sldBody
   const analysisVectorLayersRef = useRef({}); // layerId -> olVectorLayer
   const analysisWMSVisibilitiesRef = useRef({}); // layerId -> originalVisibility (for restore)
+  const [canExportAnalysisReport, setCanExportAnalysisReport] = useState(false);
   const [showTopLegend, setShowTopLegend] = useState(false);
   const [editingStyleLayer, setEditingStyleLayer] = useState(null);
   const [styleData, setStyleData] = useState(null);
@@ -971,13 +972,13 @@ function GISMap() {
       };
       const generatedAtLabel = formatReportDateTime(now);
 
-      const addHeaderBand = (layerName, featureLabel) => {
+      const addHeaderBand = (featureLabel) => {
         pdf.setFillColor(49, 82, 232);
         pdf.rect(0, 0, pageW, 22, 'F');
         pdf.setTextColor(255, 255, 255);
         pdf.setFont(undefined, 'bold');
         pdf.setFontSize(10.5);
-        const headerText = `GIS Query Builder Report | Layer Name - ${layerName} | ${featureLabel}`;
+        const headerText = `GIS Query Builder Report | ${featureLabel}`;
         pdf.text(headerText, 12, 14);
       };
       const addFooterBand = () => {
@@ -1003,7 +1004,7 @@ function GISMap() {
 
           toast.loading(`Rendering feature ${processed} of ${reportFeatureCount}...`, { id: reportToastId });
 
-          addHeaderBand(layerReport.layerName, `Feature ${i + 1} / ${layerReport.features.length}`);
+          addHeaderBand(`Feature ${i + 1} / ${layerReport.features.length}`);
 
           pdf.setFont(undefined, 'bold');
           pdf.setFontSize(10);
@@ -1046,8 +1047,10 @@ function GISMap() {
             pdf.setFont(undefined, 'bold');
             pdf.setFontSize(8);
             pdf.setTextColor(255, 255, 255);
-            pdf.text('Attribute', tableX + 2, y + 1);
-            pdf.text('Value', tableX + keyColW + 2, y + 1);
+            const headerTop = y - 4;
+            const headerTextY = headerTop + (headerH / 2) + 1.6;
+            pdf.text('Attribute', tableX + (keyColW / 2), headerTextY, { align: 'center' });
+            pdf.text('Value', tableX + keyColW + (valColW / 2), headerTextY, { align: 'center' });
             y += headerH;
 
             for (const [key, rawValue] of entries) {
@@ -1062,7 +1065,7 @@ function GISMap() {
                 addFooterBand();
                 pdf.addPage();
                 pageIndex += 1;
-                addHeaderBand(layerReport.layerName, `Feature ${i + 1} (continued)`);
+                addHeaderBand(`Feature ${i + 1} (continued)`);
                 y = 40;
 
                 // Re-draw table header on new page
@@ -1073,8 +1076,10 @@ function GISMap() {
                 pdf.setFont(undefined, 'bold');
                 pdf.setFontSize(8);
                 pdf.setTextColor(255, 255, 255);
-                pdf.text('Attribute', tableX + 2, y + 1);
-                pdf.text('Value', tableX + keyColW + 2, y + 1);
+                const continuedHeaderTop = y - 4;
+                const continuedHeaderTextY = continuedHeaderTop + (headerH / 2) + 1.6;
+                pdf.text('Attribute', tableX + (keyColW / 2), continuedHeaderTextY, { align: 'center' });
+                pdf.text('Value', tableX + keyColW + (valColW / 2), continuedHeaderTextY, { align: 'center' });
                 y += headerH;
               }
 
@@ -1086,10 +1091,16 @@ function GISMap() {
               pdf.setFontSize(7.4);
               pdf.setTextColor(30, 41, 59);
               pdf.setFont(undefined, 'bold');
-              pdf.text(keyLines, tableX + 2, y + 1.2);
+              const rowTop = y - 4;
+              const lineH = 3.4;
+              const keyTextHeight = keyLines.length * lineH;
+              const valTextHeight = valueLines.length * lineH;
+              const keyTextY = rowTop + ((rowH - keyTextHeight) / 2) + 2.8;
+              const valTextY = rowTop + ((rowH - valTextHeight) / 2) + 2.8;
+              pdf.text(keyLines, tableX + (keyColW / 2), keyTextY, { align: 'center' });
               pdf.setTextColor(71, 85, 105);
               pdf.setFont(undefined, 'normal');
-              pdf.text(valueLines, tableX + keyColW + 2, y + 1.2);
+              pdf.text(valueLines, tableX + keyColW + (valColW / 2), valTextY, { align: 'center' });
               y += rowH;
             }
           }
@@ -1107,6 +1118,70 @@ function GISMap() {
       if (selectionSourceRef.current) {
         selectionSourceRef.current.clear();
       }
+    }
+  };
+
+  const handleGenerateQuerySnapshotReport = async ({ querySummary, conditions = [] }) => {
+    const layerReports = querySummary?.layerReports || [];
+    const totalCount = Number(querySummary?.totalCount || 0);
+    if (totalCount <= 0 || layerReports.length === 0 || !mapRef.current) {
+      toast.error('No queried features available for snapshot report.');
+      return;
+    }
+
+    const reportToastId = 'query-snapshot-report-pdf';
+    toast.loading('Generating selection snapshot report...', { id: reportToastId });
+
+    try {
+      await waitForMapRenderComplete();
+      const canvas = await html2canvas(mapRef.current, {
+        useCORS: true,
+        backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc'
+      });
+      const mapImg = canvas.toDataURL('image/png');
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const generatedAtLabel = formatReportDateTime(new Date());
+
+      pdf.setFillColor(49, 82, 232);
+      pdf.rect(0, 0, pageW, 22, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(10.5);
+      pdf.text('GIS Query Builder Report | Selection Snapshot', 12, 14);
+
+      const selectedLayerNames = layerReports.map(lr => lr.layerName).join(', ');
+      const conditionText = (conditions || [])
+        .filter(c => c.field && c.operator && String(c.value ?? '').trim() !== '')
+        .map((c, idx) => `${idx > 0 ? `${c.logic || 'AND'} ` : ''}${c.field} ${c.operator} ${c.value}`)
+        .join(' ');
+
+      pdf.setTextColor(30, 41, 59);
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(9.2);
+      const metaLine = `Layer Selection: ${selectedLayerNames}${conditionText ? ` | ${conditionText}` : ''}`;
+      const metaLines = pdf.splitTextToSize(metaLine, pageW - 24);
+      pdf.text(metaLines, 12, 30);
+
+      pdf.addImage(mapImg, 'PNG', 12, 38, pageW - 24, 132);
+
+      pdf.setDrawColor(226, 232, 240);
+      pdf.line(12, pageH - 12, pageW - 12, pageH - 12);
+      pdf.setFontSize(8.2);
+      pdf.setTextColor(71, 85, 105);
+      pdf.setFont(undefined, 'bold');
+      pdf.text('\u00A9 2026 SECON Private Limited', 12, pageH - 7);
+      const rightTextWidth = pdf.getTextWidth(generatedAtLabel);
+      pdf.text(generatedAtLabel, pageW - 12 - rightTextWidth, pageH - 7);
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      pdf.save(`GIS_Query_Builder_Snapshot_Report_${stamp}.pdf`);
+      toast.success('Selection snapshot report exported successfully.', { id: reportToastId });
+    } catch (err) {
+      console.error('Failed to generate query snapshot report PDF:', err);
+      toast.error('Failed to generate snapshot report PDF.', { id: reportToastId });
     }
   };
 
@@ -1218,6 +1293,7 @@ function GISMap() {
     const layer = geoServerLayers.find(l => l.id === layerId);
     if (!layer || !mapInstanceRef.current) return;
 
+    setCanExportAnalysisReport(false);
     toast.loading("Fetching data for analysis...", { id: 'analysis-toast' });
 
     try {
@@ -1314,13 +1390,13 @@ function GISMap() {
       analysisVectorLayersRef.current[layerId] = analysisLayer;
 
       toast.success(`Analysis applied!`, { id: 'analysis-toast' });
+      setAnalysisConfig(config);
+      setCanExportAnalysisReport(true);
 
       // Handle Periodic Playback
       if (isPeriodic && dateProperty && startDate && endDate) {
-        setAnalysisConfig(config);
         setAnalysisFrameIndex(0);
       } else {
-        setAnalysisConfig(null);
         setIsAnalysisPlaying(false);
       }
 
@@ -1354,9 +1430,173 @@ function GISMap() {
     analysisWMSVisibilitiesRef.current = {};
     setAnalysisSLDMap({});
     setAnalysisConfig(null);
+    setCanExportAnalysisReport(false);
     setIsAnalysisPlaying(false);
 
     toast.success("Analysis reset. Client-side layers removed.");
+  };
+
+  const hexToRgb = (hex) => {
+    if (!hex) return { r: 99, g: 102, b: 241 };
+    const clean = String(hex).replace('#', '').trim();
+    const normalized = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
+    if (normalized.length !== 6) return { r: 99, g: 102, b: 241 };
+    const r = parseInt(normalized.slice(0, 2), 16);
+    const g = parseInt(normalized.slice(2, 4), 16);
+    const b = parseInt(normalized.slice(4, 6), 16);
+    if ([r, g, b].some(v => Number.isNaN(v))) return { r: 99, g: 102, b: 241 };
+    return { r, g, b };
+  };
+
+  const formatReportDateTime = (date) => {
+    const pad2 = (num) => String(num).padStart(2, '0');
+    const dd = pad2(date.getDate());
+    const mm = pad2(date.getMonth() + 1);
+    const yyyy = date.getFullYear();
+    let hh = date.getHours();
+    const min = pad2(date.getMinutes());
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12;
+    hh = hh === 0 ? 12 : hh;
+    return `${dd}-${mm}-${yyyy} / ${pad2(hh)}:${min} ${ampm}`;
+  };
+
+  const handleExportAnalysisReport = async () => {
+    if (!analysisConfig || !mapRef.current) {
+      toast.error('Run analysis first to export report.');
+      return;
+    }
+
+    const layer = geoServerLayersRef.current.find(l => String(l.id) === String(analysisConfig.layerId));
+    if (!layer) {
+      toast.error('Analysis layer not found.');
+      return;
+    }
+
+    const reportToastId = 'analysis-report-pdf';
+    toast.loading('Generating analysis report...', { id: reportToastId });
+
+    try {
+      await waitForMapRenderComplete();
+      const canvas = await html2canvas(mapRef.current, {
+        useCORS: true,
+        backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc'
+      });
+      const mapImg = canvas.toDataURL('image/png');
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const generatedAtLabel = formatReportDateTime(new Date());
+
+      const headerText = `GIS Query Builder Report | Analysis`;
+      pdf.setFillColor(49, 82, 232);
+      pdf.rect(0, 0, pageW, 22, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(10.5);
+      pdf.text(headerText, 12, 14);
+
+      pdf.setTextColor(30, 41, 59);
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(9.2);
+      const topMeta = `Layer Name: ${layer.name}`;
+      const topMetaLines = pdf.splitTextToSize(topMeta, pageW - 24);
+      pdf.text(topMetaLines, 12, 30);
+
+      pdf.addImage(mapImg, 'PNG', 12, 38, pageW - 24, 92);
+
+      let y = 136;
+      const tableX = 12;
+      const tableW = pageW - 24;
+      const colAttrW = 54;
+      const colOpW = 30;
+      const colValW = tableW - colAttrW - colOpW - 24;
+      const colColorW = 24;
+      const headerH = 8;
+      const mappings = (analysisConfig.mappings || []).filter(m => String(m?.value ?? '').trim() !== '');
+
+      pdf.setFillColor(92, 107, 110);
+      pdf.rect(tableX, y - 4, tableW, headerH, 'F');
+      pdf.setDrawColor(92, 107, 110);
+      pdf.rect(tableX, y - 4, tableW, headerH, 'S');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(8);
+      const analysisHeaderTop = y - 4;
+      const analysisHeaderTextY = analysisHeaderTop + (headerH / 2) + 1.6;
+      pdf.text('Attribute', tableX + (colAttrW / 2), analysisHeaderTextY, { align: 'center' });
+      pdf.text('Operator', tableX + colAttrW + (colOpW / 2), analysisHeaderTextY, { align: 'center' });
+      pdf.text('Value', tableX + colAttrW + colOpW + (colValW / 2), analysisHeaderTextY, { align: 'center' });
+      pdf.text('Color', tableX + colAttrW + colOpW + colValW + (colColorW / 2), analysisHeaderTextY, { align: 'center' });
+      y += headerH;
+
+      if (mappings.length === 0) {
+        pdf.setDrawColor(226, 232, 240);
+        pdf.rect(tableX, y - 4, tableW, 9, 'S');
+        pdf.setTextColor(100, 116, 139);
+        pdf.setFont(undefined, 'normal');
+        pdf.setFontSize(7.6);
+        pdf.text('No value-color mappings configured.', tableX + 2, y + 1.5);
+        y += 9;
+      } else {
+        for (const m of mappings) {
+          const attrLabel = String(analysisConfig.property || '-');
+          const opLabel = String(m.operator || '=');
+          const valLabel = toDisplayValue(m.value);
+          const valLines = pdf.splitTextToSize(valLabel, colValW - 4);
+          const rowLineCount = Math.max(1, valLines.length);
+          const rowH = Math.max(8, rowLineCount * 3.4 + 2.5);
+
+          pdf.setFillColor(255, 255, 255);
+          pdf.setDrawColor(226, 232, 240);
+          pdf.rect(tableX, y - 4, tableW, rowH, 'FD');
+          pdf.line(tableX + colAttrW, y - 4, tableX + colAttrW, y - 4 + rowH);
+          pdf.line(tableX + colAttrW + colOpW, y - 4, tableX + colAttrW + colOpW, y - 4 + rowH);
+          pdf.line(tableX + colAttrW + colOpW + colValW, y - 4, tableX + colAttrW + colOpW + colValW, y - 4 + rowH);
+
+          pdf.setTextColor(30, 41, 59);
+          pdf.setFont(undefined, 'bold');
+          pdf.setFontSize(7.2);
+          const analysisRowTop = y - 4;
+          const analysisLineH = 3.4;
+          const valTextHeight = valLines.length * analysisLineH;
+          const rowCenterY = analysisRowTop + (rowH / 2) + 1.1;
+          const valueTextY = analysisRowTop + ((rowH - valTextHeight) / 2) + 2.8;
+          pdf.text(attrLabel, tableX + (colAttrW / 2), rowCenterY, { align: 'center' });
+          pdf.text(opLabel, tableX + colAttrW + (colOpW / 2), rowCenterY, { align: 'center' });
+          pdf.setFont(undefined, 'normal');
+          pdf.setTextColor(71, 85, 105);
+          pdf.text(valLines, tableX + colAttrW + colOpW + (colValW / 2), valueTextY, { align: 'center' });
+
+          const rgb = hexToRgb(m.color);
+          const swatchSize = 5.5;
+          const swatchX = tableX + colAttrW + colOpW + colValW + (colColorW - swatchSize) / 2;
+          const swatchY = y - 4 + (rowH - swatchSize) / 2;
+          pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+          pdf.setDrawColor(148, 163, 184);
+          pdf.rect(swatchX, swatchY, swatchSize, swatchSize, 'FD');
+
+          y += rowH;
+        }
+      }
+
+      pdf.setDrawColor(226, 232, 240);
+      pdf.line(12, pageH - 12, pageW - 12, pageH - 12);
+      pdf.setFontSize(8.2);
+      pdf.setTextColor(71, 85, 105);
+      pdf.setFont(undefined, 'bold');
+      pdf.text('\u00A9 2026 SECON Private Limited', 12, pageH - 7);
+      const rightTextWidth = pdf.getTextWidth(generatedAtLabel);
+      pdf.text(generatedAtLabel, pageW - 12 - rightTextWidth, pageH - 7);
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      pdf.save(`GIS_Analysis_Report_${stamp}.pdf`);
+      toast.success('Analysis report exported successfully.', { id: reportToastId });
+    } catch (err) {
+      console.error('Failed to export analysis report:', err);
+      toast.error('Failed to generate analysis report.', { id: reportToastId });
+    }
   };
 
   //#region Spatial Join Handlers
@@ -3287,6 +3527,8 @@ function GISMap() {
               onClose={() => setActiveLayerTool(null)}
               visibleLayers={geoServerLayers.filter(l => analysisLayerIds.includes(l.id))}
               onRunAnalysis={handleRunAnalysis}
+              onExportReport={handleExportAnalysisReport}
+              canExportReport={canExportAnalysisReport}
               onUpdateStyle={handleUpdateLayerStyle}
               onReset={handleResetAnalysis}
               isPlaying={isAnalysisPlaying}
@@ -3308,6 +3550,7 @@ function GISMap() {
               handleApplyLayerFilter={handleApplyLayerFilter}
               onRunQuery={handleRunQuerySummary}
               onGenerateReport={handleGenerateQueryReport}
+              onGenerateSnapshotReport={handleGenerateQuerySnapshotReport}
               selectedLayerIds={selectedQueryLayerIds}
               setSelectedLayerIds={setSelectedQueryLayerIds}
               isParentPanelMinimized={isPanelMinimized}

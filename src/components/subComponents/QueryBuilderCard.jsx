@@ -22,6 +22,7 @@ const QueryBuilderCard = ({
     handleApplyLayerFilter,
     onRunQuery,
     onGenerateReport,
+    onGenerateSnapshotReport,
     selectedLayerIds,
     setSelectedLayerIds,
     isParentPanelMinimized = false
@@ -162,6 +163,24 @@ const QueryBuilderCard = ({
         }
 
         toast.success('Report option is ready. Connect report export handler to generate output.');
+    };
+
+    const handleGenerateSnapshotReport = async () => {
+        if (!showReportButton || !lastQuerySummary || Number(lastQuerySummary.totalCount || 0) <= 0) {
+            toast.error("Run query with matching features first.");
+            return;
+        }
+
+        if (typeof onGenerateSnapshotReport === 'function') {
+            await onGenerateSnapshotReport({
+                querySummary: lastQuerySummary,
+                conditions: qbConditions,
+                selectedLayerIds
+            });
+            return;
+        }
+
+        toast.success('Snapshot report option is ready. Connect snapshot export handler to generate output.');
     };
 
     const handleResetAll = () => {
@@ -380,7 +399,13 @@ const QueryBuilderCard = ({
                         {showReportButton && (
                             <button onClick={handleGenerateReport} className="qb-report-btn">
                                 <FileText size={14} strokeWidth={2.5} />
-                                <span>Report</span>
+                                <span>Features Report</span>
+                            </button>
+                        )}
+                        {showReportButton && (
+                            <button onClick={handleGenerateSnapshotReport} className="qb-report-btn qb-report-secondary-btn">
+                                <FileText size={14} strokeWidth={2.5} />
+                                <span>Snapshot Report</span>
                             </button>
                         )}
                     </div>
