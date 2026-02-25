@@ -387,26 +387,28 @@ const QueryBuilderCard = ({
 
                 {/* Footer Actions */}
                 {selectedLayerIds.length > 0 && !isFetchingAttributes && (
-                    <div className="qb-footer">
-                        <button onClick={handleResetAll} className="qb-reset-btn">
-                            <RefreshCw size={14} strokeWidth={2.5} />
-                            <span>Reset</span>
-                        </button>
-                        <button onClick={handleApplyFilter} className="qb-apply-btn">
-                            <Filter size={14} strokeWidth={2.5} />
-                            <span>Run Query</span>
-                        </button>
-                        {showReportButton && (
-                            <button onClick={handleGenerateReport} className="qb-report-btn">
-                                <FileText size={14} strokeWidth={2.5} />
-                                <span>Features Report</span>
+                    <div className="qb-footer" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button onClick={handleResetAll} className="qb-reset-btn">
+                                <RefreshCw size={14} strokeWidth={2.5} />
+                                <span>Reset</span>
                             </button>
-                        )}
-                        {showReportButton && (
-                            <button onClick={handleGenerateSnapshotReport} className="qb-report-btn qb-report-secondary-btn">
-                                <FileText size={14} strokeWidth={2.5} />
-                                <span>Snapshot Report</span>
+                            <button onClick={handleApplyFilter} className="qb-apply-btn">
+                                <Filter size={14} strokeWidth={2.5} />
+                                <span>Run Query</span>
                             </button>
+                        </div>
+                        {showReportButton && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button onClick={handleGenerateReport} className="qb-report-btn" style={{ flex: 1 }}>
+                                    <FileText size={14} strokeWidth={2.5} />
+                                    <span>Features Report (20)</span>
+                                </button>
+                                <button onClick={handleGenerateSnapshotReport} className="qb-report-btn qb-report-secondary-btn" style={{ flex: 1 }}>
+                                    <FileText size={14} strokeWidth={2.5} />
+                                    <span>Snapshot Report</span>
+                                </button>
+                            </div>
                         )}
                     </div>
                 )}
