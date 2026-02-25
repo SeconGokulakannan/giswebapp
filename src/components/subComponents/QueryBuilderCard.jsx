@@ -20,6 +20,7 @@ const QueryBuilderCard = ({
     activeLayer,
     availableLayers,
     handleApplyLayerFilter,
+    onRunQuery,
     onGenerateReport,
     selectedLayerIds,
     setSelectedLayerIds,
@@ -29,6 +30,8 @@ const QueryBuilderCard = ({
     const [layerAttributesMap, setLayerAttributesMap] = useState({});
     const [isFetchingAttributes, setIsFetchingAttributes] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
+    const [showReportButton, setShowReportButton] = useState(false);
+    const [lastQuerySummary, setLastQuerySummary] = useState(null);
 
     useEffect(() => {
         if (isOpen && availableLayers) {
@@ -53,6 +56,13 @@ const QueryBuilderCard = ({
             fetchAllAttributes();
         }
     }, [isOpen, selectedLayerIds.length]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setShowReportButton(false);
+            setLastQuerySummary(null);
+        }
+    }, [isOpen]);
 
     const fetchAllAttributes = async () => {
         setIsFetchingAttributes(true);
@@ -98,7 +108,7 @@ const QueryBuilderCard = ({
         return layerFilters;
     };
 
-    const handleApplyFilter = () => {
+    const handleApplyFilter = async () => {
         if (selectedLayerIds.length === 0) {
             toast.error("Please select at least one layer.");
             return;
@@ -111,26 +121,40 @@ const QueryBuilderCard = ({
         });
         if (appliedCount > 0) {
             toast.success(`Applied filters to ${appliedCount} layer${appliedCount > 1 ? 's' : ''}!`);
+            if (typeof onRunQuery === 'function') {
+                const summary = await onRunQuery({
+                    layerFilters,
+                    conditions: qbConditions,
+                    selectedLayerIds
+                });
+                const totalCount = Number(summary?.totalCount || 0);
+                setLastQuerySummary(summary || null);
+                setShowReportButton(totalCount > 0);
+                if (totalCount > 0) {
+                    toast.success(`Found ${totalCount} matching feature${totalCount > 1 ? 's' : ''}.`);
+                } else {
+                    toast.error("No matching features found for report.");
+                }
+            } else {
+                setShowReportButton(false);
+                setLastQuerySummary(null);
+            }
         } else {
+            setShowReportButton(false);
+            setLastQuerySummary(null);
             toast.error("No valid conditions found.");
         }
     };
 
-    const handleGenerateReport = () => {
-        if (selectedLayerIds.length === 0) {
-            toast.error("Please select at least one layer.");
-            return;
-        }
-
-        const layerFilters = buildLayerFilters();
-        if (Object.keys(layerFilters).length === 0) {
-            toast.error("No valid conditions found.");
+    const handleGenerateReport = async () => {
+        if (!showReportButton || !lastQuerySummary || Number(lastQuerySummary.totalCount || 0) <= 0) {
+            toast.error("Run query with matching features first.");
             return;
         }
 
         if (typeof onGenerateReport === 'function') {
-            onGenerateReport({
-                layerFilters,
+            await onGenerateReport({
+                querySummary: lastQuerySummary,
                 conditions: qbConditions,
                 selectedLayerIds
             });
@@ -145,26 +169,36 @@ const QueryBuilderCard = ({
         const firstId = selectedLayerIds[0] || '';
         const firstAttr = layerAttributesMap[firstId]?.[0] || '';
         setQbConditions([{ layerId: firstId, field: firstAttr, operator: '=', value: '', logic: 'AND' }]);
+        setShowReportButton(false);
+        setLastQuerySummary(null);
         toast.success("All filters cleared!");
     };
 
     const addCondition = () => {
         const firstId = selectedLayerIds[0] || '';
         const firstAttr = layerAttributesMap[firstId]?.[0] || '';
+        setShowReportButton(false);
+        setLastQuerySummary(null);
         setQbConditions([...qbConditions, { layerId: firstId, field: firstAttr, operator: '=', value: '', logic: 'AND' }]);
     };
 
     const removeCondition = (index) => {
         if (qbConditions.length > 1) {
+            setShowReportButton(false);
+            setLastQuerySummary(null);
             setQbConditions(qbConditions.filter((_, i) => i !== index));
         } else {
             const firstId = selectedLayerIds[0] || '';
             const firstAttr = layerAttributesMap[firstId]?.[0] || '';
+            setShowReportButton(false);
+            setLastQuerySummary(null);
             setQbConditions([{ layerId: firstId, field: firstAttr, operator: '=', value: '', logic: 'AND' }]);
         }
     };
 
     const updateCondition = (index, updates) => {
+        setShowReportButton(false);
+        setLastQuerySummary(null);
         setQbConditions(qbConditions.map((c, i) => {
             if (i === index) {
                 const newCond = { ...c, ...updates };
@@ -339,14 +373,16 @@ const QueryBuilderCard = ({
                             <RefreshCw size={14} strokeWidth={2.5} />
                             <span>Reset</span>
                         </button>
-                        <button onClick={handleGenerateReport} className="qb-report-btn">
-                            <FileText size={14} strokeWidth={2.5} />
-                            <span>Report</span>
-                        </button>
                         <button onClick={handleApplyFilter} className="qb-apply-btn">
                             <Filter size={14} strokeWidth={2.5} />
                             <span>Run Query</span>
                         </button>
+                        {showReportButton && (
+                            <button onClick={handleGenerateReport} className="qb-report-btn">
+                                <FileText size={14} strokeWidth={2.5} />
+                                <span>Report</span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

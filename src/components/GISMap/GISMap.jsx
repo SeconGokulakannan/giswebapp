@@ -813,6 +813,303 @@ function GISMap() {
     }
   };
 
+  const fetchFeaturesForQueryLayer = async (layer, cqlFilter) => {
+    try {
+      let url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&outputFormat=application/json&srsName=EPSG:3857&maxFeatures=10000`;
+      if (cqlFilter) {
+        url += `&cql_filter=${encodeURIComponent(cqlFilter)}`;
+      }
+      const response = await fetch(url, { headers: { Authorization: AUTH_HEADER } });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.features || [];
+    } catch (err) {
+      console.error(`Failed to fetch query features for ${layer?.name || 'layer'}:`, err);
+      return [];
+    }
+  };
+
+  const handleRunQuerySummary = async ({ layerFilters }) => {
+    const entries = Object.entries(layerFilters || {});
+    if (entries.length === 0) return { totalCount: 0, layerReports: [] };
+
+    const layerReports = [];
+    let totalCount = 0;
+
+    for (const [layerId, cqlFilter] of entries) {
+      const layer = geoServerLayersRef.current.find(l => String(l.id) === String(layerId));
+      if (!layer) continue;
+      const features = await fetchFeaturesForQueryLayer(layer, cqlFilter);
+      layerReports.push({
+        layerId: layer.id,
+        layerName: layer.name,
+        fullName: layer.fullName,
+        cqlFilter,
+        features,
+        featureCount: features.length
+      });
+      totalCount += features.length;
+    }
+
+    return {
+      totalCount,
+      layerReports,
+      generatedAt: new Date().toISOString()
+    };
+  };
+
+  const waitForMapRenderComplete = async () => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        setTimeout(resolve, 150);
+      };
+      map.once('rendercomplete', finish);
+      map.renderSync();
+      setTimeout(finish, 900);
+    });
+  };
+
+  const toDisplayValue = (value) => {
+    if (value === null || value === undefined) return '-';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
+  const focusFeatureAndCaptureMap = async (featureGeoJson) => {
+    if (!mapInstanceRef.current || !mapRef.current) return null;
+    const format = new GeoJSON();
+    const map = mapInstanceRef.current;
+    const view = map.getView();
+
+    const olFeature = format.readFeature(featureGeoJson, {
+      dataProjection: 'EPSG:3857',
+      featureProjection: 'EPSG:3857'
+    });
+
+    if (selectionSourceRef.current) {
+      selectionSourceRef.current.clear();
+      selectionSourceRef.current.addFeature(olFeature.clone());
+    }
+
+    const geometry = olFeature.getGeometry();
+    if (geometry) {
+      view.fit(geometry.getExtent(), {
+        padding: [80, 80, 80, 80],
+        duration: 500,
+        maxZoom: 17
+      });
+      await new Promise(resolve => setTimeout(resolve, 550));
+    }
+
+    await waitForMapRenderComplete();
+
+    const canvas = await html2canvas(mapRef.current, {
+      useCORS: true,
+      backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc'
+    });
+    return canvas.toDataURL('image/png');
+  };
+
+  const handleGenerateQueryReport = async ({ querySummary, conditions = [] }) => {
+    const layerReports = querySummary?.layerReports || [];
+    const totalCount = Number(querySummary?.totalCount || 0);
+    if (totalCount <= 0 || layerReports.length === 0) {
+      toast.error('No queried features available for report.');
+      return;
+    }
+
+    const MAX_REPORT_FEATURES = 20;
+    let remaining = MAX_REPORT_FEATURES;
+    const cappedLayerReports = [];
+    for (const layerReport of layerReports) {
+      if (remaining <= 0) break;
+      const cappedFeatures = (layerReport.features || []).slice(0, remaining);
+      if (cappedFeatures.length > 0) {
+        cappedLayerReports.push({
+          ...layerReport,
+          features: cappedFeatures,
+          featureCount: cappedFeatures.length
+        });
+        remaining -= cappedFeatures.length;
+      }
+    }
+    const reportFeatureCount = cappedLayerReports.reduce((sum, lr) => sum + (lr.features?.length || 0), 0);
+    if (reportFeatureCount <= 0) {
+      toast.error('No queried features available for report.');
+      return;
+    }
+
+    const reportToastId = 'query-report-pdf';
+    toast.loading(`Generating premium report for ${reportFeatureCount} feature(s)...`, { id: reportToastId });
+    if (totalCount > MAX_REPORT_FEATURES) {
+      toast(`Showing first ${MAX_REPORT_FEATURES} features out of ${totalCount}.`, { id: `${reportToastId}-cap` });
+    }
+
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      let pageIndex = 0;
+      let processed = 0;
+      const now = new Date();
+      const pad2 = (num) => String(num).padStart(2, '0');
+      const formatReportDateTime = (date) => {
+        const dd = pad2(date.getDate());
+        const mm = pad2(date.getMonth() + 1);
+        const yyyy = date.getFullYear();
+        let hh = date.getHours();
+        const min = pad2(date.getMinutes());
+        const ampm = hh >= 12 ? 'PM' : 'AM';
+        hh = hh % 12;
+        hh = hh === 0 ? 12 : hh;
+        return `${dd}-${mm}-${yyyy} / ${pad2(hh)}:${min} ${ampm}`;
+      };
+      const generatedAtLabel = formatReportDateTime(now);
+
+      const addHeaderBand = (layerName, featureLabel) => {
+        pdf.setFillColor(49, 82, 232);
+        pdf.rect(0, 0, pageW, 22, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont(undefined, 'bold');
+        pdf.setFontSize(10.5);
+        const headerText = `GIS Query Builder Report | Layer Name - ${layerName} | ${featureLabel}`;
+        pdf.text(headerText, 12, 14);
+      };
+      const addFooterBand = () => {
+        pdf.setDrawColor(226, 232, 240);
+        pdf.line(12, pageH - 12, pageW - 12, pageH - 12);
+        pdf.setFontSize(8.2);
+        pdf.setTextColor(71, 85, 105);
+        pdf.setFont(undefined, 'bold');
+        pdf.text('\u00A9 2026 SECON Private Limited', 12, pageH - 7);
+        const generatedText = generatedAtLabel;
+        const rightTextWidth = pdf.getTextWidth(generatedText);
+        pdf.text(generatedText, pageW - 12 - rightTextWidth, pageH - 7);
+      };
+
+      for (const layerReport of cappedLayerReports) {
+        for (let i = 0; i < layerReport.features.length; i++) {
+          const feature = layerReport.features[i];
+          if (pageIndex > 0) {
+            pdf.addPage();
+          }
+          pageIndex += 1;
+          processed += 1;
+
+          toast.loading(`Rendering feature ${processed} of ${reportFeatureCount}...`, { id: reportToastId });
+
+          addHeaderBand(layerReport.layerName, `Feature ${i + 1} / ${layerReport.features.length}`);
+
+          pdf.setFont(undefined, 'bold');
+          pdf.setFontSize(10);
+          pdf.setTextColor(30, 41, 59);
+          let snapshotMetaLine = `Layer Name: ${layerReport.layerName}`;
+          const layerConditions = (conditions || []).filter(c => String(c.layerId) === String(layerReport.layerId) && c.field && c.operator && String(c.value ?? '').trim() !== '');
+          if (layerConditions.length > 0) {
+            const conditionText = layerConditions
+              .map((c, idx) => `${idx > 0 ? `${c.logic || 'AND'} ` : ''}${c.field} ${c.operator} ${c.value}`)
+              .join(' ');
+            snapshotMetaLine += ` | ${conditionText}`;
+          }
+          pdf.text(snapshotMetaLine, 12, 30);
+
+          const mapImg = await focusFeatureAndCaptureMap(feature);
+          if (mapImg) {
+            pdf.addImage(mapImg, 'PNG', 12, 38, pageW - 24, 66);
+          }
+          let y = 112;
+
+          const props = feature.properties || {};
+          const entries = Object.entries(props).filter(([key]) => !['geom', 'the_geom', 'geometry', 'boundedBy'].includes(String(key).toLowerCase()));
+          if (entries.length === 0) {
+            pdf.setFontSize(8);
+            pdf.setFont(undefined, 'normal');
+            pdf.setTextColor(100, 116, 139);
+            pdf.text('No attribute details available.', 14, y);
+          } else {
+            const tableX = 12;
+            const tableW = pageW - 24;
+            const keyColW = 58;
+            const valColW = tableW - keyColW;
+            const headerH = 8;
+
+            // Table header
+            pdf.setFillColor(92, 107, 110);
+            pdf.rect(tableX, y - 4, tableW, headerH, 'F');
+            pdf.setDrawColor(92, 107, 110);
+            pdf.rect(tableX, y - 4, tableW, headerH, 'S');
+            pdf.setFont(undefined, 'bold');
+            pdf.setFontSize(8);
+            pdf.setTextColor(255, 255, 255);
+            pdf.text('Attribute', tableX + 2, y + 1);
+            pdf.text('Value', tableX + keyColW + 2, y + 1);
+            y += headerH;
+
+            for (const [key, rawValue] of entries) {
+              const label = String(key);
+              const value = toDisplayValue(rawValue);
+              const keyLines = pdf.splitTextToSize(label, keyColW - 4);
+              const valueLines = pdf.splitTextToSize(value, valColW - 4);
+              const rowLineCount = Math.max(keyLines.length, valueLines.length);
+              const rowH = Math.max(7, rowLineCount * 3.4 + 2.5);
+
+              if (y + rowH > pageH - 16) {
+                addFooterBand();
+                pdf.addPage();
+                pageIndex += 1;
+                addHeaderBand(layerReport.layerName, `Feature ${i + 1} (continued)`);
+                y = 40;
+
+                // Re-draw table header on new page
+                pdf.setFillColor(92, 107, 110);
+                pdf.rect(tableX, y - 4, tableW, headerH, 'F');
+                pdf.setDrawColor(92, 107, 110);
+                pdf.rect(tableX, y - 4, tableW, headerH, 'S');
+                pdf.setFont(undefined, 'bold');
+                pdf.setFontSize(8);
+                pdf.setTextColor(255, 255, 255);
+                pdf.text('Attribute', tableX + 2, y + 1);
+                pdf.text('Value', tableX + keyColW + 2, y + 1);
+                y += headerH;
+              }
+
+              pdf.setFillColor(255, 255, 255);
+              pdf.setDrawColor(226, 232, 240);
+              pdf.rect(tableX, y - 4, tableW, rowH, 'FD');
+              pdf.line(tableX + keyColW, y - 4, tableX + keyColW, y - 4 + rowH);
+
+              pdf.setFontSize(7.4);
+              pdf.setTextColor(30, 41, 59);
+              pdf.setFont(undefined, 'bold');
+              pdf.text(keyLines, tableX + 2, y + 1.2);
+              pdf.setTextColor(71, 85, 105);
+              pdf.setFont(undefined, 'normal');
+              pdf.text(valueLines, tableX + keyColW + 2, y + 1.2);
+              y += rowH;
+            }
+          }
+          addFooterBand();
+        }
+      }
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      pdf.save(`GIS_Query_Builder_Report_${stamp}.pdf`);
+      toast.success('Premium PDF report exported successfully.', { id: reportToastId });
+    } catch (err) {
+      console.error('Failed to generate query report PDF:', err);
+      toast.error('Failed to generate report PDF.', { id: reportToastId });
+    } finally {
+      if (selectionSourceRef.current) {
+        selectionSourceRef.current.clear();
+      }
+    }
+  };
+
   // ELITE: Save New Attribute (WFS-T Insert)
   const handleSaveNewAttribute = async (fullLayerName, attributes, geometryFeatureId, geometryName, srid, targetGeometryType) => {
     // specific feature from ID
@@ -3009,6 +3306,8 @@ function GISMap() {
               activeLayer={queryingLayer}
               availableLayers={geoServerLayers}
               handleApplyLayerFilter={handleApplyLayerFilter}
+              onRunQuery={handleRunQuerySummary}
+              onGenerateReport={handleGenerateQueryReport}
               selectedLayerIds={selectedQueryLayerIds}
               setSelectedLayerIds={setSelectedQueryLayerIds}
               isParentPanelMinimized={isPanelMinimized}
