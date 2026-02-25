@@ -531,15 +531,24 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
         let gmlGeometry = '';
         const type = geometry.getType();
 
+        // GML 3: Space-separated coordinates: "x y x y"
+        const fmtCoords = (arr) => arr.map(c => `${c[0]} ${c[1]}`).join(' ');
+
         if (type === 'Point') {
-            gmlGeometry = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords.join(' ')}</gml:pos></gml:Point>`;
+            gmlGeometry = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${coords[0]} ${coords[1]}</gml:pos></gml:Point>`;
         }
         else if (type === 'LineString') {
-            gmlGeometry = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${coords.map(c => c.join(' ')).join(' ')}</gml:posList></gml:LineString>`;
+            gmlGeometry = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${fmtCoords(coords)}</gml:posList></gml:LineString>`;
         }
         else if (type === 'Polygon') {
-            const exterior = coords[0].map(c => c.join(' ')).join(' ');
-            let polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+            const exterior = fmtCoords(coords[0]);
+            let interiors = '';
+            if (coords.length > 1) {
+                for (let j = 1; j < coords.length; j++) {
+                    interiors += `<gml:interior><gml:LinearRing><gml:posList>${fmtCoords(coords[j])}</gml:posList></gml:LinearRing></gml:interior>`;
+                }
+            }
+            let polygonXml = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior>${interiors}</gml:Polygon>`;
             if (targetGeometryType && targetGeometryType.toLowerCase().includes('multipolygon')) {
                 gmlGeometry = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonXml}</gml:polygonMember></gml:MultiPolygon>`;
             } else {
@@ -547,7 +556,19 @@ export const SaveNewAttribute = async (fullLayerName, properties, geometryFeatur
             }
         }
         else if (type === 'MultiPolygon') {
-            console.warn("MultiPolygon auto-creation pending implementation, attempting simplistic fallback");
+            // MultiPolygon for single insert (e.g. from existing feature)
+            let polygonsXml = '';
+            coords.forEach(poly => {
+                const exterior = fmtCoords(poly[0]);
+                let interiors = '';
+                if (poly.length > 1) {
+                    for (let j = 1; j < poly.length; j++) {
+                        interiors += `<gml:interior><gml:LinearRing><gml:posList>${fmtCoords(poly[j])}</gml:posList></gml:LinearRing></gml:interior>`;
+                    }
+                }
+                polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${exterior}</gml:posList></gml:LinearRing></gml:exterior>${interiors}</gml:Polygon></gml:polygonMember>`;
+            });
+            gmlGeometry = `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${polygonsXml}</gml:polygonMember></gml:MultiPolygon>`;
         }
 
         if (!gmlGeometry) {
@@ -1144,7 +1165,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 
         // Use the workspace prefix as the namespace URI (matches GeoServer config)
         const namespaceUri = prefix;
-        const BATCH_SIZE = 10; // Reduced for greater stability with complex geometries
+        const BATCH_SIZE = 25; // Reduced for greater stability with complex geometries
         const totalChunks = Math.ceil(features.length / BATCH_SIZE);
 
         const escapeXml = (str) => {
@@ -1154,9 +1175,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 
         const sanitizeXmlTagName = (name) => {
             if (!name) return 'field';
-            // XML tags must start with a letter or underscore
             let sanitized = name.trim().replace(/^[^a-zA-Z_]+/, '_');
-            // Subsequent characters can be letters, digits, hyphens, underscores, or periods
             sanitized = sanitized.replace(/[^a-zA-Z0-9_\-.]/g, '_');
             return sanitized;
         };
@@ -1253,7 +1272,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 
             // ROBUST FETCH: Retry mechanism + Delay
             let attempt = 0;
-            const maxRetries = 2;
+            const maxRetries = 3;
             let success = false;
 
             while (attempt <= maxRetries && !success) {
@@ -1265,6 +1284,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                     });
 
                     const result = await response.text();
+
                     if (response.ok) {
                         const hasException = result.includes('ExceptionText');
                         if (hasException) {
@@ -1272,6 +1292,12 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                             return false;
                         }
                         success = true;
+                    } else if (response.status >= 500 && attempt < maxRetries) {
+                        // Proxy Timeout / Server Error - Retry
+                        attempt++;
+                        console.warn(`[WFS-T] Chunk ${currentChunkNum} failed with ${response.status} (Attempt ${attempt}/${maxRetries + 1}). Retrying in ${attempt * 2}s...`);
+                        await new Promise(r => setTimeout(r, attempt * 2000));
+                        continue;
                     } else {
                         console.error(`[WFS-T] HTTP ${response.status} in chunk ${currentChunkNum}:`, result);
                         return false;
@@ -1284,7 +1310,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                         throw err; // Re-throw to be caught by the outer try-catch
                     }
                     // Wait a bit before retry
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, attempt * 2000));
                 }
             }
 
@@ -1308,12 +1334,19 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
         if (!features || features.length === 0) return true;
 
         const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 20;
         const totalChunks = Math.ceil(features.length / BATCH_SIZE);
 
         const escapeXml = (str) => {
             if (str === null || str === undefined) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+        };
+
+        const sanitizeXmlTagName = (name) => {
+            if (!name) return 'field';
+            let sanitized = name.trim().replace(/^[^a-zA-Z_]+/, '_');
+            sanitized = sanitized.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+            return sanitized;
         };
 
         for (let i = 0; i < features.length; i += BATCH_SIZE) {
@@ -1332,14 +1365,14 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
                 let propertyXml = '';
                 for (const [key, value] of Object.entries(feature.properties || {})) {
                     const lowKey = key.trim().toLowerCase();
-                    // Skip system/internal/geometry columns
                     if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
                         key === matchingKey ||
                         key.startsWith('_') ||
                         value === null ||
                         value === undefined) continue;
 
-                    propertyXml += `<wfs:Property><wfs:Name>${key}</wfs:Name><wfs:Value>${escapeXml(value)}</wfs:Value></wfs:Property>`;
+                    const sanitizedKey = sanitizeXmlTagName(key);
+                    propertyXml += `<wfs:Property><wfs:Name>${sanitizedKey}</wfs:Name><wfs:Value>${escapeXml(value)}</wfs:Value></wfs:Property>`;
                 }
 
                 if (!propertyXml) continue;
@@ -1363,27 +1396,51 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
             xmlns:wfs="http://www.opengis.net/wfs"
             xmlns:ogc="http://www.opengis.net/ogc"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-            xmlns:${prefix}="${prefix}"
-            xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+            xmlns:${prefix}="${prefix}">
                 ${updatesXml}
             </wfs:Transaction>`.trim();
 
-            const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-                method: 'POST',
-                headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' },
-                body: wfsTransactionXml
-            });
+            let attempt = 0;
+            const maxRetries = 3;
+            let success = false;
 
-            if (response.ok) {
-                const result = await response.text();
-                if (result.includes('ExceptionText')) {
-                    console.error(`[Batch Update] GeoServer Error in chunk ${currentChunkNum}:`, result);
-                    return false;
+            while (attempt <= maxRetries && !success) {
+                try {
+                    const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/xml', 'Authorization': AUTH_HEADER },
+                        body: wfsTransactionXml
+                    });
+
+                    const result = await response.text();
+                    if (response.ok) {
+                        if (result.includes('ExceptionText')) {
+                            console.error(`[Batch Update] GeoServer Error in chunk ${currentChunkNum}:`, result);
+                            return false;
+                        }
+                        success = true;
+                    } else if (response.status >= 500 && attempt < maxRetries) {
+                        attempt++;
+                        console.warn(`[Batch Update] Chunk ${currentChunkNum} failed with ${response.status} (Attempt ${attempt}/${maxRetries + 1}). Retrying in ${attempt * 2}s...`);
+                        await new Promise(r => setTimeout(r, attempt * 2000));
+                        continue;
+                    } else {
+                        console.error(`[Batch Update] HTTP Error ${response.status} in chunk ${currentChunkNum}:`, result);
+                        return false;
+                    }
+                } catch (err) {
+                    attempt++;
+                    console.warn(`[Batch Update] Chunk ${currentChunkNum} failed (Attempt ${attempt}/${maxRetries + 1}):`, err.message);
+                    if (attempt > maxRetries) {
+                        console.error(`[Batch Update] Final failure at chunk ${currentChunkNum} after ${attempt} attempts`);
+                        throw err;
+                    }
+                    await new Promise(r => setTimeout(r, attempt * 2000));
                 }
-            } else {
-                console.error(`[Batch Update] HTTP Error ${response.status} in chunk ${currentChunkNum}`);
-                return false;
             }
+
+            // Delay between chunks
+            await new Promise(r => setTimeout(r, 500));
         }
 
         return true;

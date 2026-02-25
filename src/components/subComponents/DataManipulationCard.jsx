@@ -194,7 +194,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
             });
 
             const onProgress = (current, total, batchSize) => {
-                toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'}: Batch ${current} of ${total} (${batchSize} features)...`, { id: toastId });
+                toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'}: Chunk ${current} of ${total} (${batchSize} features)...`, { id: toastId });
             };
 
             let success = false;
