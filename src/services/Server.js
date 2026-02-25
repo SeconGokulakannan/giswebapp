@@ -1022,6 +1022,21 @@ export const publishNewLayer = async (config) => {
                 }))
         ];
 
+        // Compute initial extent if provided
+        let nativeBBox = null;
+        if (config.extent) {
+            const ext = config.extent.split(',').map(Number);
+            if (ext.length === 4 && ext.every(n => !isNaN(n))) {
+                nativeBBox = {
+                    minx: ext[0],
+                    miny: ext[1],
+                    maxx: ext[2],
+                    maxy: ext[3],
+                    crs: `EPSG:${srid}`
+                };
+            }
+        }
+
         //Create the FeatureType (and PostGIS Table)
         const featureTypeBody =
         {
@@ -1030,9 +1045,15 @@ export const publishNewLayer = async (config) => {
                 nativeName: layerName,
                 title: layerName,
                 srs: `EPSG:${srid}`,
+                nativeCRS: `EPSG:${srid}`,
+                projectionPolicy: 'FORCE_DECLARED',
                 attributes: {
                     attribute: computedAttributes
-                }
+                },
+                ...(nativeBBox && {
+                    nativeBoundingBox: nativeBBox,
+                    latLonBoundingBox: nativeBBox // For 4326/3857, we can use same if simplified
+                })
             }
         };
 
@@ -1106,7 +1127,8 @@ export const recalculateLayerBBox = async (fullLayerName) => {
         });
 
         if (!recalcRes.ok) {
-            console.error(`[BBox] Recalculation failed for ${fullLayerName}: ${recalcRes.status}`);
+            const errorText = await recalcRes.text();
+            console.error(`[BBox] Recalculation failed for ${fullLayerName}: ${recalcRes.status}`, errorText);
             return false;
         }
         return true;
@@ -1122,13 +1144,24 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 
         // Use the workspace prefix as the namespace URI (matches GeoServer config)
         const namespaceUri = prefix;
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 10; // Reduced for greater stability with complex geometries
         const totalChunks = Math.ceil(features.length / BATCH_SIZE);
 
         const escapeXml = (str) => {
             if (str === null || str === undefined) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
         };
+
+        const sanitizeXmlTagName = (name) => {
+            if (!name) return 'field';
+            // XML tags must start with a letter or underscore
+            let sanitized = name.trim().replace(/^[^a-zA-Z_]+/, '_');
+            // Subsequent characters can be letters, digits, hyphens, underscores, or periods
+            sanitized = sanitized.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+            return sanitized;
+        };
+
+        const cleanGeomName = sanitizeXmlTagName(geometryName);
 
         for (let i = 0; i < features.length; i += BATCH_SIZE) {
             const chunk = features.slice(i, i + BATCH_SIZE);
@@ -1150,18 +1183,19 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                     const coords = geom.coordinates;
 
                     if (coords && Array.isArray(coords) && coords.length > 0) {
-                        const fmtCoords = (arr) => arr.map(c => `${c[0]},${c[1]}`).join(' ');
+                        // GML 3: Space-separated coordinates: "x y x y"
+                        const fmtCoords = (arr) => arr.map(c => `${c[0]} ${c[1]}`).join(' ');
 
                         if (type === 'Point') {
-                            gmlGeom = `<gml:Point srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:coordinates>${coords[0]},${coords[1]}</gml:coordinates></gml:Point>`;
+                            gmlGeom = `<gml:Point srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:pos>${coords[0]} ${coords[1]}</gml:pos></gml:Point>`;
                         } else if (type === 'LineString') {
-                            gmlGeom = `<gml:LineString srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:coordinates>${fmtCoords(coords)}</gml:coordinates></gml:LineString>`;
+                            gmlGeom = `<gml:LineString srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:posList>${fmtCoords(coords)}</gml:posList></gml:LineString>`;
                         } else if (type === 'Polygon') {
-                            const exterior = `<gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(coords[0])}</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs>`;
+                            const exterior = `<gml:exterior><gml:LinearRing><gml:posList>${fmtCoords(coords[0])}</gml:posList></gml:LinearRing></gml:exterior>`;
                             let interiors = '';
                             if (coords.length > 1) {
                                 for (let j = 1; j < coords.length; j++) {
-                                    interiors += `<gml:innerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(coords[j])}</gml:coordinates></gml:LinearRing></gml:innerBoundaryIs>`;
+                                    interiors += `<gml:interior><gml:LinearRing><gml:posList>${fmtCoords(coords[j])}</gml:posList></gml:LinearRing></gml:interior>`;
                                 }
                             }
                             const polygonXml = `<gml:Polygon srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml">${exterior}${interiors}</gml:Polygon>`;
@@ -1174,11 +1208,11 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                         } else if (type === 'MultiPolygon') {
                             let polygonsXml = '';
                             coords.forEach(poly => {
-                                const exterior = `<gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(poly[0])}</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs>`;
+                                const exterior = `<gml:exterior><gml:LinearRing><gml:posList>${fmtCoords(poly[0])}</gml:posList></gml:LinearRing></gml:exterior>`;
                                 let interiors = '';
                                 if (poly.length > 1) {
                                     for (let j = 1; j < poly.length; j++) {
-                                        interiors += `<gml:innerBoundaryIs><gml:LinearRing><gml:coordinates>${fmtCoords(poly[j])}</gml:coordinates></gml:LinearRing></gml:innerBoundaryIs>`;
+                                        interiors += `<gml:interior><gml:LinearRing><gml:posList>${fmtCoords(poly[j])}</gml:posList></gml:LinearRing></gml:interior>`;
                                     }
                                 }
                                 polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}">${exterior}${interiors}</gml:Polygon></gml:polygonMember>`;
@@ -1187,7 +1221,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                         }
 
                         if (gmlGeom) {
-                            featureContentXml += `<${prefix}:${geometryName}>${gmlGeom}</${prefix}:${geometryName}>`;
+                            featureContentXml += `<${prefix}:${cleanGeomName}>${gmlGeom}</${prefix}:${cleanGeomName}>`;
                         }
                     }
                 }
@@ -1199,7 +1233,8 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                     if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
                         lowKey === lowGeomName || key.startsWith('_') || value === null || value === undefined) continue;
 
-                    featureContentXml += `<${prefix}:${key}>${escapeXml(value)}</${prefix}:${key}>`;
+                    const sanitizedKey = sanitizeXmlTagName(key);
+                    featureContentXml += `<${prefix}:${sanitizedKey}>${escapeXml(value)}</${prefix}:${sanitizedKey}>`;
                 }
 
                 insertsXml += `<wfs:Insert><${prefix}:${layerPart}>${featureContentXml}</${prefix}:${layerPart}></wfs:Insert>`;
@@ -1216,23 +1251,45 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                 ${insertsXml}
             </wfs:Transaction>`.trim();
 
-            const response = await fetch(`${GEOSERVER_URL}/wfs`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/xml', 'Authorization': AUTH_HEADER },
-                body: wfsTransactionXml
-            });
+            // ROBUST FETCH: Retry mechanism + Delay
+            let attempt = 0;
+            const maxRetries = 2;
+            let success = false;
 
-            const result = await response.text();
-            if (response.ok) {
-                const hasException = result.includes('ExceptionText');
-                if (hasException) {
-                    console.error(`[WFS-T] GeoServer Exception in chunk ${currentChunkNum}:`, result);
-                    return false;
+            while (attempt <= maxRetries && !success) {
+                try {
+                    const response = await fetch(`${GEOSERVER_URL}/wfs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/xml', 'Authorization': AUTH_HEADER },
+                        body: wfsTransactionXml
+                    });
+
+                    const result = await response.text();
+                    if (response.ok) {
+                        const hasException = result.includes('ExceptionText');
+                        if (hasException) {
+                            console.error(`[WFS-T] GeoServer Exception in chunk ${currentChunkNum}:`, result);
+                            return false;
+                        }
+                        success = true;
+                    } else {
+                        console.error(`[WFS-T] HTTP ${response.status} in chunk ${currentChunkNum}:`, result);
+                        return false;
+                    }
+                } catch (err) {
+                    attempt++;
+                    console.warn(`[WFS-T] Chunk ${currentChunkNum} failed (Attempt ${attempt}/${maxRetries + 1}):`, err.message);
+                    if (attempt > maxRetries) {
+                        console.error(`[WFS-T] Batch insert final failure at chunk ${currentChunkNum} after ${attempt} attempts`);
+                        throw err; // Re-throw to be caught by the outer try-catch
+                    }
+                    // Wait a bit before retry
+                    await new Promise(r => setTimeout(r, 1000));
                 }
-            } else {
-                console.error(`[WFS-T] HTTP ${response.status} in chunk ${currentChunkNum}:`, result);
-                return false;
             }
+
+            // Small delay between successful chunks to prevent server saturation
+            await new Promise(r => setTimeout(r, 500));
         }
 
         // After all chunks are successfully inserted, trigger a bbox recalculation once

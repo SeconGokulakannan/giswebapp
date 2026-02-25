@@ -106,8 +106,17 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                 // Wait 5 seconds after reload
                 await new Promise(resolve => setTimeout(resolve, 5000));
 
-                toast.loading(`Importing ${config.data.features.length} features...`, { id: 'publish-toast' });
-                const insertSuccess = await batchInsertFeatures(fullLayerName, config.data.features, 'geom', config.srid || '4326', geometryType);
+                toast.loading(`Importing features (starting chunks)...`, { id: 'publish-toast' });
+                const insertSuccess = await batchInsertFeatures(
+                    fullLayerName,
+                    config.data.features,
+                    'geom',
+                    config.srid || '4326',
+                    geometryType,
+                    (current, total) => {
+                        toast.loading(`Importing features (chunk ${current} of ${total})...`, { id: 'publish-toast' });
+                    }
+                );
 
                 if (insertSuccess) {
                     toast.success(`Layer published with ${config.data.features.length} features!`, { id: 'publish-toast' });
@@ -239,8 +248,13 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                         } else if (typeof val === 'boolean') {
                             type = 'Boolean';
                         }
+                        // XML-safe sanitization for the name
+                        const sanitizedName = key.trim()
+                            .replace(/^[^a-zA-Z_]+/, '_')
+                            .replace(/[^a-zA-Z0-9_\-.]/g, '_');
+
                         return {
-                            name: key,
+                            name: sanitizedName,
                             sourceName: key,
                             type: type,
                             originalType: type,
@@ -317,7 +331,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                     const features = geoJSONFormat.readFeatures(finalData);
                     const extent = createEmpty();
                     features.forEach(f => extend(extent, f.getGeometry().getExtent()));
-                    if (!isEmpty(extent)) {
+                    if (!isEmpty(extent) && extent.every(v => isFinite(v))) {
                         calculatedExtent = extent.join(',');
                     }
                 } catch (e) {
