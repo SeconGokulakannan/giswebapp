@@ -79,7 +79,8 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
             <div className="elite-modal" onClick={e => e.stopPropagation()} style={{
                 width: '1000px',
                 maxWidth: '95vw',
-                height: '85vh',
+                height: 'auto',
+                maxHeight: '80vh',
                 display: 'flex',
                 flexDirection: 'column',
                 animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'

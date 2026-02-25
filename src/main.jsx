@@ -12,11 +12,11 @@ createRoot(document.getElementById('root')).render(
       reverseOrder={false}
       toastOptions={{
         style: {
-          zIndex: 10000,
+          zIndex: 20000,
         },
       }}
       containerStyle={{
-        zIndex: 10000,
+        zIndex: 20000,
       }}
     />
   </StrictMode>,

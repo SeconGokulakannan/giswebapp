@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, DatabaseZap, RefreshCw, Loader2, ChevronLeft, ChevronRight, Filter, Trash2, Minimize2 } from 'lucide-react';
+import { X, Plus, DatabaseZap, RefreshCw, Loader2, ChevronLeft, ChevronRight, Filter, Trash2, Minimize2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes, QueryBuilderFilter } from '../../services/Server';
 
@@ -20,6 +20,7 @@ const QueryBuilderCard = ({
     activeLayer,
     availableLayers,
     handleApplyLayerFilter,
+    onGenerateReport,
     selectedLayerIds,
     setSelectedLayerIds,
     isParentPanelMinimized = false
@@ -85,11 +86,7 @@ const QueryBuilderCard = ({
         }
     };
 
-    const handleApplyFilter = () => {
-        if (selectedLayerIds.length === 0) {
-            toast.error("Please select at least one layer.");
-            return;
-        }
+    const buildLayerFilters = () => {
         const layerFilters = {};
         selectedLayerIds.forEach(id => {
             const conditionsForLayer = qbConditions.filter(c => c.layerId === id);
@@ -98,6 +95,15 @@ const QueryBuilderCard = ({
                 if (cql) layerFilters[id] = cql;
             }
         });
+        return layerFilters;
+    };
+
+    const handleApplyFilter = () => {
+        if (selectedLayerIds.length === 0) {
+            toast.error("Please select at least one layer.");
+            return;
+        }
+        const layerFilters = buildLayerFilters();
         let appliedCount = 0;
         Object.entries(layerFilters).forEach(([id, cql]) => {
             handleApplyLayerFilter(id, cql);
@@ -108,6 +114,30 @@ const QueryBuilderCard = ({
         } else {
             toast.error("No valid conditions found.");
         }
+    };
+
+    const handleGenerateReport = () => {
+        if (selectedLayerIds.length === 0) {
+            toast.error("Please select at least one layer.");
+            return;
+        }
+
+        const layerFilters = buildLayerFilters();
+        if (Object.keys(layerFilters).length === 0) {
+            toast.error("No valid conditions found.");
+            return;
+        }
+
+        if (typeof onGenerateReport === 'function') {
+            onGenerateReport({
+                layerFilters,
+                conditions: qbConditions,
+                selectedLayerIds
+            });
+            return;
+        }
+
+        toast.success('Report option is ready. Connect report export handler to generate output.');
     };
 
     const handleResetAll = () => {
@@ -308,6 +338,10 @@ const QueryBuilderCard = ({
                         <button onClick={handleResetAll} className="qb-reset-btn">
                             <RefreshCw size={14} strokeWidth={2.5} />
                             <span>Reset</span>
+                        </button>
+                        <button onClick={handleGenerateReport} className="qb-report-btn">
+                            <FileText size={14} strokeWidth={2.5} />
+                            <span>Report</span>
                         </button>
                         <button onClick={handleApplyFilter} className="qb-apply-btn">
                             <Filter size={14} strokeWidth={2.5} />

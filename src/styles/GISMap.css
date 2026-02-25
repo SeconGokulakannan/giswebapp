@@ -5447,6 +5447,37 @@ input:checked:hover+.toggle-slider::before {
   box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
 }
 
+.qb-report-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  background: linear-gradient(135deg, #1e293b, #334155);
+  border: none;
+  border-radius: 10px;
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(30, 41, 59, 0.35);
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.qb-report-btn:hover {
+  background: linear-gradient(135deg, #334155, #475569);
+  box-shadow: 0 6px 20px rgba(30, 41, 59, 0.45);
+  transform: translateY(-1px);
+}
+
+.qb-report-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(30, 41, 59, 0.3);
+}
+
 .qb-glass-card-inner {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(16px) saturate(180%);
