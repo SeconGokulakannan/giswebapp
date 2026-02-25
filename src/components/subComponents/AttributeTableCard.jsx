@@ -84,12 +84,15 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     checkboxSelection: (params) => !isEditMode,
                     headerCheckboxSelection: !isEditMode,
                     width: 50,
+                    minWidth: 50,
+                    maxWidth: 54,
                     pinned: 'left',
                     lockPosition: true,
                     suppressMovable: true,
                     filter: false,
                     resizable: true,
                     suppressMenu: true,
+                    cellClass: 'at-selection-cell'
                 },
                 ...Object.keys(firstFeatureProps).map(key => ({
                     headerName: key,
@@ -97,6 +100,10 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     sortable: true,
                     filter: true,
                     resizable: true,
+                    minWidth: 150,
+                    flex: 1,
+                    cellClass: `at-data-cell ${key.toLowerCase().includes('date') || key.toLowerCase().includes('time') ? 'at-date-cell' : ''}`,
+                    headerClass: 'at-header-cell',
                     // Editable if Edit Mode OR if it's a new row, AND not Read Only
                     editable: (params) => !isReadOnly && (isEditMode || (params.data.id && String(params.data.id).startsWith('new-'))),
                     // Ensure value setter updates correctly
@@ -486,11 +493,11 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                             rowData={rowData}
                             columnDefs={columnDefs}
                             animateRows={true}
-                            headerHeight={26}
-                            rowHeight={24}
+                            headerHeight={38}
+                            rowHeight={34}
                             loading={isLoading}
                             pagination={true}
-                            paginationPageSize={10}
+                            paginationPageSize={12}
                             paginationPageSizeSelector={[10, 20, 50, 100]}
                             suppressMovableColumns={false}
                             rowSelection="multiple"
@@ -512,13 +519,14 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                                 filter: true,
                                 resizable: true,
                                 floatingFilter: true,
-                                cellStyle: { textAlign: 'center' }
-                            }}
-                            autoSizeStrategy={{
-                                type: 'fitCellContents'
-                            }}
-                            onFirstDataRendered={(params) => {
-                                params.api.autoSizeAllColumns();
+                                cellStyle: {
+                                    textAlign: 'center',
+                                    paddingLeft: '8px',
+                                    paddingRight: '8px',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                }
                             }}
                             overlayLoadingTemplate={'<span class="ag-overlay-loading-center">Fetching Attribute Data...</span>'}
                             overlayNoRowsTemplate={isLoading ? ' ' : '<span>No Data Available</span>'}
