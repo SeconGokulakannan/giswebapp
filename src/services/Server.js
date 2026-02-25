@@ -1329,7 +1329,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 };
 
 //data Updation
-export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingKey, onProgress = null) => {
+export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingConditions, onProgress = null) => {
     try {
         if (!features || features.length === 0) return true;
 
@@ -1349,6 +1349,11 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
             return sanitized;
         };
 
+        // Standardize conditions into an array of { dest, src }
+        const conditions = Array.isArray(matchingConditions)
+            ? matchingConditions
+            : [{ dest: matchingConditions, src: matchingConditions }];
+
         for (let i = 0; i < features.length; i += BATCH_SIZE) {
             const chunk = features.slice(i, i + BATCH_SIZE);
             const currentChunkNum = Math.floor(i / BATCH_SIZE) + 1;
@@ -1359,14 +1364,16 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
 
             let updatesXml = '';
             for (const feature of chunk) {
-                const keyValue = feature.properties?.[matchingKey];
-                if (keyValue === undefined || keyValue === null) continue;
-
                 let propertyXml = '';
+
+                // Identify keys that are part of the matching conditions to avoid updating them if desired, 
+                // but usually we just skip them to be safe.
+                const conditionDestKeys = conditions.map(c => c.dest);
+
                 for (const [key, value] of Object.entries(feature.properties || {})) {
                     const lowKey = key.trim().toLowerCase();
                     if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
-                        key === matchingKey ||
+                        conditionDestKeys.includes(key) ||
                         key.startsWith('_') ||
                         value === null ||
                         value === undefined) continue;
@@ -1377,14 +1384,31 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
 
                 if (!propertyXml) continue;
 
+                // Build Filter
+                let filterInnerXml = '';
+                const conditionElements = conditions.map(cond => {
+                    const val = feature.properties?.[cond.src];
+                    if (val === undefined || val === null) return null;
+                    return `
+                        <ogc:PropertyIsEqualTo>
+                            <ogc:PropertyName>${cond.dest}</ogc:PropertyName>
+                            <ogc:Literal>${escapeXml(val)}</ogc:Literal>
+                        </ogc:PropertyIsEqualTo>`;
+                }).filter(Boolean);
+
+                if (conditionElements.length === 0) continue;
+
+                if (conditionElements.length > 1) {
+                    filterInnerXml = `<ogc:And>${conditionElements.join('')}</ogc:And>`;
+                } else {
+                    filterInnerXml = conditionElements[0];
+                }
+
                 updatesXml += `
                 <wfs:Update typeName="${fullLayerName}">
                     ${propertyXml}
                     <ogc:Filter>
-                        <ogc:PropertyIsEqualTo>
-                            <ogc:PropertyName>${matchingKey}</ogc:PropertyName>
-                            <ogc:Literal>${escapeXml(keyValue)}</ogc:Literal>
-                        </ogc:PropertyIsEqualTo>
+                        ${filterInnerXml}
                     </ogc:Filter>
                 </wfs:Update>`;
             }

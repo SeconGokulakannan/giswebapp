@@ -19,7 +19,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
     // Mapping State
     const [mapping, setMapping] = useState({}); // { destAttr: sourceAttr }
-    const [matchingKey, setMatchingKey] = useState(''); // For 'update' operation
+    const [matchingConditions, setMatchingConditions] = useState([{ dest: '', src: '' }]); // For 'update' operation
     const [targetGeometryName, setTargetGeometryName] = useState('geom');
     const [targetGeometryType, setTargetGeometryType] = useState('Unknown');
 
@@ -38,7 +38,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
             setSourceAttributes([]);
             setDestAttributes([]);
             setMapping({});
-            setMatchingKey('');
+            setMatchingConditions([{ dest: '', src: '' }]);
             setTargetGeometryName('geom');
             setTargetGeometryType('Unknown');
         }
@@ -135,8 +135,11 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                 setIsProcessing(false);
             }
         } else if (activeStep === 2) {
-            if (operation === 'update' && !matchingKey) {
-                return toast.error("Please select a Unique Matching Key for the update operation.");
+            if (operation === 'update') {
+                const validConditions = matchingConditions.filter(c => c.dest && c.src);
+                if (validConditions.length === 0) {
+                    return toast.error("Please add at least one valid matching condition for the update operation.");
+                }
             }
             if (Object.keys(mapping).length === 0) {
                 return toast.error("Please map at least one attribute.");
@@ -153,7 +156,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                 targetLayer,
                 sourceData,
                 mapping,
-                matchingKey
+                matchingConditions: matchingConditions.filter(c => c.dest && c.src)
             });
             onClose();
         } catch (err) {
@@ -169,7 +172,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
     //#region Data Manipulation
     const handleDataManipulation = async (config) => {
-        const { operation, targetLayer, sourceData, mapping, matchingKey } = config;
+        const { operation, targetLayer, sourceData, mapping, matchingConditions } = config;
         const fullLayerName = targetLayer.fullName;
 
         try {
@@ -178,13 +181,20 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
             const mappedFeatures = sourceData.features.map(f => {
                 const newProps = {};
+
+                // 1. Add Mapped Properties
                 Object.entries(mapping).forEach(([destKey, srcKey]) => {
                     if (srcKey) {
                         newProps[destKey] = f.properties[srcKey];
                     }
                 });
-                if (operation === 'update' && matchingKey && !newProps[matchingKey]) {
-                    newProps[matchingKey] = f.properties[matchingKey];
+
+                // 2. Ensure Matching Keys are present in properties
+                if (operation === 'update' && matchingConditions) {
+                    matchingConditions.forEach(cond => {
+                        // Even if not explicitly mapped for update, we need the value for the filter
+                        newProps[cond.src] = f.properties[cond.src];
+                    });
                 }
 
                 return {
@@ -201,7 +211,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
             if (operation === 'addon') {
                 success = await batchInsertFeatures(fullLayerName, mappedFeatures, targetGeometryName, '4326', targetGeometryType, onProgress);
             } else {
-                success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingKey, onProgress);
+                success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingConditions, onProgress);
             }
 
             if (success) {
@@ -395,22 +405,76 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                                         <Settings2 size={14} style={{ color: '#3b82f6' }} />
-                                        <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase' }}>Update Key (Unique Link)</span>
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase' }}>Update Key (Matching conditions)</span>
                                     </div>
                                     <p style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginBottom: '10px' }}>
-                                        Identify records to update using a shared unique ID field.
+                                        Identify records to update using one or more matching fields (AND logic).
                                     </p>
-                                    <select
-                                        className="elite-input"
-                                        value={matchingKey}
-                                        onChange={(e) => setMatchingKey(e.target.value)}
-                                        style={{ width: '100%', border: '1px solid #3b82f6' }}
-                                    >
-                                        <option value="">Select Matching Field...</option>
-                                        {destAttributes.map(attr => (
-                                            <option key={attr} value={attr}>{attr}</option>
+
+                                    <div className="space-y-2">
+                                        {matchingConditions.map((cond, idx) => (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <select
+                                                        className="elite-input"
+                                                        value={cond.dest}
+                                                        onChange={(e) => {
+                                                            const newConds = [...matchingConditions];
+                                                            newConds[idx].dest = e.target.value;
+                                                            setMatchingConditions(newConds);
+                                                        }}
+                                                        style={{ width: '100%', fontSize: '0.75rem', padding: '6px' }}
+                                                    >
+                                                        <option value="">PostGIS Field...</option>
+                                                        {destAttributes.map(attr => (
+                                                            <option key={attr} value={attr}>{attr}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <ChevronRight size={12} style={{ opacity: 0.3 }} />
+                                                <div style={{ flex: 1 }}>
+                                                    <select
+                                                        className="elite-input"
+                                                        value={cond.src}
+                                                        onChange={(e) => {
+                                                            const newConds = [...matchingConditions];
+                                                            newConds[idx].src = e.target.value;
+                                                            setMatchingConditions(newConds);
+                                                        }}
+                                                        style={{ width: '100%', fontSize: '0.75rem', padding: '6px' }}
+                                                    >
+                                                        <option value="">Shapefile Field...</option>
+                                                        {sourceAttributes.map(attr => (
+                                                            <option key={attr} value={attr}>{attr}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                {matchingConditions.length > 1 && (
+                                                    <button
+                                                        onClick={() => setMatchingConditions(matchingConditions.filter((_, i) => i !== idx))}
+                                                        style={{
+                                                            padding: '4px', borderRadius: '4px', border: 'none',
+                                                            background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         ))}
-                                    </select>
+                                    </div>
+
+                                    <button
+                                        onClick={() => setMatchingConditions([...matchingConditions, { dest: '', src: '' }])}
+                                        style={{
+                                            marginTop: '12px', width: '100%', padding: '6px', borderRadius: '6px',
+                                            border: '1px dashed #3b82f6', background: 'transparent', color: '#3b82f6',
+                                            fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', gap: '6px'
+                                        }}
+                                    >
+                                        <Plus size={12} /> Add Matching Condition
+                                    </button>
                                 </div>
                             )}
 
@@ -484,9 +548,17 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                     <span style={{ fontWeight: 600 }}>{Object.keys(mapping).length}</span>
                                 </div>
                                 {operation === 'update' && (
-                                    <div style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--color-text-muted)' }}>Matching Key:</span>
-                                        <span style={{ fontWeight: 600, color: '#3b82f6' }}>{matchingKey}</span>
+                                    <div style={{ fontSize: '0.75rem', marginTop: '8px' }}>
+                                        <div style={{ color: 'var(--color-text-muted)', marginBottom: '4px' }}>Matching Conditions:</div>
+                                        {matchingConditions.map((cond, idx) => (
+                                            <div key={idx} style={{
+                                                display: 'flex', justifyContent: 'space-between', paddingLeft: '8px',
+                                                borderLeft: '2px solid #3b82f6', marginBottom: '2px'
+                                            }}>
+                                                <span style={{ fontSize: '0.7rem' }}>{cond.dest}</span>
+                                                <span style={{ fontSize: '0.7rem', color: '#3b82f6' }}>← {cond.src}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
