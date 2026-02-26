@@ -1976,6 +1976,12 @@ function GISMap() {
   const handleStyleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !editingStyleLayer) return;
+    const isPointLayer = String(editingStyleLayer.geometryType || '').toLowerCase().includes('point');
+    if (!isPointLayer) {
+      toast.error('Symbology upload is only available for point layers.');
+      e.target.value = '';
+      return;
+    }
 
     const toastId = toast.loading('Uploading icon...');
     try {
@@ -1988,6 +1994,8 @@ function GISMap() {
     } catch (error) {
       console.error("Upload failed:", error);
       toast.error('Icon upload failed.', { id: toastId });
+    } finally {
+      e.target.value = '';
     }
   };
 

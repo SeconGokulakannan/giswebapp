@@ -539,14 +539,73 @@ export const applyStyleChanges = (sldBody, props) => {
     // ── Point ─────────────────────────────────────────────────────────────────
     if (hasPoint) {
         const pointEl = doc.getElementsByTagNameNS('*', 'PointSymbolizer')[0];
-        setDomTagText(getEl(pointEl, 'WellKnownName'), props.wellKnownName);
+        const graphicEl = getEl(pointEl, 'Graphic');
+        const externalUrl = String(props.externalGraphicUrl || '').trim();
+        const shouldUseExternalGraphic = externalUrl !== '';
+
+        if (graphicEl && shouldUseExternalGraphic) {
+            const markEl = getEl(graphicEl, 'Mark');
+            if (markEl) {
+                graphicEl.removeChild(markEl);
+            }
+
+            let externalGraphicEl = getEl(graphicEl, 'ExternalGraphic');
+            if (!externalGraphicEl) {
+                externalGraphicEl = createEl(doc, graphicEl, 'ExternalGraphic');
+                graphicEl.insertBefore(externalGraphicEl, graphicEl.firstChild);
+            }
+
+            let onlineResourceEl = getEl(externalGraphicEl, 'OnlineResource');
+            if (!onlineResourceEl) {
+                onlineResourceEl = createEl(doc, externalGraphicEl, 'OnlineResource');
+                externalGraphicEl.appendChild(onlineResourceEl);
+            }
+            onlineResourceEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:type', 'simple');
+            onlineResourceEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', externalUrl);
+
+            let formatEl = getEl(externalGraphicEl, 'Format');
+            if (!formatEl) {
+                formatEl = createEl(doc, externalGraphicEl, 'Format');
+                externalGraphicEl.appendChild(formatEl);
+            }
+            if (!formatEl.textContent || !formatEl.textContent.trim()) {
+                formatEl.textContent = 'image/png';
+            }
+        } else if (graphicEl) {
+            const externalGraphicEl = getEl(graphicEl, 'ExternalGraphic');
+            if (externalGraphicEl) {
+                graphicEl.removeChild(externalGraphicEl);
+            }
+
+            let markEl = getEl(graphicEl, 'Mark');
+            if (!markEl) {
+                markEl = createEl(doc, graphicEl, 'Mark');
+                graphicEl.insertBefore(markEl, graphicEl.firstChild);
+                const wknEl = createEl(doc, markEl, 'WellKnownName');
+                wknEl.textContent = props.wellKnownName || 'circle';
+                markEl.appendChild(wknEl);
+            }
+
+            setDomTagText(getEl(markEl, 'WellKnownName'), props.wellKnownName);
+            let fillEl = getEl(markEl, 'Fill');
+            if (!fillEl) {
+                fillEl = createEl(doc, markEl, 'Fill');
+                markEl.appendChild(fillEl);
+            }
+            if (props.fill !== undefined) setDomParam(doc, fillEl, 'fill', props.fill, paramTag);
+            if (props.fillOpacity !== undefined) setDomParam(doc, fillEl, 'fill-opacity', props.fillOpacity, paramTag);
+
+            let strokeEl = getEl(markEl, 'Stroke');
+            if (!strokeEl) {
+                strokeEl = createEl(doc, markEl, 'Stroke');
+                markEl.appendChild(strokeEl);
+            }
+            if (props.stroke !== undefined) setDomParam(doc, strokeEl, 'stroke', props.stroke, paramTag);
+            if (props.strokeWidth !== undefined) setDomParam(doc, strokeEl, 'stroke-width', props.strokeWidth, paramTag);
+        }
+
         setDomTagText(getEl(pointEl, 'Size'), props.size);
         setDomTagText(getEl(pointEl, 'Rotation'), props.rotation);
-        const markEl = getEl(pointEl, 'Mark');
-        const fillEl = getEl(markEl, 'Fill');
-        if (fillEl && props.fill !== undefined) setDomParam(doc, fillEl, 'fill', props.fill, paramTag);
-        const strokeEl = getEl(markEl, 'Stroke');
-        if (strokeEl && props.stroke !== undefined) setDomParam(doc, strokeEl, 'stroke', props.stroke, paramTag);
     }
 
     // ── Conditional Rules ─────────────────────────────────────────────────────

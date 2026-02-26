@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Brush, Info, ChevronLeft, ChevronRight, Plus, Trash2, Filter, Minimize2 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { X, Save, Loader2, Brush, Info, Plus, Trash2, Filter, Minimize2, Upload } from 'lucide-react';
 
 const DASH_STYLES = {
     'Solid': null,
@@ -39,6 +38,8 @@ const StyleEditorCard = ({
     const [isMinimized, setIsMinimized] = useState(false);
     const [localProperties, setLocalProperties] = useState({});
     const [conditions, setConditions] = useState([]); // [{attribute, operator, value, fillColor, strokeColor}]
+    const isPointGeometry = String(editingLayer?.geometryType || '').toLowerCase().includes('point');
+    const hasPointCustomSymbology = isPointGeometry && !!String(localProperties.externalGraphicUrl || '').trim();
 
     // Sync local properties when style data or layer changes.
     useEffect(() => {
@@ -161,123 +162,239 @@ const StyleEditorCard = ({
                                 <Brush size={14} /> SYMBOLOGY
                             </div>
 
-                            {/* Fill Pattern & Color */}
-                            <div className="qb-condition-card-clean">
-                                <div className="qb-field-row">
-                                    {styleData.availableProps.hatchPattern && (
-                                        <div className="qb-field-group" style={{ flex: 1 }}>
-                                            <label className="qb-field-label">Fill Pattern</label>
-                                            <select
-                                                className="qb-select"
-                                                value={localProperties.hatchPattern || ''}
-                                                onChange={(e) => handleLocalPropUpdate('hatchPattern', e.target.value)}
-                                            >
-                                                {Object.entries(HATCH_PATTERNS).map(([name, val]) => (
-                                                    <option key={name} value={val}>{name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                    {styleData.availableProps.fill && (
-                                        <div className="qb-field-group" style={{ flex: 1 }}>
-                                            <label className="qb-field-label">Fill Color</label>
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                <div style={{
-                                                    width: '32px', height: '32px', borderRadius: '8px',
-                                                    background: localProperties.fill || '#cccccc', position: 'relative', overflow: 'hidden',
-                                                    border: '2px solid var(--color-border)', flexShrink: 0
-                                                }}>
-                                                    <input
-                                                        type="color"
-                                                        value={localProperties.fill || '#cccccc'}
-                                                        onChange={(e) => handleLocalPropUpdate('fill', e.target.value)}
-                                                        style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
-                                                    />
+                            {isPointGeometry ? (
+                                <>
+                                    <div className="qb-condition-card-clean">
+                                        <div className="qb-field-group">
+                                            <label className="qb-field-label">Upload Symbology</label>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <label
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            padding: '8px 10px',
+                                                            borderRadius: '8px',
+                                                            border: '1px solid var(--color-border)',
+                                                            background: 'var(--color-bg-secondary)',
+                                                            cursor: 'pointer',
+                                                            width: 'fit-content',
+                                                            fontSize: '0.78rem',
+                                                            fontWeight: 600
+                                                        }}
+                                                    >
+                                                        <Upload size={14} />
+                                                        Upload Symbology
+                                                        <input
+                                                            type="file"
+                                                            accept=".png,.jpg,.jpeg,.gif,.svg,image/*"
+                                                            style={{ display: 'none' }}
+                                                            onChange={onFileUpload}
+                                                        />
+                                                    </label>
+
+                                                    {localProperties.externalGraphicUrl && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleLocalPropUpdate('externalGraphicUrl', '')}
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                padding: '8px 10px',
+                                                                borderRadius: '8px',
+                                                                border: '1px solid var(--color-danger)',
+                                                                background: 'rgba(239, 68, 68, 0.08)',
+                                                                color: 'var(--color-danger)',
+                                                                cursor: 'pointer',
+                                                                fontSize: '0.78rem',
+                                                                fontWeight: 700
+                                                            }}
+                                                        >
+                                                            <Trash2 size={14} />
+                                                            Remove Symbology
+                                                        </button>
+                                                    )}
                                                 </div>
-                                                <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
-                                                    {localProperties.fill?.toUpperCase()}
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', wordBreak: 'break-all' }}>
+                                                    {localProperties.externalGraphicUrl
+                                                        ? `Current: ${localProperties.externalGraphicUrl}`
+                                                        : 'No uploaded icon selected.'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="qb-condition-card-clean">
+                                        <div className="qb-field-row">
+                                            {!hasPointCustomSymbology && styleData.availableProps.fill && (
+                                                <div className="qb-field-group" style={{ flex: 1 }}>
+                                                    <label className="qb-field-label">Fill Color</label>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                        <div style={{
+                                                            width: '32px', height: '32px', borderRadius: '8px',
+                                                            background: localProperties.fill || '#cccccc', position: 'relative', overflow: 'hidden',
+                                                            border: '2px solid var(--color-border)', flexShrink: 0
+                                                        }}>
+                                                            <input
+                                                                type="color"
+                                                                value={localProperties.fill || '#cccccc'}
+                                                                onChange={(e) => handleLocalPropUpdate('fill', e.target.value)}
+                                                                style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
+                                                            />
+                                                        </div>
+                                                        <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
+                                                            {localProperties.fill?.toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {styleData.availableProps.size && (
+                                                <div className="qb-field-group" style={{ flex: 1 }}>
+                                                    <label className="qb-field-label">Symbology Size</label>
+                                                    <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
+                                                        <input
+                                                            type="range"
+                                                            min="1"
+                                                            max="64"
+                                                            step="1"
+                                                            value={localProperties.size || 10}
+                                                            onChange={(e) => handleLocalPropUpdate('size', parseFloat(e.target.value))}
+                                                            className="layer-opacity-slider"
+                                                            style={{ flex: 1 }}
+                                                        />
+                                                        <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '42px', textAlign: 'right' }}>
+                                                            {localProperties.size || 10}px
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* Fill Pattern & Color */}
+                                    <div className="qb-condition-card-clean">
+                                        <div className="qb-field-row">
+                                            {styleData.availableProps.hatchPattern && (
+                                                <div className="qb-field-group" style={{ flex: 1 }}>
+                                                    <label className="qb-field-label">Fill Pattern</label>
+                                                    <select
+                                                        className="qb-select"
+                                                        value={localProperties.hatchPattern || ''}
+                                                        onChange={(e) => handleLocalPropUpdate('hatchPattern', e.target.value)}
+                                                    >
+                                                        {Object.entries(HATCH_PATTERNS).map(([name, val]) => (
+                                                            <option key={name} value={val}>{name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                            {styleData.availableProps.fill && (
+                                                <div className="qb-field-group" style={{ flex: 1 }}>
+                                                    <label className="qb-field-label">Fill Color</label>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                        <div style={{
+                                                            width: '32px', height: '32px', borderRadius: '8px',
+                                                            background: localProperties.fill || '#cccccc', position: 'relative', overflow: 'hidden',
+                                                            border: '2px solid var(--color-border)', flexShrink: 0
+                                                        }}>
+                                                            <input
+                                                                type="color"
+                                                                value={localProperties.fill || '#cccccc'}
+                                                                onChange={(e) => handleLocalPropUpdate('fill', e.target.value)}
+                                                                style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
+                                                            />
+                                                        </div>
+                                                        <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
+                                                            {localProperties.fill?.toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Fill Opacity */}
+                                        <div className="qb-field-group" style={{ marginTop: '4px' }}>
+                                            <label className="qb-field-label">Fill Opacity</label>
+                                            <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
+                                                <input
+                                                    type="range" min="0" max="1" step="0.1"
+                                                    value={localProperties.fillOpacity !== undefined ? localProperties.fillOpacity : 1}
+                                                    onChange={(e) => handleLocalPropUpdate('fillOpacity', parseFloat(e.target.value))}
+                                                    className="layer-opacity-slider"
+                                                    style={{ flex: 1 }}
+                                                />
+                                                <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
+                                                    {Math.round((localProperties.fillOpacity !== undefined ? localProperties.fillOpacity : 1) * 100)}%
                                                 </span>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
-
-                                {/* Fill Opacity */}
-                                <div className="qb-field-group" style={{ marginTop: '4px' }}>
-                                    <label className="qb-field-label">Fill Opacity</label>
-                                    <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
-                                        <input
-                                            type="range" min="0" max="1" step="0.1"
-                                            value={localProperties.fillOpacity !== undefined ? localProperties.fillOpacity : 1}
-                                            onChange={(e) => handleLocalPropUpdate('fillOpacity', parseFloat(e.target.value))}
-                                            className="layer-opacity-slider"
-                                            style={{ flex: 1 }}
-                                        />
-                                        <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
-                                            {Math.round((localProperties.fillOpacity !== undefined ? localProperties.fillOpacity : 1) * 100)}%
-                                        </span>
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Stroke Pattern & Color */}
-                            <div className="qb-condition-card-clean">
-                                <div className="qb-field-row">
-                                    <div className="qb-field-group" style={{ flex: 1 }}>
-                                        <label className="qb-field-label">Stroke Pattern</label>
-                                        <select
-                                            className="qb-select"
-                                            value={getDashName(localProperties.strokeDasharray)}
-                                            onChange={(e) => handleLocalPropUpdate('strokeDasharray', DASH_STYLES[e.target.value])}
-                                        >
-                                            {Object.keys(DASH_STYLES).map(name => (
-                                                <option key={name} value={name}>{name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    {styleData.availableProps.stroke && (
-                                        <div className="qb-field-group" style={{ flex: 1 }}>
-                                            <label className="qb-field-label">Stroke Color</label>
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                <div style={{
-                                                    width: '32px', height: '32px', borderRadius: '8px',
-                                                    background: localProperties.stroke || '#333333', position: 'relative', overflow: 'hidden',
-                                                    border: '2px solid var(--color-border)', flexShrink: 0
-                                                }}>
-                                                    <input
-                                                        type="color"
-                                                        value={localProperties.stroke || '#333333'}
-                                                        onChange={(e) => handleLocalPropUpdate('stroke', e.target.value)}
-                                                        style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
-                                                    />
-                                                </div>
-                                                <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
-                                                    {localProperties.stroke?.toUpperCase()}
-                                                </span>
+                                    {/* Stroke Pattern & Color */}
+                                    <div className="qb-condition-card-clean">
+                                        <div className="qb-field-row">
+                                            <div className="qb-field-group" style={{ flex: 1 }}>
+                                                <label className="qb-field-label">Stroke Pattern</label>
+                                                <select
+                                                    className="qb-select"
+                                                    value={getDashName(localProperties.strokeDasharray)}
+                                                    onChange={(e) => handleLocalPropUpdate('strokeDasharray', DASH_STYLES[e.target.value])}
+                                                >
+                                                    {Object.keys(DASH_STYLES).map(name => (
+                                                        <option key={name} value={name}>{name}</option>
+                                                    ))}
+                                                </select>
                                             </div>
+                                            {styleData.availableProps.stroke && (
+                                                <div className="qb-field-group" style={{ flex: 1 }}>
+                                                    <label className="qb-field-label">Stroke Color</label>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                        <div style={{
+                                                            width: '32px', height: '32px', borderRadius: '8px',
+                                                            background: localProperties.stroke || '#333333', position: 'relative', overflow: 'hidden',
+                                                            border: '2px solid var(--color-border)', flexShrink: 0
+                                                        }}>
+                                                            <input
+                                                                type="color"
+                                                                value={localProperties.stroke || '#333333'}
+                                                                onChange={(e) => handleLocalPropUpdate('stroke', e.target.value)}
+                                                                style={{ position: 'absolute', top: '-5px', left: '-5px', width: '50px', height: '50px', border: 'none', cursor: 'pointer', background: 'none' }}
+                                                            />
+                                                        </div>
+                                                        <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
+                                                            {localProperties.stroke?.toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
 
-                                {/* Stroke Width */}
-                                {styleData.availableProps.strokeWidth && (
-                                    <div className="qb-field-group" style={{ marginTop: '4px' }}>
-                                        <label className="qb-field-label">Stroke Width</label>
-                                        <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
-                                            <input
-                                                type="range" min="0.5" max="20" step="0.5"
-                                                value={localProperties.strokeWidth || 1}
-                                                onChange={(e) => handleLocalPropUpdate('strokeWidth', parseFloat(e.target.value))}
-                                                className="layer-opacity-slider"
-                                                style={{ flex: 1 }}
-                                            />
-                                            <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
-                                                {localProperties.strokeWidth || 1}px
-                                            </span>
-                                        </div>
+                                        {/* Stroke Width */}
+                                        {styleData.availableProps.strokeWidth && (
+                                            <div className="qb-field-group" style={{ marginTop: '4px' }}>
+                                                <label className="qb-field-label">Stroke Width</label>
+                                                <div className="density-control" style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '4px' }}>
+                                                    <input
+                                                        type="range" min="0.5" max="20" step="0.5"
+                                                        value={localProperties.strokeWidth || 1}
+                                                        onChange={(e) => handleLocalPropUpdate('strokeWidth', parseFloat(e.target.value))}
+                                                        className="layer-opacity-slider"
+                                                        style={{ flex: 1 }}
+                                                    />
+                                                    <span style={{ fontSize: '12px', fontWeight: 600, minWidth: '32px', textAlign: 'right' }}>
+                                                        {localProperties.strokeWidth || 1}px
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
+                                </>
+                            )}
 
                         </div>
 
@@ -397,7 +514,8 @@ const StyleEditorCard = ({
                             </div>
                         </div>
                         {/* CONDITIONS SECTION */}
-                        <div className="qb-conditions-list" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+                        {!hasPointCustomSymbology && (
+                            <div className="qb-conditions-list" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
                             <div style={{ margin: '0 0 12px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <Filter size={14} /> CONDITIONAL STYLING
@@ -500,7 +618,8 @@ const StyleEditorCard = ({
                                     ℹ️ Features not matching any rule will use the default symbology above.
                                 </div>
                             )}
-                        </div>
+                            </div>
+                        )}
 
                     </div>
                 </div>
