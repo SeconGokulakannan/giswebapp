@@ -60,6 +60,10 @@ import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
 // Cookie Helpers
 import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
+const DRAWING_SOLID_COLORS = [
+  '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6',
+  '#ec4899', '#14b8a6', '#84cc16', '#f97316', '#06b6d4'
+];
 
 function GISMap() {
 
@@ -211,6 +215,7 @@ function GISMap() {
   const [styleData, setStyleData] = useState(null);
   const [isSavingStyle, setIsSavingStyle] = useState(false);
   const [layerStyleAttributes, setLayerStyleAttributes] = useState([]);
+  const drawingColorIndexRef = useRef(0);
   const [bookmarks, setBookmarks] = useState(() => {
     const key = getUniqueCookieKey('gis_bookmarks');
     const saved = getCookie(key);
@@ -2753,6 +2758,11 @@ function GISMap() {
     draw.on('drawend', (evt) => {
       if (type === 'Circle') {
         evt.feature.set('isCircle', true);
+      }
+      if (!evt.feature.get('isMeasurement') && !evt.feature.get('drawingColor')) {
+        const color = DRAWING_SOLID_COLORS[drawingColorIndexRef.current % DRAWING_SOLID_COLORS.length];
+        drawingColorIndexRef.current += 1;
+        evt.feature.set('drawingColor', color);
       }
       updateBadge(evt.feature);
       setIsMeasuring(false);

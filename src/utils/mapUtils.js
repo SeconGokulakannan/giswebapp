@@ -104,6 +104,18 @@ const UNIT_FACTORS = {
     hectares: { length: 1, area: 0.0001, label: 'ha' },
 };
 
+const hexToRgba = (hex, alpha = 1) => {
+    const h = String(hex || '').replace('#', '').trim();
+    const expanded = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    if (expanded.length !== 6) return `rgba(59, 130, 246, ${alpha})`;
+    const n = parseInt(expanded, 16);
+    if (Number.isNaN(n)) return `rgba(59, 130, 246, ${alpha})`;
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export const formatLength = function (line, unitKey = 'metric') {
     const lengthMeters = getLength(line);
     const config = UNIT_FACTORS[unitKey] || UNIT_FACTORS.metric;
@@ -183,10 +195,33 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
     if (!geometry) return styles;
 
     const type = geometry.getType();
+    const isMeasurement = !!feature.get('isMeasurement');
+    const drawingColor = feature.get('drawingColor') || COLORS.primary;
     let point, label, line;
 
     // ELITE RENDERING: Layered Flow
     if (type === 'LineString' || type === 'Polygon' || type === 'Circle') {
+        if (!isMeasurement) {
+            const solidStyle = style.clone();
+            solidStyle.getStroke().setColor(drawingColor);
+            solidStyle.getStroke().setWidth(2.5);
+            solidStyle.getFill().setColor(hexToRgba(drawingColor, 0.28));
+            styles.push(solidStyle);
+
+            if (type === 'Polygon' || type === 'FreehandPolygon' || type === 'Extent' || type === 'Triangle' || type === 'Ellipse') {
+                point = geometry.getInteriorPoint ? geometry.getInteriorPoint() : null;
+                label = formatArea(geometry, units);
+                line = new LineString(geometry.getCoordinates()[0]);
+            } else if (type === 'Circle') {
+                point = new Point(geometry.getCenter());
+                label = formatArea(geometry, units);
+                line = null;
+            } else {
+                point = new Point(geometry.getLastCoordinate());
+                label = formatLength(geometry, units);
+                line = geometry;
+            }
+        } else {
         const isArea = type === 'Polygon' || type === 'Circle';
         const color = isArea ? COLORS.area : COLORS.distance;
 
@@ -219,20 +254,31 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
             label = formatLength(geometry, units);
             line = geometry;
         }
+        }
     } else if (type === 'Point') {
-        styles.push(style);
+        if (!isMeasurement) {
+            styles.push(new Style({
+                image: new CircleStyle({
+                    radius: 6,
+                    stroke: new Stroke({ color: '#ffffff', width: 2 }),
+                    fill: new Fill({ color: drawingColor }),
+                }),
+            }));
+        } else {
+            styles.push(style);
 
-        // ELITE: Sonar Pulse Animation
-        const sonarRadius = (offset % 15) + 6;
-        const sonarOpacity = 1 - ((sonarRadius - 6) / 15);
-        if (sonarOpacity > 0) {
-            styles.push(sonarStyle(sonarRadius, sonarOpacity));
+            // ELITE: Sonar Pulse Animation
+            const sonarRadius = (offset % 15) + 6;
+            const sonarOpacity = 1 - ((sonarRadius - 6) / 15);
+            if (sonarOpacity > 0) {
+                styles.push(sonarStyle(sonarRadius, sonarOpacity));
 
-            // Second ripple for depth
-            const secondRadius = ((offset + 7.5) % 15) + 6;
-            const secondOpacity = 1 - ((secondRadius - 6) / 15);
-            if (secondOpacity > 0) {
-                styles.push(sonarStyle(secondRadius, secondOpacity));
+                // Second ripple for depth
+                const secondRadius = ((offset + 7.5) % 15) + 6;
+                const secondOpacity = 1 - ((secondRadius - 6) / 15);
+                if (secondOpacity > 0) {
+                    styles.push(sonarStyle(secondRadius, secondOpacity));
+                }
             }
         }
     }
