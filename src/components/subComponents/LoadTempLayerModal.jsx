@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload, FileJson, Loader2, Info, Plus, Trash2, CheckCircle2, AlertCircle, Layers, File, ArrowUp } from 'lucide-react';
 import { parseShp, parseDbf, combine } from 'shpjs';
+import GeoJSON from 'ol/format/GeoJSON';
+import KML from 'ol/format/KML';
 import toast from 'react-hot-toast';
 
 const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = [] }) => {
@@ -13,7 +15,7 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
         return {
             id: `entry-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             layerName: '',
-            files: { shp: null, dbf: null, shx: null, prj: null },
+            files: { shp: null, dbf: null, shx: null, prj: null, geojson: null, kml: null },
             status: 'pending',
             error: null
         };
@@ -53,12 +55,16 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
         const newFiles = { ...entry.files };
         uploadedFiles.forEach(file => {
             const ext = file.name.split('.').pop().toLowerCase();
-            if (['shp', 'dbf', 'shx', 'prj'].includes(ext)) {
-                newFiles[ext] = file;
+            const normalized = ext === 'json' ? 'geojson' : ext;
+            if (['shp', 'dbf', 'shx', 'prj', 'geojson', 'kml'].includes(normalized)) {
+                newFiles[normalized] = file;
             }
         });
 
-        const autoName = entry.layerName || (newFiles.shp ? newFiles.shp.name.replace(/\.shp$/i, '') : '');
+        const autoName = entry.layerName ||
+            (newFiles.geojson ? newFiles.geojson.name.replace(/\.(geojson|json)$/i, '') :
+                newFiles.kml ? newFiles.kml.name.replace(/\.kml$/i, '') :
+                    (newFiles.shp ? newFiles.shp.name.replace(/\.shp$/i, '') : ''));
         updateEntry(entryId, { files: newFiles, layerName: autoName });
     };
 
@@ -96,8 +102,14 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
     });
 
     const processEntry = async (entry, loadedNames) => {
-        if (!entry.files.shp) return { success: false, error: 'Missing .shp file' };
-        if (!entry.files.prj) return { success: false, error: 'Missing .prj file' };
+        const hasShp = !!entry.files.shp;
+        const hasGeoJson = !!entry.files.geojson;
+        const hasKml = !!entry.files.kml;
+        const selectedTypes = [hasShp && 'shp', hasGeoJson && 'geojson', hasKml && 'kml'].filter(Boolean);
+        if (selectedTypes.length === 0) return { success: false, error: 'Please add a .shp, .geojson/.json, or .kml file' };
+        if (selectedTypes.length > 1) return { success: false, error: 'Please upload only one format per layer' };
+
+        if (hasShp && !entry.files.prj) return { success: false, error: 'Missing .prj file' };
         if (!entry.layerName.trim()) return { success: false, error: 'Layer name required' };
 
         const nameLC = entry.layerName.trim().toLowerCase();
@@ -106,13 +118,46 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
         }
 
         try {
-            const shpBuffer = await readFileAsArrayBuffer(entry.files.shp);
-            const dbfBuffer = entry.files.dbf ? await readFileAsArrayBuffer(entry.files.dbf) : null;
-            const prjText = entry.files.prj ? await readFileAsText(entry.files.prj) : null;
+            let geojson = null;
 
-            const parsedShp = parseShp(shpBuffer, prjText);
-            const parsedDbf = dbfBuffer ? parseDbf(dbfBuffer) : null;
-            const geojson = combine([parsedShp, parsedDbf]);
+            if (hasGeoJson) {
+                const geoText = await readFileAsText(entry.files.geojson);
+                const parsed = JSON.parse(geoText);
+                if (parsed?.type === 'FeatureCollection') {
+                    geojson = parsed;
+                } else if (parsed?.type === 'Feature') {
+                    geojson = { type: 'FeatureCollection', features: [parsed] };
+                } else {
+                    return { success: false, error: 'Invalid GeoJSON format' };
+                }
+            } else if (hasKml) {
+                const kmlText = await readFileAsText(entry.files.kml);
+                const kmlFormat = new KML({ extractStyles: false });
+                const features = kmlFormat.readFeatures(kmlText, {
+                    dataProjection: 'EPSG:4326',
+                    featureProjection: 'EPSG:4326'
+                });
+                if (!features || features.length === 0) {
+                    return { success: false, error: 'No features found in KML' };
+                }
+                const geoFormat = new GeoJSON();
+                geojson = geoFormat.writeFeaturesObject(features, {
+                    dataProjection: 'EPSG:4326',
+                    featureProjection: 'EPSG:4326'
+                });
+            } else {
+                const shpBuffer = await readFileAsArrayBuffer(entry.files.shp);
+                const dbfBuffer = entry.files.dbf ? await readFileAsArrayBuffer(entry.files.dbf) : null;
+                const prjText = entry.files.prj ? await readFileAsText(entry.files.prj) : null;
+
+                const parsedShp = parseShp(shpBuffer, prjText);
+                const parsedDbf = dbfBuffer ? parseDbf(dbfBuffer) : null;
+                geojson = combine([parsedShp, parsedDbf]);
+            }
+
+            if (!geojson || !geojson.features || geojson.features.length === 0) {
+                return { success: false, error: 'No features found in file' };
+            }
 
             return {
                 success: true,
@@ -130,8 +175,8 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                 }
             };
         } catch (err) {
-            console.error('Shapefile processing error:', err);
-            return { success: false, error: 'Failed to parse shapefile' };
+            console.error('Layer file processing error:', err);
+            return { success: false, error: 'Failed to parse file' };
         }
     };
 
@@ -140,11 +185,20 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
         if (pendingEntries.length === 0) { onClose(); return; }
 
         for (const entry of pendingEntries) {
-            if (!entry.files.shp) {
-                toast.error(`"${entry.layerName || 'Unnamed'}" is missing a .shp file`);
+            const hasShp = !!entry.files.shp;
+            const hasGeoJson = !!entry.files.geojson;
+            const hasKml = !!entry.files.kml;
+            const selectedTypes = [hasShp && 'shp', hasGeoJson && 'geojson', hasKml && 'kml'].filter(Boolean);
+
+            if (selectedTypes.length === 0) {
+                toast.error(`"${entry.layerName || 'Unnamed'}" needs a .shp, .geojson/.json, or .kml file`);
                 return;
             }
-            if (!entry.files.prj) {
+            if (selectedTypes.length > 1) {
+                toast.error(`"${entry.layerName || 'Unnamed'}" has multiple formats. Use only one.`);
+                return;
+            }
+            if (hasShp && !entry.files.prj) {
                 toast.error(`"${entry.layerName || 'Unnamed'}" is missing a .prj file`);
                 return;
             }
@@ -193,14 +247,16 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
     };
 
     const pendingCount = entries.filter(e => e.status !== 'done').length;
-    const hasAnyFiles = entries.some(e => e.files.shp);
+    const hasAnyFiles = entries.some(e => e.files.shp || e.files.geojson || e.files.kml);
     const totalFiles = entries.reduce((sum, e) => sum + Object.values(e.files).filter(Boolean).length, 0);
 
     const fileExtColors = {
         shp: { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#3b82f6' },
         dbf: { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#10b981' },
         shx: { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#f59e0b' },
-        prj: { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a855f7' }
+        prj: { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a855f7' },
+        geojson: { bg: 'rgba(14, 165, 233, 0.15)', border: 'rgba(14, 165, 233, 0.3)', text: '#0ea5e9' },
+        kml: { bg: 'rgba(34, 197, 94, 0.15)', border: 'rgba(34, 197, 94, 0.3)', text: '#22c55e' }
     };
 
     return (
@@ -400,15 +456,15 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                                             <div>
                                                 <Upload size={22} style={{ opacity: 0.3, marginBottom: '6px' }} />
                                                 <p style={{ fontSize: '0.88rem', margin: '0 0 2px' }}>
-                                                    Click or drag & drop shapefile components
+                                                    Click or drag & drop a layer file
                                                 </p>
                                                 <p style={{ fontSize: '0.75rem', margin: 0 }}>
-                                                    .shp, .prj  (required) &bull; .dbf, .shx(optional)
+                                                    .shp + .prj (required) or .geojson/.json or .kml
                                                 </p>
                                             </div>
                                         )}
                                         <input
-                                            type="file" multiple accept=".shp,.dbf,.shx,.prj"
+                                            type="file" multiple accept=".shp,.dbf,.shx,.prj,.geojson,.json,.kml"
                                             ref={el => fileInputRefs.current[entry.id] = el}
                                             onChange={e => handleFileChange(entry.id, e)}
                                             style={{ display: 'none' }}
