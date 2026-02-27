@@ -3233,6 +3233,7 @@ function GISMap() {
           {layoutMode === 'topbar' && (
             <MapHeader
               onOpenLayerManagement={handleOpenLayerManagement}
+              isLayerManagementOpen={showLayerManagement}
               layoutMode={layoutMode}
               onToggleLayout={toggleLayoutMode}
               activePanel={activePanel}
@@ -3255,6 +3256,8 @@ function GISMap() {
               hasDrawings={hasDrawings}
               hasMeasurements={hasMeasurements}
               onOpenLoadTempModal={() => setShowLoadTempModal(true)}
+              showTopLegend={showTopLegend}
+              setShowTopLegend={setShowTopLegend}
             />
           )}
 
