@@ -1,49 +1,42 @@
 import React from 'react';
-import { X, Map as MapIcon, Layers3 } from 'lucide-react';
+import { X } from 'lucide-react';
 
 const TopLegendPanel = ({ layers, onClose, getLegendUrl }) => {
     if (!layers || layers.length === 0) return null;
 
     return (
-        <div className="top-legend-panel-container">
-            <div className="top-legend-panel-glass">
-                <div className="top-legend-header">
-                    <div className="top-legend-title-wrap">
-                        <div className="top-legend-title-icon">
-                            <Layers3 size={12} />
-                        </div>
-                        <div className="top-legend-title-copy">
-                            <h4>Legend</h4>
-                            <span>{layers.length} layer{layers.length > 1 ? 's' : ''}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="top-legend-scroll-area">
-                    {layers.map((layer) => (
-                        <div key={layer.id} className="top-legend-item">
-                            <div className="top-legend-layer-name">
-                                <MapIcon size={12} className="legend-layer-icon" />
-                                <span>{layer.name}</span>
+        <aside className="tl2-container" aria-label="Legend Sidebar">
+            <div className="tl2-shell">
+                <div className="tl2-list">
+                    {layers.map((layer) => {
+                        const full = String(layer.fullName || layer.name || 'Layer');
+                        const layerOnly = full.includes(':') ? full.split(':').slice(1).join(':') : full;
+                        const displayName = String(layer.name || layerOnly || full);
+                        return (
+                            <article key={layer.id} className="tl2-item">
+                            <div className="tl2-item-head">
+                                <span className="tl2-item-title">{displayName}</span>
                             </div>
-                            <div className="top-legend-image-wrapper">
+                            <div className="tl2-item-body">
                                 <img
                                     src={getLegendUrl(layer.fullName)}
                                     alt={`${layer.name} legend`}
                                     onError={(e) => {
-                                        e.currentTarget.closest('.top-legend-item')?.classList.add('legend-missing');
+                                        e.currentTarget.closest('.tl2-item')?.classList.add('no-image');
                                     }}
                                 />
-                                <span className="no-legend-text">No legend</span>
+                                <span className="tl2-empty">Legend not available</span>
                             </div>
-                        </div>
-                    ))}
+                            </article>
+                        );
+                    })}
                 </div>
-                <button className="top-legend-close-btn" onClick={onClose} title="Close Legend Bar">
+
+                <button className="tl2-close" onClick={onClose} title="Close Legend">
                     <X size={16} />
                 </button>
             </div>
-        </div>
+        </aside>
     );
 };
 
