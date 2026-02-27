@@ -106,9 +106,11 @@ function GISMap() {
 
   // Map Lock 
   const [isLocked, setIsLocked] = useState(false);
-  const [layoutMode, setLayoutMode] = useState(() => {
-    return localStorage.getItem('gis-layout-mode') || 'sidebar';
-  });
+  const [layoutMode, setLayoutMode] = useState('sidebar');
+
+  useEffect(() => {
+    localStorage.setItem('gis-layout-mode', 'sidebar');
+  }, []);
 
   const toggleLayoutMode = () => {
     const newMode = layoutMode === 'sidebar' ? 'topbar' : 'sidebar';

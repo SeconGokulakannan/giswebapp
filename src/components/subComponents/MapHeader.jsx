@@ -1,6 +1,6 @@
 import React from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { Globe, ArrowLeft } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { getNavSections } from '../../constants/MapControlConfig';
 
 const ToolBtn = ({ item }) => (
@@ -16,7 +16,7 @@ const ToolBtn = ({ item }) => (
                     <item.icon
                         size={18}
                         strokeWidth={1.8}
-                        color={item.isActive ? 'white' : item.color}
+                        color={item.isActive ? '#ffffff' : 'var(--hb-icon-muted)'}
                     />
                 </div>
                 <span className="hb-tool-card-label">{item.label}</span>
@@ -65,46 +65,17 @@ const MapHeader = (props) => {
 
             {/* ── Navigation Sections ── */}
             <nav className="hb-nav-modular">
-                {sections.map((section, si) => (
-                    <React.Fragment key={section.title}>
-                        <div className="hb-section">
-                            <div className="hb-card-group">
-                                {section.items.map(item => (
-                                    <ToolBtn key={item.id} item={item} />
-                                ))}
-                            </div>
-                        </div>
-                        {si < sections.length - 1 && <div className="hb-divider-vertical" />}
-                    </React.Fragment>
-                ))}
-            </nav>
-
-            {/* ── Right Action Cluster ── */}
-            <div className="hb-actions">
-                <div className="hb-meta">
-                    <div className="hb-meta-item">
-                        <span className="hb-meta-dot" />
-                        <span className="hb-meta-label">LIVE</span>
+                <div className="hb-section">
+                    <div className="hb-card-group">
+                        {sections.flatMap(section => section.items).map(item => (
+                            <ToolBtn key={item.id} item={item} />
+                        ))}
                     </div>
                 </div>
-
-                <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                        <button className="hb-exit-btn" onClick={() => window.location.reload()}>
-                            <ArrowLeft size={14} strokeWidth={2.5} />
-                            <span>EXIT</span>
-                        </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content className="TooltipContent" sideOffset={10}>
-                            Return to Selection
-                            <Tooltip.Arrow className="TooltipArrow" />
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-            </div>
+            </nav>
         </header>
     );
 };
 
 export default MapHeader;
+
