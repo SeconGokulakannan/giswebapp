@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileTyp
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
 import GeoJSON from 'ol/format/GeoJSON';
+import KML from 'ol/format/KML';
 import { extend, createEmpty, isEmpty } from 'ol/extent';
 import { batchInsertFeatures, publishNewLayer, WORKSPACE, reloadGeoServer } from '../../services/Server';
 
@@ -16,7 +17,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
         { name: 'description', type: 'String' }
     ]);
 
-    const [uploadFiles, setUploadFiles] = useState({ shp: null, dbf: null, shx: null, prj: null });
+    const [uploadFiles, setUploadFiles] = useState({ shp: null, dbf: null, shx: null, prj: null, geojson: null, kml: null });
     const [parsedData, setParsedData] = useState(null);
     const fileInputRef = useRef(null);
 
@@ -31,7 +32,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                 { name: 'description', type: 'String' }
             ]);
         }
-        setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
+        setUploadFiles({ shp: null, dbf: null, shx: null, prj: null, geojson: null, kml: null });
         setParsedData(null);
     };
 
@@ -44,7 +45,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                 { name: 'name', type: 'String' },
                 { name: 'description', type: 'String' }
             ]);
-            setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
+            setUploadFiles({ shp: null, dbf: null, shx: null, prj: null, geojson: null, kml: null });
             setParsedData(null);
             setActiveTab('manual');
         }
@@ -203,21 +204,120 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
 
         files.forEach(file => {
             const ext = file.name.split('.').pop().toLowerCase();
-            if (['shp', 'dbf', 'shx', 'prj'].includes(ext)) {
-                newFiles[ext] = file;
+            const normalized = ext === 'json' ? 'geojson' : ext;
+            if (['shp', 'dbf', 'shx', 'prj', 'geojson', 'kml'].includes(normalized)) {
+                newFiles[normalized] = file;
             }
         });
 
         setUploadFiles(newFiles);
 
-        // Auto-set layer name if not already set
-        if (!layerName && newFiles.shp) {
-            setLayerName(newFiles.shp.name.replace(/\.shp$/i, ''));
+        const hasShp = !!newFiles.shp;
+        const hasGeoJson = !!newFiles.geojson;
+        const hasKml = !!newFiles.kml;
+        const selectedTypes = [hasShp && 'shp', hasGeoJson && 'geojson', hasKml && 'kml'].filter(Boolean);
+
+        if (selectedTypes.length > 1) {
+            toast.error('Please upload only one format (Shapefile, GeoJSON, or KML).');
+            return;
         }
 
-        // If we have at least SHP and PRJ (and ideally DBF), we can preview schema
-        if (newFiles.shp && newFiles.prj) {
-            try {
+        // Auto-set layer name if not already set
+        if (!layerName) {
+            if (newFiles.geojson) setLayerName(newFiles.geojson.name.replace(/\.(geojson|json)$/i, ''));
+            else if (newFiles.kml) setLayerName(newFiles.kml.name.replace(/\.kml$/i, ''));
+            else if (newFiles.shp) setLayerName(newFiles.shp.name.replace(/\.shp$/i, ''));
+        }
+
+        const buildAttributes = (firstFeature) => {
+            const props = firstFeature?.properties || {};
+            return Object.keys(props).map(key => {
+                const val = props[key];
+                const lowKey = key.trim().toLowerCase();
+                const isGeom = ['geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey);
+
+                let type = 'String';
+                if (typeof val === 'number') {
+                    type = Number.isInteger(val) ? 'Integer' : 'Double';
+                } else if (typeof val === 'boolean') {
+                    type = 'Boolean';
+                }
+
+                const sanitizedName = key.trim()
+                    .replace(/^[^a-zA-Z_]+/, '_')
+                    .replace(/[^a-zA-Z0-9_\-.]/g, '_');
+
+                return {
+                    name: sanitizedName,
+                    sourceName: key,
+                    type: type,
+                    originalType: type,
+                    ignored: isGeom
+                };
+            });
+        };
+
+        try {
+            if (newFiles.geojson) {
+                const geoText = await readFileAsText(newFiles.geojson);
+                const parsed = JSON.parse(geoText);
+                const geojson = parsed?.type === 'FeatureCollection'
+                    ? parsed
+                    : parsed?.type === 'Feature'
+                        ? { type: 'FeatureCollection', features: [parsed] }
+                        : null;
+
+                if (!geojson || !geojson.features?.length) {
+                    toast.error("Invalid GeoJSON file.");
+                    setParsedData(null);
+                    return;
+                }
+
+                const firstFeature = geojson.features[0];
+                const gType = firstFeature.geometry?.type;
+                setGeometryType(
+                    gType === 'MultiPolygon' ? 'MultiPolygon' :
+                        gType === 'Polygon' ? 'Polygon' :
+                            gType === 'LineString' ? 'LineString' : 'Point'
+                );
+                setAttributes(buildAttributes(firstFeature));
+                setParsedData(geojson);
+                toast.success("GeoJSON parsed. Schema detected.");
+                return;
+            }
+
+            if (newFiles.kml) {
+                const kmlText = await readFileAsText(newFiles.kml);
+                const kmlFormat = new KML({ extractStyles: false });
+                const features = kmlFormat.readFeatures(kmlText, {
+                    dataProjection: 'EPSG:4326',
+                    featureProjection: 'EPSG:4326'
+                });
+                if (!features || features.length === 0) {
+                    toast.error("No features found in KML.");
+                    setParsedData(null);
+                    return;
+                }
+                const geoFormat = new GeoJSON();
+                const geojson = geoFormat.writeFeaturesObject(features, {
+                    dataProjection: 'EPSG:4326',
+                    featureProjection: 'EPSG:4326'
+                });
+                const firstFeature = geojson.features[0];
+                const gType = firstFeature.geometry?.type;
+                setGeometryType(
+                    gType === 'MultiPolygon' ? 'MultiPolygon' :
+                        gType === 'Polygon' ? 'Polygon' :
+                            gType === 'LineString' ? 'LineString' : 'Point'
+                );
+                setAttributes(buildAttributes(firstFeature));
+                setParsedData(geojson);
+                toast.success("KML parsed. Schema detected.");
+                return;
+            }
+
+            // Shapefile parsing (requires .shp + .prj)
+            if (newFiles.shp && newFiles.prj) {
                 const shpBuffer = await readFileAsArrayBuffer(newFiles.shp);
                 const dbfBuffer = newFiles.dbf ? await readFileAsArrayBuffer(newFiles.dbf) : null;
                 const prjText = await readFileAsText(newFiles.prj);
@@ -228,47 +328,20 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
 
                 if (geojson && geojson.features && geojson.features.length > 0) {
                     const firstFeature = geojson.features[0];
-                    const gType = firstFeature.geometry.type;
-                    setGeometryType(gType === 'MultiPolygon' ? 'MultiPolygon' :
-                        gType === 'Polygon' ? 'Polygon' :
-                            gType === 'LineString' ? 'LineString' : 'Point');
-
-                    // Deduce attributes from first feature properties
-                    const props = firstFeature.properties;
-                    const deducedAttrs = Object.keys(props).map(key => {
-                        const val = props[key];
-                        const lowKey = key.trim().toLowerCase();
-
-                        // Check if this is a geometry column to ignore
-                        const isGeom = ['geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey);
-
-                        let type = 'String';
-                        if (typeof val === 'number') {
-                            type = Number.isInteger(val) ? 'Integer' : 'Double';
-                        } else if (typeof val === 'boolean') {
-                            type = 'Boolean';
-                        }
-                        // XML-safe sanitization for the name
-                        const sanitizedName = key.trim()
-                            .replace(/^[^a-zA-Z_]+/, '_')
-                            .replace(/[^a-zA-Z0-9_\-.]/g, '_');
-
-                        return {
-                            name: sanitizedName,
-                            sourceName: key,
-                            type: type,
-                            originalType: type,
-                            ignored: isGeom // Auto-ignore geometry columns
-                        };
-                    });
-                    setAttributes(deducedAttrs);
+                    const gType = firstFeature.geometry?.type;
+                    setGeometryType(
+                        gType === 'MultiPolygon' ? 'MultiPolygon' :
+                            gType === 'Polygon' ? 'Polygon' :
+                                gType === 'LineString' ? 'LineString' : 'Point'
+                    );
+                    setAttributes(buildAttributes(firstFeature));
                     setParsedData(geojson);
                     toast.success("Shapefile parsed. Schema detected.");
                 }
-            } catch (err) {
-                console.error("Shapefile parsing error:", err);
-                toast.error("Failed to parse shapefile schema.");
             }
+        } catch (err) {
+            console.error("File parsing error:", err);
+            toast.error("Failed to parse uploaded file.");
         }
     };
 
@@ -286,7 +359,20 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
         }
 
         if (activeTab === 'upload') {
-            if (!uploadFiles.shp || !uploadFiles.prj) {
+            const hasShp = !!uploadFiles.shp;
+            const hasGeoJson = !!uploadFiles.geojson;
+            const hasKml = !!uploadFiles.kml;
+            const selectedTypes = [hasShp && 'shp', hasGeoJson && 'geojson', hasKml && 'kml'].filter(Boolean);
+
+            if (selectedTypes.length === 0) {
+                toast.error("Please upload a Shapefile, GeoJSON, or KML.");
+                return;
+            }
+            if (selectedTypes.length > 1) {
+                toast.error("Please upload only one format (Shapefile, GeoJSON, or KML).");
+                return;
+            }
+            if (hasShp && !uploadFiles.prj) {
                 toast.error("Shapefile (.shp) and Projection (.prj) files are required.");
                 return;
             }
@@ -365,7 +451,9 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
         shp: { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6' },
         dbf: { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981' },
         shx: { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b' },
-        prj: { bg: 'rgba(168, 85, 247, 0.15)', text: '#a855f7' }
+        prj: { bg: 'rgba(168, 85, 247, 0.15)', text: '#a855f7' },
+        geojson: { bg: 'rgba(14, 165, 233, 0.15)', text: '#0ea5e9' },
+        kml: { bg: 'rgba(34, 197, 94, 0.15)', text: '#22c55e' }
     };
 
     if (!isOpen) return null;
@@ -445,7 +533,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                             transition: 'all 0.2s'
                         }}
                     >
-                        Upload Shapefile
+                        Upload File
                     </button>
                 </div>
 
@@ -505,15 +593,15 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                                         <div>
                                             <Upload size={24} style={{ opacity: 0.3, marginBottom: '8px', color: '#10b981' }} />
                                             <p style={{ fontSize: '0.8rem', margin: '0 0 4px', color: 'var(--color-text)' }}>
-                                                Drop shapefile components here
+                                                Drop a layer file here
                                             </p>
                                             <p style={{ fontSize: '0.65rem', opacity: 0.5, margin: 0 }}>
-                                                Required: .shp, .prj | Optional: .dbf, .shx
+                                                .shp + .prj or .geojson/.json or .kml
                                             </p>
                                         </div>
                                     )}
                                     <input
-                                        type="file" multiple accept=".shp,.dbf,.shx,.prj"
+                                        type="file" multiple accept=".shp,.dbf,.shx,.prj,.geojson,.json,.kml"
                                         ref={fileInputRef}
                                         onChange={handleFileChange}
                                         style={{ display: 'none' }}
@@ -719,7 +807,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                             <Info size={15} style={{ color: activeTab === 'manual' ? '#3b82f6' : '#10b981', flexShrink: 0, marginTop: '1px' }} />
                             <p style={{ margin: 0, fontSize: '0.68rem', lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
                                 {activeTab === 'upload' ?
-                                    "Data will be imported into PostGIS and published to GeoServer. All fields from the shapefile will be preserved." :
+                                    "Data will be imported into PostGIS and published to GeoServer. All fields from the file will be preserved." :
                                     "This creates an empty table structure. You can add data later using the map drawing tools."}
                             </p>
                         </div>
