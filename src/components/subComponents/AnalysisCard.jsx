@@ -7,12 +7,7 @@ const PRESET_COLORS = [
     '#22c55e', '#ef4444', '#3b82f6', '#eab308', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#64748b'
 ];
 
-const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportReport, canExportReport = false, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset, isParentPanelMinimized = false }) => {
-    const [selectedLayerId, setSelectedLayerId] = useState('');
-
-    // Dynamic State
-    const [selectedProperty, setSelectedProperty] = useState('');
-    const [mappings, setMappings] = useState([{ value: '', color: PRESET_COLORS[0], operator: '=' }]);
+const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportReport, canExportReport = false, onRefreshLayer, onUpdateStyle, currentFrameIndex: externalFrameIndex, isPlaying: externalIsPlaying, onPlaybackToggle, onFrameChange, onReset, isParentPanelMinimized = false, layoutMode = 'sidebar' }) => {
     const [isPeriodic, setIsPeriodic] = useState(false);
     const [dateProperty, setDateProperty] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -21,6 +16,9 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportR
     const [attributeDetails, setAttributeDetails] = useState([]);
     const [uniqueDates, setUniqueDates] = useState([]);
     const [isMinimized, setIsMinimized] = useState(false);
+    const [selectedLayerId, setSelectedLayerId] = useState('');
+    const [selectedProperty, setSelectedProperty] = useState('');
+    const [mappings, setMappings] = useState([{ value: '', color: PRESET_COLORS[0], operator: '=' }]);
 
     const activeLayer = visibleLayers.find(l => l.id === selectedLayerId);
 
@@ -122,7 +120,7 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportR
     if (!isOpen) return null;
 
     return (
-        <div className={`ac-panel-wrapper ${isMinimized ? 'ac-panel-minimized' : ''} ${isParentPanelMinimized ? 'ac-parent-panel-minimized' : ''}`}>
+        <div className={`ac-panel-wrapper ${isMinimized ? 'ac-panel-minimized' : ''} ${isParentPanelMinimized ? 'ac-parent-panel-minimized' : ''} layout-${layoutMode}`}>
             {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
                 <button

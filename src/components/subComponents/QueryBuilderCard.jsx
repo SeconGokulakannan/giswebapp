@@ -25,7 +25,8 @@ const QueryBuilderCard = ({
     onGenerateSnapshotReport,
     selectedLayerIds,
     setSelectedLayerIds,
-    isParentPanelMinimized = false
+    isParentPanelMinimized = false,
+    layoutMode = 'sidebar'
 }) => {
     const [qbConditions, setQbConditions] = useState([{ layerId: '', field: '', operator: '=', value: '', logic: 'AND' }]);
     const [layerAttributesMap, setLayerAttributesMap] = useState({});
@@ -235,7 +236,7 @@ const QueryBuilderCard = ({
     if (!isOpen) return null;
 
     return (
-        <div className={`qb-panel-wrapper ${isMinimized ? 'qb-panel-minimized' : ''} ${isParentPanelMinimized ? 'qb-parent-panel-minimized' : ''}`}>
+        <div className={`qb-panel-wrapper ${isMinimized ? 'qb-panel-minimized' : ''} ${isParentPanelMinimized ? 'ac-parent-panel-minimized' : ''} layout-${layoutMode}`}>
             {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
                 <button

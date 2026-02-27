@@ -4886,20 +4886,52 @@ input:checked:hover+.toggle-slider::before {
   pointer-events: none;
 }
 
+/* Layout-Aware Positioning */
+.ac-panel-wrapper.layout-sidebar {
+  left: 395px;
+  right: auto;
+}
+
+.ac-panel-wrapper.layout-topbar {
+  left: auto;
+  right: 395px;
+  top: 5px;
+}
+
 .ac-panel-wrapper.ac-parent-panel-minimized {
-  left: 72px;
+  top: 12px;
 }
 
 .ac-panel-wrapper.ac-parent-panel-minimized.ac-panel-minimized {
-  left: 12px;
+  height: 44px;
+}
+
+.ac-panel-wrapper.layout-sidebar.ac-parent-panel-minimized {
+  left: 62px;
+  right: auto;
+}
+
+.ac-panel-wrapper.layout-topbar.ac-parent-panel-minimized {
+  left: auto;
+  right: 62px;
+  top: 8px;
 }
 
 .ac-panel-wrapper.ac-parent-panel-minimized.ac-panel-minimized .card-expand-float-btn {
   top: 0;
-  left: 56px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  left: 0;
+  right: 0;
+}
+
+.ac-panel-wrapper.layout-sidebar.ac-parent-panel-minimized.ac-panel-minimized .card-expand-float-btn {
+  left: 0;
+  right: auto;
+}
+
+.ac-panel-wrapper.layout-topbar.ac-parent-panel-minimized.ac-panel-minimized .card-expand-float-btn {
+  top: 0;
+  right: 0;
+  left: auto;
 }
 
 .ac-panel-minimized .ac-card {
@@ -5067,20 +5099,52 @@ input:checked:hover+.toggle-slider::before {
   pointer-events: none;
 }
 
+/* Layout-Aware Positioning */
+.sj-panel-wrapper.layout-sidebar {
+  left: 395px;
+  right: auto;
+}
+
+.sj-panel-wrapper.layout-topbar {
+  left: auto;
+  right: 395px;
+  top: 5px;
+}
+
 .sj-panel-wrapper.sj-parent-panel-minimized {
-  left: 72px;
+  top: 12px;
 }
 
 .sj-panel-wrapper.sj-parent-panel-minimized.sj-panel-minimized {
-  left: 12px;
+  height: 44px;
+}
+
+.sj-panel-wrapper.layout-sidebar.sj-parent-panel-minimized {
+  left: 62px;
+  right: auto;
+}
+
+.sj-panel-wrapper.layout-topbar.sj-parent-panel-minimized {
+  left: auto;
+  right: 62px;
+  top: 8px;
 }
 
 .sj-panel-wrapper.sj-parent-panel-minimized.sj-panel-minimized .card-expand-float-btn {
   top: 0;
-  left: 56px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  left: 0;
+  right: 0;
+}
+
+.sj-panel-wrapper.layout-sidebar.sj-parent-panel-minimized.sj-panel-minimized .card-expand-float-btn {
+  left: 0;
+  right: auto;
+}
+
+.sj-panel-wrapper.layout-topbar.sj-parent-panel-minimized.sj-panel-minimized .card-expand-float-btn {
+  top: 0;
+  right: 0;
+  left: auto;
 }
 
 .sj-panel-minimized .sj-card {
@@ -5774,20 +5838,52 @@ input:checked:hover+.toggle-slider::before {
   pointer-events: none;
 }
 
+/* Layout-Aware Positioning */
+.qb-panel-wrapper.layout-sidebar {
+  left: 395px;
+  right: auto;
+}
+
+.qb-panel-wrapper.layout-topbar {
+  left: auto;
+  right: 395px;
+  top: 5px;
+}
+
 .qb-panel-wrapper.qb-parent-panel-minimized {
-  left: 72px;
+  top: 12px;
 }
 
 .qb-panel-wrapper.qb-parent-panel-minimized.qb-panel-minimized {
-  left: 12px;
+  height: 44px;
+}
+
+.qb-panel-wrapper.layout-sidebar.qb-parent-panel-minimized {
+  left: 62px;
+  right: auto;
+}
+
+.qb-panel-wrapper.layout-topbar.qb-parent-panel-minimized {
+  left: auto;
+  right: 62px;
+  top: 8px;
 }
 
 .qb-panel-wrapper.qb-parent-panel-minimized.qb-panel-minimized .card-expand-float-btn {
   top: 0;
-  left: 56px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  left: 0;
+  right: 0;
+}
+
+.qb-panel-wrapper.layout-sidebar.qb-parent-panel-minimized.qb-panel-minimized .card-expand-float-btn {
+  left: 0;
+  right: auto;
+}
+
+.qb-panel-wrapper.layout-topbar.qb-parent-panel-minimized.qb-panel-minimized .card-expand-float-btn {
+  top: 0;
+  right: 0;
+  left: auto;
 }
 
 .qb-panel-minimized .qb-card {
@@ -6719,46 +6815,6 @@ input:checked:hover+.toggle-slider::before {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* layout-topbar Overrides for consistent positioning below the 80px header */
-.layout-topbar .se-panel-wrapper,
-.layout-topbar .ac-panel-wrapper,
-.layout-topbar .sj-panel-wrapper,
-.layout-topbar .qb-panel-wrapper {
-  top: 85px;
-  /* 80px header + 5px gap */
-  left: auto;
-  right: 405px;
-  /* Default: next to 380px primary panel */
-}
-
-/* Position cards closer to the right edge if the primary panel is minimized */
-.layout-topbar .se-panel-wrapper.se-parent-panel-minimized,
-.layout-topbar .ac-panel-wrapper.ac-parent-panel-minimized,
-.layout-topbar .sj-panel-wrapper.sj-parent-panel-minimized,
-.layout-topbar .qb-panel-wrapper.qb-parent-panel-minimized {
-  right: 68px;
-  /* 12px margin + 44px min-panel + 12px gap */
-  left: auto;
-}
-
-/* Adjust minimized card float positions for topbar mode */
-.layout-topbar .se-panel-wrapper.se-panel-minimized,
-.layout-topbar .ac-panel-wrapper.ac-panel-minimized,
-.layout-topbar .sj-panel-wrapper.sj-panel-minimized,
-.layout-topbar .qb-panel-wrapper.qb-panel-minimized {
-  top: 88px;
-  left: auto;
-}
-
-/* Ensure the expanded float button stays anchored correctly in topbar mode */
-.layout-topbar .se-panel-wrapper.se-panel-minimized .card-expand-float-btn,
-.layout-topbar .ac-panel-wrapper.ac-panel-minimized .card-expand-float-btn,
-.layout-topbar .sj-panel-wrapper.sj-panel-minimized .card-expand-float-btn,
-.layout-topbar .qb-panel-wrapper.qb-panel-minimized .card-expand-float-btn {
-  left: 0;
-  right: auto;
-}
-
 .se-panel-minimized .se-card,
 .ac-panel-minimized .ac-card,
 .sj-panel-minimized .sj-card,
@@ -6805,7 +6861,6 @@ input:checked:hover+.toggle-slider::before {
 .card-expand-float-btn {
   position: absolute;
   top: 10px;
-  left: 10px;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -6821,6 +6876,29 @@ input:checked:hover+.toggle-slider::before {
   transition: all 0.3s ease;
   animation: child-floating-pulse 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: auto !important;
+}
+
+/* Default Sidebar positioning */
+.layout-sidebar .card-expand-float-btn {
+  left: 10px;
+  right: auto;
+}
+
+/* Topbar mirror positioning */
+.layout-topbar .card-expand-float-btn {
+  right: 10px;
+  left: auto;
+}
+
+/* Mirror Map Controls in Topbar Mode */
+.layout-topbar .ol-zoom {
+  left: auto;
+  right: 12px;
+}
+
+.layout-topbar .ol-full-screen {
+  left: auto;
+  right: 12px;
 }
 
 [data-theme='dark'] .card-expand-float-btn {
@@ -6913,22 +6991,52 @@ input:checked:hover+.toggle-slider::before {
   pointer-events: none;
 }
 
-/* Keep style editor close to parent panel when parent is minimized */
-.se-panel-wrapper.se-parent-panel-minimized {
-  left: 72px;
+/* Layout-Aware Positioning */
+.se-panel-wrapper.layout-sidebar {
+  left: 395px;
+  right: auto;
 }
 
-/* When both parent + style editor are minimized, keep icon near parent expand icon */
+.se-panel-wrapper.layout-topbar {
+  left: auto;
+  right: 395px;
+  top: 5px;
+}
+
+.se-panel-wrapper.se-parent-panel-minimized {
+  top: 12px;
+}
+
 .se-panel-wrapper.se-parent-panel-minimized.se-panel-minimized {
-  left: 12px;
+  height: 44px;
+}
+
+.se-panel-wrapper.layout-sidebar.se-parent-panel-minimized {
+  left: 62px;
+  right: auto;
+}
+
+.se-panel-wrapper.layout-topbar.se-parent-panel-minimized {
+  left: auto;
+  right: 62px;
+  top: 8px;
 }
 
 .se-panel-wrapper.se-parent-panel-minimized.se-panel-minimized .card-expand-float-btn {
   top: 0;
-  left: 56px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  left: 0;
+  right: 0;
+}
+
+.se-panel-wrapper.layout-sidebar.se-parent-panel-minimized.se-panel-minimized .card-expand-float-btn {
+  left: 0;
+  right: auto;
+}
+
+.se-panel-wrapper.layout-topbar.se-parent-panel-minimized.se-panel-minimized .card-expand-float-btn {
+  top: 0;
+  right: 0;
+  left: auto;
 }
 
 .se-panel-minimized .se-card {

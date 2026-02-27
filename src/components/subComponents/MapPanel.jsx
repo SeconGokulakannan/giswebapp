@@ -126,7 +126,8 @@ const MapPanel = ({
     onOpenSpatialJoin,
     allAvailableLayers,
     showTopLegend,
-    setShowTopLegend
+    setShowTopLegend,
+    layoutMode = 'sidebar'
 }) => {
     const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
     const [searchQuery, setSearchQuery] = useState('');
@@ -160,7 +161,7 @@ const MapPanel = ({
     if (!activePanel) return null;
 
     return (
-        <div className={`panel ${isPanelMinimized ? 'minimized' : ''} panel-${activePanel}`}>
+        <div className={`panel ${isPanelMinimized ? 'minimized' : ''} panel-${activePanel} layout-${layoutMode}`}>
             <div className="panel-header">
                 <div className="panel-header-text">
                     <h3>
@@ -191,7 +192,10 @@ const MapPanel = ({
                                 className="minimize-btn"
                                 onClick={() => setIsPanelMinimized(!isPanelMinimized)}
                             >
-                                {isPanelMinimized ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                                {layoutMode === 'sidebar'
+                                    ? (isPanelMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />)
+                                    : (isPanelMinimized ? <ChevronLeft size={16} /> : <ChevronRight size={16} />)
+                                }
                             </button>
                         </Tooltip.Trigger>
                         <Tooltip.Portal>

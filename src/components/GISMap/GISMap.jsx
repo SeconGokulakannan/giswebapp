@@ -3229,7 +3229,7 @@ function GISMap() {
           />
         )}
 
-        <div className="main-content">
+        <div className={`main-content layout-${layoutMode}`}>
           {layoutMode === 'topbar' && (
             <MapHeader
               onOpenLayerManagement={handleOpenLayerManagement}
@@ -3321,6 +3321,7 @@ function GISMap() {
               }}
               isPanelMinimized={isPanelMinimized}
               setIsPanelMinimized={setIsPanelMinimized}
+              layoutMode={layoutMode}
               baseLayer={baseLayer}
               setBaseLayer={setBaseLayer}
               isDrawingVisible={isDrawingVisible}
@@ -3570,6 +3571,7 @@ function GISMap() {
               onPlaybackToggle={() => setIsAnalysisPlaying(!isAnalysisPlaying)}
               onFrameChange={(index) => setAnalysisFrameIndex(index)}
               isParentPanelMinimized={isPanelMinimized}
+              layoutMode={layoutMode}
             />
 
 
@@ -3588,6 +3590,7 @@ function GISMap() {
               selectedLayerIds={selectedQueryLayerIds}
               setSelectedLayerIds={setSelectedQueryLayerIds}
               isParentPanelMinimized={isPanelMinimized}
+              layoutMode={layoutMode}
             />
 
             <SpatialJoinCard
@@ -3599,6 +3602,7 @@ function GISMap() {
               onResetSpatialJoin={handleResetSpatialJoin}
               targetLayerId={activeSpatialJoinLayerId}
               isParentPanelMinimized={isPanelMinimized}
+              layoutMode={layoutMode}
             />
 
             <StyleEditorCard
@@ -3615,6 +3619,7 @@ function GISMap() {
               onUpdateProp={updateStyleProp}
               onFileUpload={handleStyleFileUpload}
               isParentPanelMinimized={isPanelMinimized}
+              layoutMode={layoutMode}
             />
 
             <CreateLayerCard
