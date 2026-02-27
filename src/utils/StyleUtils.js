@@ -350,12 +350,27 @@ export const parseSLD = (sldBody) => {
                     }
                 }
 
-                // Extract fill color from symbolizer
-                const polyEl = getEl(rule, 'PolygonSymbolizer') || getEl(rule, 'PointSymbolizer') || getEl(rule, 'LineSymbolizer');
-                if (polyEl) {
-                    const fillEl = getEl(polyEl, 'Fill');
+                // Extract color from symbolizer by geometry type so UI preloads correctly.
+                const polygonSym = getEl(rule, 'PolygonSymbolizer');
+                const pointSym = getEl(rule, 'PointSymbolizer');
+                const lineSym = getEl(rule, 'LineSymbolizer');
+
+                if (polygonSym) {
+                    const fillEl = getEl(polygonSym, 'Fill');
+                    const strokeEl = getEl(polygonSym, 'Stroke');
                     fillColor = getParam(fillEl, 'fill') || fillColor;
-                    const strokeEl = getEl(polyEl, 'Stroke');
+                    strokeColor = getParam(strokeEl, 'stroke') || '';
+                } else if (pointSym) {
+                    const markEl = getEl(pointSym, 'Mark');
+                    const markFill = getEl(markEl, 'Fill');
+                    const markStroke = getEl(markEl, 'Stroke');
+                    // Point rules are usually stored as Mark/Fill. For external graphics, fallback to stroke if available.
+                    fillColor = getParam(markFill, 'fill') || getParam(markStroke, 'stroke') || fillColor;
+                    strokeColor = getParam(markStroke, 'stroke') || '';
+                } else if (lineSym) {
+                    const strokeEl = getEl(lineSym, 'Stroke');
+                    // Line rules are stroke-driven; map stroke to fillColor for the color picker.
+                    fillColor = getParam(strokeEl, 'stroke') || fillColor;
                     strokeColor = getParam(strokeEl, 'stroke') || '';
                 }
 
