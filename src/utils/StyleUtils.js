@@ -319,7 +319,9 @@ export const parseSLD = (sldBody) => {
         allRules.forEach(rule => {
             const titleEl = getEl(rule, 'Title');
             const title = titleEl?.textContent?.trim() || '';
-            if (title.startsWith('GeneratedConditionRule_')) {
+            const nameEl = getEl(rule, 'Name');
+            const name = nameEl?.textContent?.trim() || '';
+            if (title.startsWith('GeneratedConditionRule_') || name.startsWith('GeneratedConditionRule_')) {
                 // Parse: attribute, operator, value, fillColor from child elements
                 const filterEl = getEl(rule, 'Filter');
                 if (!filterEl) return;
@@ -614,7 +616,14 @@ export const applyStyleChanges = (sldBody, props) => {
     for (const rule of allRulesSnapshot) {
         const titleEl = getEl(rule, 'Title');
         const title = titleEl?.textContent?.trim() || '';
-        if (title.startsWith('GeneratedConditionRule_') || title === 'GeneratedElseRule') {
+        const nameEl = getEl(rule, 'Name');
+        const name = nameEl?.textContent?.trim() || '';
+        if (
+            title.startsWith('GeneratedConditionRule_') ||
+            name.startsWith('GeneratedConditionRule_') ||
+            title === 'GeneratedElseRule' ||
+            name === 'GeneratedElseRule'
+        ) {
             rule.parentNode?.removeChild(rule);
         }
     }
@@ -650,8 +659,12 @@ export const applyStyleChanges = (sldBody, props) => {
                 if (!cond.attribute || cond.value === undefined || cond.value === '') return;
 
                 const ruleEl = createSldEl('Rule');
+                const nameEl = createSldEl('Name');
+                nameEl.textContent = `GeneratedConditionRule_${i}`;
+                ruleEl.appendChild(nameEl);
                 const titleEl = createSldEl('Title');
-                titleEl.textContent = `GeneratedConditionRule_${i}`;
+                const prettyValue = String(cond.value).trim();
+                titleEl.textContent = `${cond.attribute} ${cond.operator || '='} ${prettyValue}`;
                 ruleEl.appendChild(titleEl);
 
                 // OGC Filter

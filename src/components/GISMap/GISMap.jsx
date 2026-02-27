@@ -2135,6 +2135,16 @@ function GISMap() {
   const updateFeatureStatus = (source) => {
     if (!source) return;
     const features = source.getFeatures();
+    // Ensure every non-measurement drawing has a persistent color so
+    // map rendering and dropdown indicators stay in sync.
+    features.forEach((f) => {
+      if (!f.get('isMeasurement') && !f.get('drawingColor')) {
+        const color = DRAWING_SOLID_COLORS[drawingColorIndexRef.current % DRAWING_SOLID_COLORS.length];
+        drawingColorIndexRef.current += 1;
+        f.set('drawingColor', color);
+      }
+    });
+
     const drawings = features.some(f => !f.get('isMeasurement'));
     const measurements = features.some(f => f.get('isMeasurement'));
     setHasDrawings(drawings);
@@ -2153,7 +2163,8 @@ function GISMap() {
         return {
           id: id,
           type: f.getGeometry().getType(),
-          name: f.get('name') || `Drawing (${f.getGeometry().getType()})`
+          name: f.get('name') || `Drawing (${f.getGeometry().getType()})`,
+          color: f.get('drawingColor') || '#3b82f6'
         };
       });
     setAvailableDrawings(validDrawings);

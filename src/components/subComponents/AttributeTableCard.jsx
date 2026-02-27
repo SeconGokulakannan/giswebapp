@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { X, Table, Edit, Trash2, MapPin, Grid2x2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser, Square, Activity, Circle, HelpCircle, LayoutGrid } from 'lucide-react';
+import { X, Table, Edit, Trash2, MapPin, Grid2x2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser, LayoutGrid } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 // Register AG Grid modules
@@ -334,19 +334,6 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
     const hasSelection = selectedRows.length > 0;
     const hasChanges = Object.keys(pendingChanges).length > 0 || Object.keys(newRows).length > 0;
 
-    const getShapeIcon = (type) => {
-        if (!type) return <HelpCircle size={14} style={{ marginRight: '8px' }} />;
-        const lowerType = type.toLowerCase();
-        if (lowerType.includes('polygon') || lowerType.includes('rectangle') || lowerType.includes('box')) {
-            return <Square size={14} style={{ marginRight: '8px' }} />;
-        } else if (lowerType.includes('line')) {
-            return <Activity size={14} style={{ marginRight: '8px' }} />;
-        } else if (lowerType.includes('point') || lowerType.includes('circle')) {
-            return <Circle size={14} style={{ marginRight: '8px' }} />;
-        }
-        return <HelpCircle size={14} style={{ marginRight: '8px' }} />;
-    };
-
     return (
         <div className={`attribute-table-card ${isMinimized ? 'minimized' : ''}`}>
             <div className="attribute-table-header">
@@ -395,7 +382,17 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                                                         className="elite-dropdown-item"
                                                         onClick={() => handleAddFeature(d)}
                                                     >
-                                                        {getShapeIcon(d.type)}
+                                                        <span
+                                                            style={{
+                                                                width: '10px',
+                                                                height: '10px',
+                                                                borderRadius: '9999px',
+                                                                background: d.color || '#3b82f6',
+                                                                marginRight: '8px',
+                                                                border: '1px solid rgba(255,255,255,0.45)',
+                                                                boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
+                                                            }}
+                                                        />
                                                         {d.name}
                                                     </button>
                                                 ))
