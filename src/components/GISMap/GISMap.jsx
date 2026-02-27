@@ -52,7 +52,7 @@ import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, forma
 import {
   searchLocation, getLayerAttributes, getFeaturesForAttributeTable, getGeoServerLayers, getWMSSourceParams, getLayerBBox,
   getLayerStyle, updateLayerStyle, setLayerDefaultStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
-  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl, uploadIcon
+  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl, getLegendRuleUrl, fetchLegendRules, uploadIcon
 } from '../../services/Server';
 
 // Server Credentials
@@ -3299,6 +3299,8 @@ function GISMap() {
                 layers={geoServerLayers.filter(l => l.visible)}
                 onClose={() => setShowTopLegend(false)}
                 getLegendUrl={getLegendUrl}
+                getLegendRuleUrl={getLegendRuleUrl}
+                fetchLegendRules={fetchLegendRules}
               />
             )}
 

@@ -56,6 +56,33 @@ export const getLegendUrl = (layerName) => {
 };
 
 
+// Get a legend icon URL for a single RULE within a layer
+export const getLegendRuleUrl = (layerName, ruleName) => {
+    return `${GEOSERVER_URL}/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&WIDTH=20&HEIGHT=20&LAYER=${layerName}&RULE=${encodeURIComponent(ruleName)}`;
+};
+
+// Fetch all legend rules for a layer as structured JSON data
+export const fetchLegendRules = async (layerName) => {
+    try {
+        const url = `${GEOSERVER_URL}/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=application/json&LAYER=${layerName}`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': AUTH_HEADER }
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (data?.Legend?.[0]?.rules) {
+            return data.Legend[0].rules.map(rule => ({
+                name: rule.name || rule.title || 'Default',
+                title: rule.title || rule.name || 'Default',
+            }));
+        }
+        return null;
+    } catch (err) {
+        console.warn('[Legend] JSON legend fetch failed for', layerName, err);
+        return null;
+    }
+};
+
 //Get Data Only from the Layer meta data Table
 export const getGeoServerLayers = async () => {
     try {

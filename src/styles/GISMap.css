@@ -5183,181 +5183,176 @@ input:checked:hover+.toggle-slider::before {
   }
 }
 
-/* ===== LEGEND SIDEBAR (TL2) ===== */
-.tl2-container {
+/* ===== CLEAN MINIMAL LEGEND (TL2) ===== */
+.tl2-panel {
   position: absolute;
-  top: 70px;
-  left: 214px;
+  top: 15px;
+  left: 15px;
   right: auto;
-  width: min(220px, calc(100vw - 226px));
   z-index: 1200;
-  pointer-events: none;
-}
-
-.tl2-shell {
   pointer-events: auto;
-  position: relative;
-  border-radius: 10px;
-  border: 1px solid #d6d6d6;
-  background: #ececec;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
-  padding: 12px 8px 10px 10px;
-}
-
-[data-theme='dark'] .tl2-shell {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(31, 41, 55, 0.96);
-}
-
-.tl2-list {
+  background: var(--color-bg-primary);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--color-border);
+  max-height: calc(50vh - 40px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: calc(100vh - 205px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 3px;
-  scrollbar-width: thin;
-}
-
-.tl2-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.tl2-list::-webkit-scrollbar-thumb {
-  border-radius: 8px;
-  background: rgba(148, 163, 184, 0.45);
-}
-
-.tl2-item {
-  border: none;
-  border-radius: 0;
-  background: transparent;
   overflow: hidden;
-  padding-bottom: 2px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  animation: tl2-flyIn 0.35s ease-out;
 }
 
-[data-theme='dark'] .tl2-item {
-  background: transparent;
-  border-bottom-color: rgba(255, 255, 255, 0.12);
+[data-theme='dark'] .tl2-panel {
+  background: #0f172a;
+  /* Deeper contrast */
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
-.tl2-item:last-child {
-  border-bottom: none;
+@keyframes tl2-flyIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.tl2-item-head {
-  display: block;
-  padding: 0 2px 6px 2px;
-  border: none;
-  font-size: 12px;
-  font-weight: 800;
-  color: #111827;
-  letter-spacing: 0.15px;
-}
-
-.tl2-item-title {
-  font-size: 12.5px;
-  font-weight: 800;
-  line-height: 1.28;
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-[data-theme='dark'] .tl2-item-head {
-  color: #f3f4f6;
-}
-
-.tl2-item-body {
-  min-height: 30px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 0 2px 1px 2px;
-}
-
-.tl2-item-body img {
-  max-width: 100%;
-  max-height: 90px;
-  width: auto;
-  image-rendering: auto;
-}
-
-.tl2-empty {
-  display: none;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--color-text-muted);
-  opacity: 0.9;
-}
-
-.tl2-item.no-image .tl2-item-body img {
-  display: none;
-}
-
-.tl2-item.no-image .tl2-empty {
-  display: block;
-}
-
-.tl2-close {
+/* Dismiss button */
+.tl2-dismiss {
   position: absolute;
   top: 8px;
   right: 8px;
   width: 20px;
   height: 20px;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
-  background: #ffffff;
-  color: #111827;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(0, 0, 0, 0.03);
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-muted);
   cursor: pointer;
+  z-index: 2;
   transition: all 0.2s ease;
 }
 
-.tl2-close:hover {
-  transform: none;
-  background: #ef4444;
+[data-theme='dark'] .tl2-dismiss {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tl2-dismiss:hover {
+  background: var(--color-danger);
   color: white;
-  border-color: #ef4444;
+  transform: scale(1.1);
 }
 
-[data-theme='dark'] .tl2-close {
-  background: rgba(17, 24, 39, 0.85);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #f9fafb;
+/* Scrollable content */
+.tl2-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  /* Generous padding */
+  scrollbar-width: thin;
 }
 
-@media (max-width: 768px) {
-  .tl2-container {
-    top: 60px;
-    left: 7px;
-    right: auto;
-    width: calc(100vw - 14px);
-  }
-
-  .tl2-shell {
-    border-radius: 10px;
-    padding: 10px 8px 9px 9px;
-  }
-
-  .tl2-list {
-    max-height: calc(100vh - 230px);
-  }
+.tl2-scroll::-webkit-scrollbar {
+  width: 4px;
 }
 
-/* Layout-aware placement */
-.layout-sidebar .tl2-container {
-  left: 214px;
+.tl2-scroll::-webkit-scrollbar-thumb {
+  background: rgba(var(--color-text-muted-rgb), 0.3);
+  border-radius: 10px;
+}
+
+/* Layer group */
+.tl2-group {
+  margin-bottom: 20px;
+  /* Better separation */
+}
+
+.tl2-group:last-child {
+  margin-bottom: 0;
+}
+
+/* Layer name — bold title */
+.tl2-layer-name {
+  font-size: 14px;
+  /* Scaled up */
+  font-weight: 800;
+  color: var(--color-text-primary);
+  /* High contrast */
+  line-height: 1.4;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+/* Rule entries */
+.tl2-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Space between rule rows */
+  padding-left: 2px;
+}
+
+/* Single rule row: icon + label */
+.tl2-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* More space between swatch and text */
+  padding: 4px 0;
+}
+
+.tl2-swatch {
+  width: 18px;
+  /* Larger swatches */
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  /* Define the color swatch */
+}
+
+[data-theme='dark'] .tl2-swatch {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.tl2-label {
+  font-size: 13px;
+  /* Scaled up */
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  /* Balanced contrast */
+  line-height: 1.2;
+}
+
+/* Fallback combined image */
+.tl2-fallback {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  margin-top: 4px;
+}
+
+/* Layout-aware placement override - Sit alongside the floating elite-sidebar */
+.layout-sidebar .tl2-panel {
+  left: auto;
+  right: 65px;
+  /* Sit to the left of zoom controls on the right */
+  top: 15px;
+}
+
+.layout-topbar .tl2-panel {
   right: auto;
-}
-
-.layout-topbar .tl2-container {
-  left: 10px;
-  right: auto;
+  left: 60px;
+  /* Sit to the right of zoom controls on the left */
+  top: 8px;
+  /* Align with zoom controls top */
 }
 
 /* ===== TOP LEGEND PANEL V3 (SIDEBAR REPRESENTATION) ===== */
@@ -6560,9 +6555,11 @@ input:checked:hover+.toggle-slider::before {
   0% {
     box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 0 rgba(5, 150, 105, 0.45);
   }
+
   70% {
     box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 10px rgba(5, 150, 105, 0);
   }
+
   100% {
     box-shadow: 0 8px 16px rgba(5, 150, 105, 0.35), 0 0 0 0 rgba(5, 150, 105, 0);
   }
