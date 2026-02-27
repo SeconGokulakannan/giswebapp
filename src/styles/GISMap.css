@@ -338,6 +338,290 @@
 }
 
 /* ===== ELITE SEARCH BAR ===== */
+/* ===== NEW PROFESSIONAL HEADER BAR ===== */
+
+/* ===== PREMIUM V3 MODULAR CARD HEADER (REFINED) ===== */
+.hb-root {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 80px;
+  padding: 0 24px;
+  background: var(--color-bg-primary);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-fixed);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: background 0.3s ease, border 0.3s ease;
+}
+
+[data-theme='dark'] .hb-root {
+  background: rgba(13, 17, 23, 0.9);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.hb-root.minimal {
+  height: 52px;
+}
+
+/* Brand Section */
+.hb-brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 180px;
+}
+
+.hb-logo-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hb-logo {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.hb-logo.small {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.hb-brand-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.hb-brand-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.hb-brand-name.small {
+  font-size: 13px;
+}
+
+.hb-brand-version {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.8;
+}
+
+/* Modular Navigation */
+.hb-nav-modular {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.hb-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hb-card-group {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(var(--color-bg-secondary-rgb), 0.5);
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+}
+
+.hb-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+
+/* Tool Card */
+.hb-tool-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 56px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+  gap: 3px;
+}
+
+.hb-tool-card:hover {
+  background: color-mix(in srgb, var(--card-color, var(--color-primary)) 10%, transparent);
+  color: var(--card-color, var(--color-primary));
+  transform: translateY(-1px);
+}
+
+.hb-tool-card.active {
+  background: var(--card-color, var(--color-primary));
+  color: #fff;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--card-color, var(--color-primary)) 40%, transparent);
+}
+
+.hb-tool-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+}
+
+.hb-tool-card.active .hb-tool-card-icon {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+/* Variant States */
+.hb-tool-card.warning.active {
+  background: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.hb-tool-card.success:hover {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.hb-tool-card.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.hb-tool-card-label {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  max-width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Divider */
+.hb-divider-vertical {
+  width: 1px;
+  height: 32px;
+  background: var(--color-border);
+  margin: 0 2px;
+  opacity: 0.6;
+}
+
+/* Action Area */
+.hb-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 180px;
+  justify-content: flex-end;
+}
+
+.hb-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(var(--color-primary-rgb), 0.08);
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(var(--color-primary-rgb), 0.15);
+}
+
+.hb-meta-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--color-primary);
+  animation: hbPulse 2s infinite;
+}
+
+.hb-meta-label {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--color-primary);
+  letter-spacing: 0.08em;
+}
+
+@keyframes hbPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.hb-exit-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text-primary);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.hb-exit-btn:hover {
+  background: var(--color-bg-secondary);
+  border-color: #ef4444;
+  color: #ef4444;
+  transform: translateY(-1px);
+}
+
+.hb-exit-btn svg {
+  transition: transform 0.2s ease;
+}
+
+.hb-exit-btn:hover svg {
+  transform: translateX(-3px);
+}
+
+
 /* SEARCH CONTAINER REMOVED FROM HEADER */
 
 .search-wrapper {
@@ -6433,6 +6717,46 @@ input:checked:hover+.toggle-slider::before {
 .sj-panel-wrapper,
 .qb-panel-wrapper {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* layout-topbar Overrides for consistent positioning below the 80px header */
+.layout-topbar .se-panel-wrapper,
+.layout-topbar .ac-panel-wrapper,
+.layout-topbar .sj-panel-wrapper,
+.layout-topbar .qb-panel-wrapper {
+  top: 85px;
+  /* 80px header + 5px gap */
+  left: auto;
+  right: 405px;
+  /* Default: next to 380px primary panel */
+}
+
+/* Position cards closer to the right edge if the primary panel is minimized */
+.layout-topbar .se-panel-wrapper.se-parent-panel-minimized,
+.layout-topbar .ac-panel-wrapper.ac-parent-panel-minimized,
+.layout-topbar .sj-panel-wrapper.sj-parent-panel-minimized,
+.layout-topbar .qb-panel-wrapper.qb-parent-panel-minimized {
+  right: 68px;
+  /* 12px margin + 44px min-panel + 12px gap */
+  left: auto;
+}
+
+/* Adjust minimized card float positions for topbar mode */
+.layout-topbar .se-panel-wrapper.se-panel-minimized,
+.layout-topbar .ac-panel-wrapper.ac-panel-minimized,
+.layout-topbar .sj-panel-wrapper.sj-panel-minimized,
+.layout-topbar .qb-panel-wrapper.qb-panel-minimized {
+  top: 88px;
+  left: auto;
+}
+
+/* Ensure the expanded float button stays anchored correctly in topbar mode */
+.layout-topbar .se-panel-wrapper.se-panel-minimized .card-expand-float-btn,
+.layout-topbar .ac-panel-wrapper.ac-panel-minimized .card-expand-float-btn,
+.layout-topbar .sj-panel-wrapper.sj-panel-minimized .card-expand-float-btn,
+.layout-topbar .qb-panel-wrapper.qb-panel-minimized .card-expand-float-btn {
+  left: 0;
+  right: auto;
 }
 
 .se-panel-minimized .se-card,
