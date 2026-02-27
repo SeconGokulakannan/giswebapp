@@ -383,13 +383,27 @@ export const getWMSSourceParams = (layerName) => {
 //Load Symbology to the Styles directory in geoserver
 export const uploadIcon = async (file, workspace) => {
     try {
+        const ext = String(file?.name || '').toLowerCase().split('.').pop();
+        const mimeByExt = {
+            svg: 'image/svg+xml',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            gif: 'image/gif',
+            webp: 'image/webp',
+            bmp: 'image/bmp',
+            avif: 'image/avif',
+            tif: 'image/tiff',
+            tiff: 'image/tiff'
+        };
+        const contentType = mimeByExt[ext] || file?.type || 'application/octet-stream';
         const url = `${GEOSERVER_URL}/rest/resource/workspaces/${workspace}/styles/${file.name}`;
         const response = await fetch(url,
             {
                 method: 'PUT',
                 headers: {
                     'Authorization': AUTH_HEADER,
-                    'Content-Type': 'application/octet-stream'
+                    'Content-Type': contentType
                 },
                 body: file
             });

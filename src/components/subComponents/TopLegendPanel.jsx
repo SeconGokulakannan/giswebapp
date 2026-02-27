@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Map as MapIcon } from 'lucide-react';
+import { X, Map as MapIcon, Layers3 } from 'lucide-react';
 
 const TopLegendPanel = ({ layers, onClose, getLegendUrl }) => {
     if (!layers || layers.length === 0) return null;
@@ -7,6 +7,18 @@ const TopLegendPanel = ({ layers, onClose, getLegendUrl }) => {
     return (
         <div className="top-legend-panel-container">
             <div className="top-legend-panel-glass">
+                <div className="top-legend-header">
+                    <div className="top-legend-title-wrap">
+                        <div className="top-legend-title-icon">
+                            <Layers3 size={12} />
+                        </div>
+                        <div className="top-legend-title-copy">
+                            <h4>Legend</h4>
+                            <span>{layers.length} layer{layers.length > 1 ? 's' : ''}</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="top-legend-scroll-area">
                     {layers.map((layer) => (
                         <div key={layer.id} className="top-legend-item">
@@ -19,10 +31,10 @@ const TopLegendPanel = ({ layers, onClose, getLegendUrl }) => {
                                     src={getLegendUrl(layer.fullName)}
                                     alt={`${layer.name} legend`}
                                     onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        e.target.parentElement.innerHTML = '<span class="no-legend-text">No Legend</span>';
+                                        e.currentTarget.closest('.top-legend-item')?.classList.add('legend-missing');
                                     }}
                                 />
+                                <span className="no-legend-text">No legend</span>
                             </div>
                         </div>
                     ))}

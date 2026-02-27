@@ -92,6 +92,26 @@ const serializeDoc = (doc) => {
 /** Detect whether the SLD uses SvgParameter or CssParameter. */
 const detectParamTag = (sldBody) => sldBody.includes('SvgParameter') ? 'SvgParameter' : 'CssParameter';
 
+/** Infer MIME type for ExternalGraphic format from filename/URL. */
+const detectGraphicFormat = (url) => {
+    const raw = String(url || '').trim().toLowerCase();
+    if (raw.startsWith('data:image/svg+xml')) return 'image/svg+xml';
+    if (raw.startsWith('data:image/png')) return 'image/png';
+    if (raw.startsWith('data:image/jpeg') || raw.startsWith('data:image/jpg')) return 'image/jpeg';
+    if (raw.startsWith('data:image/gif')) return 'image/gif';
+    if (raw.startsWith('data:image/webp')) return 'image/webp';
+    if (raw.startsWith('data:image/bmp')) return 'image/bmp';
+    const clean = raw.split('?')[0].split('#')[0];
+    if (clean.endsWith('.svg')) return 'image/svg+xml';
+    if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
+    if (clean.endsWith('.gif')) return 'image/gif';
+    if (clean.endsWith('.webp')) return 'image/webp';
+    if (clean.endsWith('.bmp')) return 'image/bmp';
+    if (clean.endsWith('.avif')) return 'image/avif';
+    if (clean.endsWith('.tif') || clean.endsWith('.tiff')) return 'image/tiff';
+    return 'image/png';
+};
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PARSE SLD
@@ -585,9 +605,7 @@ export const applyStyleChanges = (sldBody, props) => {
                 formatEl = createEl(doc, externalGraphicEl, 'Format');
                 externalGraphicEl.appendChild(formatEl);
             }
-            if (!formatEl.textContent || !formatEl.textContent.trim()) {
-                formatEl.textContent = 'image/png';
-            }
+            formatEl.textContent = detectGraphicFormat(externalUrl);
         } else if (graphicEl) {
             const externalGraphicEl = getEl(graphicEl, 'ExternalGraphic');
             if (externalGraphicEl) {

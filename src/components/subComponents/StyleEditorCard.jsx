@@ -188,7 +188,7 @@ const StyleEditorCard = ({
                                                         Upload Symbology
                                                         <input
                                                             type="file"
-                                                            accept=".png,.jpg,.jpeg,.gif,.svg,image/*"
+                                                            accept=".svg,.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.tif,.tiff,image/*"
                                                             style={{ display: 'none' }}
                                                             onChange={onFileUpload}
                                                         />
