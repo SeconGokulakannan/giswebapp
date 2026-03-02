@@ -2,6 +2,8 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { X, Upload, File, Database, Layers, Loader2, Info, CheckCircle2, ChevronRight, Settings2, ArrowRightLeft, Plus, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
+import GeoJSONFormat from 'ol/format/GeoJSON';
+import KMLFormat from 'ol/format/KML';
 import { getLayerAttributes } from '../../services/Server';
 import { batchInsertFeatures, batchUpdateFeaturesByProperty } from '../../services/Server';
 
@@ -12,7 +14,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     const [isProcessing, setIsProcessing] = useState(false);
 
     // Upload State
-    const [uploadFiles, setUploadFiles] = useState({ shp: null, dbf: null, shx: null, prj: null });
+    const [uploadFiles, setUploadFiles] = useState({}); // Stores file objects by extension
     const [sourceData, setSourceData] = useState(null);
     const [sourceAttributes, setSourceAttributes] = useState([]);
     const [destAttributes, setDestAttributes] = useState([]);
@@ -33,7 +35,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     useEffect(() => {
         if (!isOpen) {
             setActiveStep(1);
-            setUploadFiles({ shp: null, dbf: null, shx: null, prj: null });
+            setUploadFiles({});
             setSourceData(null);
             setSourceAttributes([]);
             setDestAttributes([]);
@@ -61,16 +63,58 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     const handleFileChange = async (e) => {
         const files = Array.from(e.target.files);
         const newFiles = { ...uploadFiles };
+        let geojson = null;
 
-        files.forEach(file => {
+        for (const file of files) {
             const ext = file.name.split('.').pop().toLowerCase();
+
             if (['shp', 'dbf', 'shx', 'prj'].includes(ext)) {
                 newFiles[ext] = file;
+            } else if (ext === 'geojson' || ext === 'json') {
+                newFiles[ext] = file;
+                try {
+                    const text = await readFileAsText(file);
+                    geojson = JSON.parse(text);
+                    if (geojson.type !== 'FeatureCollection') {
+                        if (geojson.type === 'Feature') {
+                            geojson = { type: 'FeatureCollection', features: [geojson] };
+                        } else if (Array.isArray(geojson)) {
+                            geojson = { type: 'FeatureCollection', features: geojson };
+                        }
+                    }
+                } catch (err) {
+                    toast.error(`Invalid GeoJSON: ${file.name}`);
+                }
+            } else if (ext === 'kml') {
+                newFiles[ext] = file;
+                try {
+                    const text = await readFileAsText(file);
+                    const kmlReader = new KMLFormat();
+                    const features = kmlReader.readFeatures(text, {
+                        dataProjection: 'EPSG:4326',
+                        featureProjection: 'EPSG:4326'
+                    });
+                    const gjWriter = new GeoJSONFormat();
+                    geojson = gjWriter.writeFeaturesObject(features);
+                } catch (err) {
+                    toast.error(`Invalid KML: ${file.name}`);
+                }
             }
-        });
+        }
 
         setUploadFiles(newFiles);
 
+        // Priority for GeoJSON/KML if multiple files uploaded
+        if (geojson && geojson.features && geojson.features.length > 0) {
+            const firstFeature = geojson.features[0];
+            const attrs = Object.keys(firstFeature.properties || {});
+            setSourceAttributes(attrs);
+            setSourceData(geojson);
+            toast.success(`File parsed: ${geojson.features.length} features found.`);
+            return;
+        }
+
+        // Shapefile parsing logic
         if (newFiles.shp && newFiles.prj) {
             try {
                 const shpBuffer = await readFileAsArrayBuffer(newFiles.shp);
@@ -79,14 +123,14 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
                 const parsedShp = parseShp(shpBuffer, prjText);
                 const parsedDbf = dbfBuffer ? parseDbf(dbfBuffer) : null;
-                const geojson = combine([parsedShp, parsedDbf]);
+                const combinedGeojson = combine([parsedShp, parsedDbf]);
 
-                if (geojson && geojson.features && geojson.features.length > 0) {
-                    const firstFeature = geojson.features[0];
-                    const attrs = Object.keys(firstFeature.properties);
+                if (combinedGeojson && combinedGeojson.features && combinedGeojson.features.length > 0) {
+                    const firstFeature = combinedGeojson.features[0];
+                    const attrs = Object.keys(firstFeature.properties || {});
                     setSourceAttributes(attrs);
-                    setSourceData(geojson);
-                    toast.success(`Shapefile parsed: ${geojson.features.length} features found.`);
+                    setSourceData(combinedGeojson);
+                    toast.success(`Shapefile parsed: ${combinedGeojson.features.length} features found.`);
                 }
             } catch (err) {
                 console.error("Shapefile parsing error:", err);
@@ -97,7 +141,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
     const handleNextStep = async () => {
         if (activeStep === 1) {
-            if (!sourceData) return toast.error("Please upload a shapefile first.");
+            if (!sourceData) return toast.error("Please upload a source file first.");
             if (!targetLayerId) return toast.error("Please select a target layer.");
 
             // Load destination attributes
@@ -258,7 +302,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                         <div>
                             <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Data Manipulation</div>
                             <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '1px' }}>
-                                bulk addon or update from shapefile
+                                bulk addon or update from GIS data
                             </div>
                         </div>
                     </div>
@@ -300,7 +344,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                                     <Upload size={14} style={{ color: '#f59e0b' }} />
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source Shapefile</span>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source Dataset</span>
                                 </div>
 
                                 <div
@@ -325,7 +369,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                     ) : (
                                         <div>
                                             <Upload size={24} style={{ opacity: 0.3, marginBottom: '8px' }} />
-                                            <p style={{ fontSize: '0.8rem', margin: 0 }}>Drop .shp, .dbf, .prj, .shx files here</p>
+                                            <p style={{ fontSize: '0.8rem', margin: 0 }}>Drop .shp, .geojson, .kml, or .json files here</p>
                                         </div>
                                     )}
                                     <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
@@ -491,7 +535,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                     <div style={{ display: 'flex', fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted)', padding: '0 10px' }}>
                                         <div style={{ flex: 1 }}>DESTINATION (LAYER)</div>
                                         <div style={{ width: '30px' }}></div>
-                                        <div style={{ flex: 1 }}>SOURCE (SHAPEFILE)</div>
+                                        <div style={{ flex: 1 }}>SOURCE DATASET</div>
                                     </div>
 
                                     {destAttributes.map(dest => (
