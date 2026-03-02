@@ -301,9 +301,6 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                         </div>
                         <div>
                             <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Data Manipulation</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '1px' }}>
-                                bulk addon or update from GIS data
-                            </div>
                         </div>
                     </div>
                     <button className="elite-modal-close" onClick={onClose}>
@@ -381,7 +378,8 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                 border: '1px solid var(--color-border)',
                                 borderRadius: '12px',
                                 background: 'var(--color-bg-secondary)',
-                                padding: '16px'
+                                padding: '16px',
+                                marginTop: '14px'
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                                     <Database size={14} style={{ color: '#3b82f6' }} />
@@ -390,7 +388,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
                                 <div className="space-y-3">
                                     <div>
-                                        <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '6px' }}>Target GIS Layer</label>
+                                        <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '6px' }}>Target Layer</label>
                                         <select
                                             className="elite-input"
                                             value={targetLayerId}
@@ -405,7 +403,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                     </div>
 
                                     <div>
-                                        <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '6px' }}>Operation Type</label>
+                                        <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '6px', marginTop: "5px" }}>Action</label>
                                         <div style={{ display: 'flex', gap: '10px' }}>
                                             <button
                                                 onClick={() => setOperation('addon')}

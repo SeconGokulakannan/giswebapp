@@ -486,9 +486,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                         </div>
                         <div>
                             <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Publish New Layer</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '1px' }}>
-                                Create permanent layers via manual schema or file upload
-                            </div>
+
                         </div>
                     </div>
                     <button className="elite-modal-close" onClick={onClose}>
@@ -646,10 +644,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                                     disabled={isPublishing}
                                     style={{ width: '100%', boxSizing: 'border-box' }}
                                 />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', fontSize: '0.65rem', color: 'var(--color-text-muted)', opacity: 0.8 }}>
-                                    <Info size={10} />
-                                    <span>Used for PostGIS table and GeoServer layer</span>
-                                </div>
+
                             </div>
 
                             <div className="form-group">
@@ -793,24 +788,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                             </div>
                         </div>
 
-                        {/* Info Note */}
-                        <div style={{
-                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(16, 185, 129, 0.04))',
-                            border: '1px solid rgba(59, 130, 246, 0.12)',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            gap: '10px',
-                            alignItems: 'flex-start',
-                            marginTop: '4px'
-                        }}>
-                            <Info size={15} style={{ color: activeTab === 'manual' ? '#3b82f6' : '#10b981', flexShrink: 0, marginTop: '1px' }} />
-                            <p style={{ margin: 0, fontSize: '0.68rem', lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
-                                {activeTab === 'upload' ?
-                                    "Data will be imported into PostGIS and published to GeoServer. All fields from the file will be preserved." :
-                                    "This creates an empty table structure. You can add data later using the map drawing tools."}
-                            </p>
-                        </div>
+
                     </form>
                 </div>
 

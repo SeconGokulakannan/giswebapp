@@ -287,9 +287,7 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
                         </div>
                         <div>
                             <div className="elite-modal-title" style={{ fontSize: '0.95rem' }}>Load Temporary Layers</div>
-                            <div style={{ fontSize: '0.7rem', marginTop: '1px' }}>
-                                Temporary layers vanish on refresh
-                            </div>
+
                         </div>
                     </div>
                     <button className="elite-modal-close" onClick={onClose}>
