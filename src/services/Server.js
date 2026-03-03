@@ -1357,7 +1357,7 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
                 for (const [key, value] of Object.entries(feature.properties || {})) {
                     const lowKey = key.trim().toLowerCase();
                     const lowGeomName = (geometryName || '').trim().toLowerCase();
-                    if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
+                    if (['fid', 'wkb_geometry', 'geom', 'shape', 'shp'].includes(lowKey) ||
                         lowKey === lowGeomName || key.startsWith('_') || value === null || value === undefined) continue;
 
                     const sanitizedKey = sanitizeXmlTagName(key);
@@ -1437,13 +1437,30 @@ export const batchInsertFeatures = async (fullLayerName, features, geometryName 
 };
 
 //data Updation
-export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingConditions, onProgress = null) => {
+export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingConditions, geometryMapping, onProgress = null) => {
     try {
-        if (!features || features.length === 0) return true;
+        if (!features || features.length === 0) return { success: true, totalUpdated: 0, totalFailed: 0 };
 
-        const [prefix, layerPart] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
+        // Standardize conditions into an array of { dest, src }
+        const conditions = Array.isArray(matchingConditions)
+            ? matchingConditions
+            : [{ dest: matchingConditions, src: matchingConditions }];
+
+        // 0. DEDUPLICATE SOURCE FEATURES (Keep first instance of each matching key combination)
+        const seenKeys = new Set();
+        const featuresToProcess = features.filter(feature => {
+            const keyValues = conditions.map(cond => String(feature.properties?.[cond.src] || 'null')).join('|');
+            if (seenKeys.has(keyValues)) return false;
+            seenKeys.add(keyValues);
+            return true;
+        });
+
+        const [prefix] = fullLayerName.includes(':') ? fullLayerName.split(':') : [WORKSPACE, fullLayerName];
         const BATCH_SIZE = 20;
-        const totalChunks = Math.ceil(features.length / BATCH_SIZE);
+        const totalChunks = Math.ceil(featuresToProcess.length / BATCH_SIZE);
+        let totalUpdated = 0;
+        let totalFailed = 0;
+        let totalMatched = 0;
 
         const escapeXml = (str) => {
             if (str === null || str === undefined) return '';
@@ -1457,30 +1474,136 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
             return sanitized;
         };
 
-        // Standardize conditions into an array of { dest, src }
-        const conditions = Array.isArray(matchingConditions)
-            ? matchingConditions
-            : [{ dest: matchingConditions, src: matchingConditions }];
+        // Build GML geometry from a GeoJSON feature geometry (GML 3.1.1 format)
+        const buildGmlGeometry = (geomFieldName, geometry, srid = 4326) => {
+            if (!geometry) return '';
+            const type = geometry.type;
+            const coords = geometry.coordinates;
+            if (!coords || !Array.isArray(coords) || coords.length === 0) return '';
 
-        for (let i = 0; i < features.length; i += BATCH_SIZE) {
-            const chunk = features.slice(i, i + BATCH_SIZE);
+            const fmtCoords = (arr) => arr.map(c => `${c[0]} ${c[1]}`).join(' ');
+            let gmlGeom = '';
+
+            if (type === 'Point') {
+                gmlGeom = `<gml:Point srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:pos>${coords[0]} ${coords[1]}</gml:pos></gml:Point>`;
+            } else if (type === 'LineString') {
+                gmlGeom = `<gml:LineString srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml"><gml:posList>${fmtCoords(coords)}</gml:posList></gml:LineString>`;
+            } else if (type === 'Polygon') {
+                const exterior = `<gml:exterior><gml:LinearRing><gml:posList>${fmtCoords(coords[0])}</gml:posList></gml:LinearRing></gml:exterior>`;
+                let interiors = '';
+                if (coords.length > 1) {
+                    for (let j = 1; j < coords.length; j++) {
+                        interiors += `<gml:interior><gml:LinearRing><gml:posList>${fmtCoords(coords[j])}</gml:posList></gml:LinearRing></gml:interior>`;
+                    }
+                }
+                gmlGeom = `<gml:Polygon srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml">${exterior}${interiors}</gml:Polygon>`;
+            } else if (type === 'MultiPolygon') {
+                let polygonsXml = '';
+                coords.forEach(poly => {
+                    const exterior = `<gml:exterior><gml:LinearRing><gml:posList>${fmtCoords(poly[0])}</gml:posList></gml:LinearRing></gml:exterior>`;
+                    let interiors = '';
+                    if (poly.length > 1) {
+                        for (let j = 1; j < poly.length; j++) {
+                            interiors += `<gml:interior><gml:LinearRing><gml:posList>${fmtCoords(poly[j])}</gml:posList></gml:LinearRing></gml:interior>`;
+                        }
+                    }
+                    polygonsXml += `<gml:polygonMember><gml:Polygon srsName="EPSG:${srid}">${exterior}${interiors}</gml:Polygon></gml:polygonMember>`;
+                });
+                gmlGeom = `<gml:MultiPolygon srsName="EPSG:${srid}" xmlns:gml="http://www.opengis.net/gml">${polygonsXml}</gml:MultiPolygon>`;
+            }
+
+            if (!gmlGeom) return '';
+            return `<wfs:Property><wfs:Name>${geomFieldName}</wfs:Name><wfs:Value>${gmlGeom}</wfs:Value></wfs:Property>`;
+        };
+
+        // geometryMapping: { destGeomField: string, srcGeomField: string|'__geometry__' }
+        // srcGeomField = '__geometry__' means use the GeoJSON feature.geometry directly
+
+        for (let i = 0; i < featuresToProcess.length; i += BATCH_SIZE) {
+            const chunk = featuresToProcess.slice(i, i + BATCH_SIZE);
             const currentChunkNum = Math.floor(i / BATCH_SIZE) + 1;
 
             if (onProgress) {
-                onProgress(currentChunkNum, totalChunks, chunk.length);
+                onProgress({
+                    batchNum: currentChunkNum,
+                    totalBatches: totalChunks,
+                    processing: chunk.length,
+                    totalUpdated,
+                    totalFailed,
+                    totalMatched,
+                    totalMissing: totalFailed
+                });
+            }
+
+            // 1. PRE-CHECK MATCHES
+            // Build an OR filter to find which features in this chunk actually exist on the server
+            const chunkFilters = chunk.map(feature => {
+                const featureConds = conditions.map(cond => {
+                    const val = feature.properties?.[cond.src];
+                    if (val === undefined || val === null) return null;
+                    return `<ogc:PropertyIsEqualTo><ogc:PropertyName>${cond.dest}</ogc:PropertyName><ogc:Literal>${escapeXml(val)}</ogc:Literal></ogc:PropertyIsEqualTo>`;
+                }).filter(Boolean);
+
+                if (featureConds.length === 0) return null;
+                return featureConds.length > 1 ? `<ogc:And>${featureConds.join('')}</ogc:And>` : featureConds[0];
+            }).filter(Boolean);
+
+            let matchedFeatures = [];
+            if (chunkFilters.length > 0) {
+                const batchFilter = chunkFilters.length > 1 ? `<ogc:Or>${chunkFilters.join('')}</ogc:Or>` : chunkFilters[0];
+                const getFeatureUrl = `${GEOSERVER_URL}/${prefix}/ows?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&filter=${encodeURIComponent(batchFilter)}`;
+
+                try {
+                    const response = await fetch(getFeatureUrl, { headers: { 'Authorization': AUTH_HEADER } });
+                    const data = await response.json();
+                    matchedFeatures = data.features || [];
+                } catch (err) {
+                    console.error("Pre-check matching error:", err);
+                    // Fallback to trying all (original behavior if check fails)
+                    matchedFeatures = chunk;
+                }
+            }
+
+            const featuresToUpdate = chunk.filter(f => {
+                // If every condition matches at least one feature in matchedFeatures
+                return matchedFeatures.some(m => {
+                    return conditions.every(cond => {
+                        const localVal = String(f.properties?.[cond.src] || '');
+                        const serverVal = String(m.properties?.[cond.dest] || '');
+                        return localVal === serverVal;
+                    });
+                });
+            });
+
+            totalMatched += featuresToUpdate.length;
+            const skippedCount = chunk.length - featuresToUpdate.length;
+            totalFailed += skippedCount;
+
+            if (featuresToUpdate.length === 0) {
+                if (onProgress) {
+                    onProgress({
+                        batchNum: currentChunkNum,
+                        totalBatches: totalChunks,
+                        processing: 0,
+                        totalUpdated,
+                        totalFailed,
+                        totalMatched,
+                        totalMissing: totalFailed
+                    });
+                }
+                continue;
             }
 
             let updatesXml = '';
-            for (const feature of chunk) {
+            let featuresInBatch = 0;
+
+            for (const feature of featuresToUpdate) {
                 let propertyXml = '';
-
-                // Identify keys that are part of the matching conditions to avoid updating them if desired, 
-                // but usually we just skip them to be safe.
                 const conditionDestKeys = conditions.map(c => c.dest);
-
                 for (const [key, value] of Object.entries(feature.properties || {})) {
                     const lowKey = key.trim().toLowerCase();
-                    if (['id', 'fid', 'ogc_fid', 'gid', 'objectid', 'geom', 'the_geom', 'geometry', 'wkb_geometry', 'shape', 'shp'].includes(lowKey) ||
+
+                    if (['fid', 'wkb_geometry', 'geom', 'shape', 'shp'].includes(lowKey) ||
                         conditionDestKeys.includes(key) ||
                         key.startsWith('_') ||
                         value === null ||
@@ -1490,10 +1613,20 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
                     propertyXml += `<wfs:Property><wfs:Name>${sanitizedKey}</wfs:Name><wfs:Value>${escapeXml(value)}</wfs:Value></wfs:Property>`;
                 }
 
+                if (geometryMapping && geometryMapping.destGeomField) {
+                    let geomToUpdate = null;
+                    if (geometryMapping.srcGeomField === '__geometry__') {
+                        geomToUpdate = feature.geometry;
+                    } else if (geometryMapping.srcGeomField && feature.properties?.[geometryMapping.srcGeomField]) {
+                        geomToUpdate = feature.geometry;
+                    }
+                    if (geomToUpdate) {
+                        propertyXml += buildGmlGeometry(geometryMapping.destGeomField, geomToUpdate, geometryMapping.srid || 4326);
+                    }
+                }
+
                 if (!propertyXml) continue;
 
-                // Build Filter
-                let filterInnerXml = '';
                 const conditionElements = conditions.map(cond => {
                     const val = feature.properties?.[cond.src];
                     if (val === undefined || val === null) return null;
@@ -1506,11 +1639,9 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
 
                 if (conditionElements.length === 0) continue;
 
-                if (conditionElements.length > 1) {
-                    filterInnerXml = `<ogc:And>${conditionElements.join('')}</ogc:And>`;
-                } else {
-                    filterInnerXml = conditionElements[0];
-                }
+                const filterInnerXml = conditionElements.length > 1
+                    ? `<ogc:And>${conditionElements.join('')}</ogc:And>`
+                    : conditionElements[0];
 
                 updatesXml += `
                 <wfs:Update typeName="${fullLayerName}">
@@ -1519,14 +1650,19 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
                         ${filterInnerXml}
                     </ogc:Filter>
                 </wfs:Update>`;
+                featuresInBatch++;
             }
 
-            if (!updatesXml) continue;
+            if (!updatesXml) {
+                totalFailed += chunk.length;
+                continue;
+            }
 
             const wfsTransactionXml = `
             <wfs:Transaction service="WFS" version="1.1.0"
             xmlns:wfs="http://www.opengis.net/wfs"
             xmlns:ogc="http://www.opengis.net/ogc"
+            xmlns:gml="http://www.opengis.net/gml"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
             xmlns:${prefix}="${prefix}">
                 ${updatesXml}
@@ -1534,9 +1670,9 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
 
             let attempt = 0;
             const maxRetries = 3;
-            let success = false;
+            let batchSuccess = false;
 
-            while (attempt <= maxRetries && !success) {
+            while (attempt <= maxRetries && !batchSuccess) {
                 try {
                     const response = await fetch(`${GEOSERVER_URL}/wfs`, {
                         method: 'POST',
@@ -1548,38 +1684,52 @@ export const batchUpdateFeaturesByProperty = async (fullLayerName, features, mat
                     if (response.ok) {
                         if (result.includes('ExceptionText')) {
                             console.error(`[Batch Update] GeoServer Error in chunk ${currentChunkNum}:`, result);
-                            return false;
+                            totalFailed += featuresInBatch;
+                            batchSuccess = true;
+                        } else {
+                            const updatedMatch = result.match(/totalUpdated[">]+?(\d+)/);
+                            const updatedCount = updatedMatch ? parseInt(updatedMatch[1]) : featuresInBatch;
+                            totalUpdated += updatedCount;
+                            batchSuccess = true;
                         }
-                        success = true;
                     } else if (response.status >= 500 && attempt < maxRetries) {
                         attempt++;
-                        console.warn(`[Batch Update] Chunk ${currentChunkNum} failed with ${response.status} (Attempt ${attempt}/${maxRetries + 1}). Retrying in ${attempt * 2}s...`);
+                        console.warn(`[Batch Update] Chunk ${currentChunkNum} failed with ${response.status} (Attempt ${attempt}/${maxRetries + 1}). Retrying...`);
                         await new Promise(r => setTimeout(r, attempt * 2000));
                         continue;
                     } else {
                         console.error(`[Batch Update] HTTP Error ${response.status} in chunk ${currentChunkNum}:`, result);
-                        return false;
+                        totalFailed += featuresInBatch;
+                        batchSuccess = true;
                     }
                 } catch (err) {
                     attempt++;
-                    console.warn(`[Batch Update] Chunk ${currentChunkNum} failed (Attempt ${attempt}/${maxRetries + 1}):`, err.message);
                     if (attempt > maxRetries) {
-                        console.error(`[Batch Update] Final failure at chunk ${currentChunkNum} after ${attempt} attempts`);
-                        throw err;
+                        console.error(`[Batch Update] Final failure at chunk ${currentChunkNum}`);
+                        totalFailed += featuresInBatch;
+                        batchSuccess = true;
+                    } else {
+                        await new Promise(r => setTimeout(r, attempt * 2000));
                     }
-                    await new Promise(r => setTimeout(r, attempt * 2000));
                 }
             }
 
-            // Delay between chunks
-            await new Promise(r => setTimeout(r, 500));
+            if (onProgress) {
+                onProgress({ batchNum: currentChunkNum, totalBatches: totalChunks, processing: 0, totalUpdated, totalFailed, totalMatched, totalMissing: totalFailed });
+            }
+
+            await new Promise(r => setTimeout(r, 300));
         }
 
-        return true;
+        if (geometryMapping && totalUpdated > 0) {
+            try { await recalculateLayerBBox(fullLayerName); } catch (e) { console.error("Layer extent update failed:", e); }
+        }
+
+        return { success: totalFailed === 0, totalUpdated, totalFailed, totalMatched };
     }
     catch (err) {
         console.error("Batch update failed:", err);
-        return false;
+        return { success: false, totalUpdated: 0, totalFailed: featuresToProcess?.length || 0, totalMatched: 0 };
     }
 };
 
@@ -1604,8 +1754,15 @@ export const GetGeoServerAllLayerDetails = async () => {
 
             if (!detailRes.ok) return null;
             const detailData = await detailRes.json();
+            const layerType = detailData.layer?.type; // "VECTOR" or "RASTER"
 
-            const resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${l.name}.json`;
+            let resourceUrl = '';
+            if (layerType === 'RASTER') {
+                resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/coverages/${l.name}.json`;
+            } else {
+                resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${l.name}.json`;
+            }
+
             const resourceRes = await fetch(resourceUrl,
                 {
                     headers: { 'Authorization': AUTH_HEADER }
@@ -1614,21 +1771,24 @@ export const GetGeoServerAllLayerDetails = async () => {
             if (!resourceRes.ok) return null;
             const resourceData = await resourceRes.json();
 
-            const featureType = resourceData.featureType;
-            const attrRaw = featureType.attributes?.attribute;
+            // Handle both FeatureType and Coverage structures
+            const resourceInfo = resourceData.featureType || resourceData.coverage;
+            if (!resourceInfo) return null;
+
+            const attrRaw = resourceInfo.attributes?.attribute || [];
             const attributes = Array.isArray(attrRaw) ? attrRaw : (attrRaw ? [attrRaw] : []);
 
             return {
                 id: l.name,
                 name: l.name,
                 fullPath: `${WORKSPACE}:${l.name}`,
-                srs: featureType.srs,
-                nativeSRS: featureType.nativeCRS,
-                store: featureType.store.name,
+                srs: resourceInfo.srs,
+                nativeSRS: resourceInfo.nativeCRS,
+                store: resourceInfo.store?.name || 'Unknown',
                 attributes: attributes,
-                geometryType: attributes.find(a =>
+                geometryType: layerType === 'RASTER' ? 'Raster' : (attributes.find(a =>
                     ['geom', 'the_geom', 'wkb_geometry', 'geometry', 'way'].includes(a.name.toLowerCase())
-                )?.binding?.split('.').pop() || 'Unknown'
+                )?.binding?.split('.').pop() || 'Unknown')
             };
         });
 

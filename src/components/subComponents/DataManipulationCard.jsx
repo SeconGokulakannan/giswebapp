@@ -24,6 +24,8 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     const [matchingConditions, setMatchingConditions] = useState([{ dest: '', src: '' }]); // For 'update' operation
     const [targetGeometryName, setTargetGeometryName] = useState('geom');
     const [targetGeometryType, setTargetGeometryType] = useState('Unknown');
+    const [isUpdateGeom, setIsUpdateGeom] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState(null); // { batchNum, totalBatches, totalUpdated, totalFailed }
 
     const fileInputRef = useRef(null);
 
@@ -43,6 +45,8 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
             setMatchingConditions([{ dest: '', src: '' }]);
             setTargetGeometryName('geom');
             setTargetGeometryType('Unknown');
+            setIsUpdateGeom(false);
+            setUpdateStatus(null);
         }
     }, [isOpen]);
 
@@ -155,7 +159,8 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                 const actualGeomName = geomAttr ? geomAttr.name : 'geom';
                 const actualGeomType = geomAttr ? geomAttr.geometryType : 'Unknown';
 
-                // Filter out the geometry column from the mapping list to avoid confusion/conflicts
+                // For 'update' mode: include geometry field so user can choose to map/ignore it
+                // For 'addon' mode: exclude geometry (handled separately)
                 const regularAttrs = detailedAttrs
                     .filter(a => !a.isGeometry)
                     .map(a => a.name);
@@ -164,7 +169,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                 setTargetGeometryName(actualGeomName);
                 setTargetGeometryType(actualGeomType);
 
-                // Auto-map based on exact name match
+                // Auto-map based on exact name match (for regular attrs only)
                 const initialMapping = {};
                 regularAttrs.forEach(dest => {
                     const match = sourceAttributes.find(src => src.toLowerCase() === dest.toLowerCase());
@@ -194,13 +199,20 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
     const handleExecute = async () => {
         setIsProcessing(true);
+        setUpdateStatus(null);
         try {
+            // Derive geometry mapping from the toggle switch
+            const geometryMapping = (operation === 'update' && isUpdateGeom)
+                ? { destGeomField: targetGeometryName, srcGeomField: '__geometry__', srid: 4326 }
+                : null;
+
             await handleDataManipulation({
                 operation,
                 targetLayer,
                 sourceData,
                 mapping,
-                matchingConditions: matchingConditions.filter(c => c.dest && c.src)
+                matchingConditions: matchingConditions.filter(c => c.dest && c.src),
+                geometryMapping
             });
             onClose();
         } catch (err) {
@@ -216,7 +228,7 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
 
     //#region Data Manipulation
     const handleDataManipulation = async (config) => {
-        const { operation, targetLayer, sourceData, mapping, matchingConditions } = config;
+        const { operation, targetLayer, sourceData, mapping, matchingConditions, geometryMapping } = config;
         const fullLayerName = targetLayer.fullName;
 
         try {
@@ -233,36 +245,46 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                     }
                 });
 
-                // 2. Ensure Matching Keys are present in properties
+                // 2. Ensure Matching Keys are present in properties (using their source field name)
                 if (operation === 'update' && matchingConditions) {
                     matchingConditions.forEach(cond => {
-                        // Even if not explicitly mapped for update, we need the value for the filter
-                        newProps[cond.src] = f.properties[cond.src];
+                        if (cond.src) newProps[cond.src] = f.properties[cond.src];
                     });
                 }
 
-                return {
-                    ...f,
-                    properties: newProps
-                };
+                return { ...f, properties: newProps };
             });
 
-            const onProgress = (current, total, batchSize) => {
-                toast.loading(`Processing ${operation === 'addon' ? 'Addon' : 'Update'}: Chunk ${current} of ${total} (${batchSize} features)...`, { id: toastId });
+            const onProgress = (status) => {
+                if (operation === 'update') {
+                    setUpdateStatus(status);
+                    toast.loading(
+                        `Batch ${status.batchNum}/${status.totalBatches} — Matched: ${status.totalMatched} | Updated: ${status.totalUpdated}`,
+                        { id: toastId }
+                    );
+                } else {
+                    toast.loading(`Processing Addon: Batch ${status.batchNum} of ${status.totalBatches}...`, { id: toastId });
+                }
             };
 
-            let success = false;
+            let result;
             if (operation === 'addon') {
-                success = await batchInsertFeatures(fullLayerName, mappedFeatures, targetGeometryName, '4326', targetGeometryType, onProgress);
+                const success = await batchInsertFeatures(fullLayerName, mappedFeatures, targetGeometryName, '4326', targetGeometryType,
+                    (current, total, batchSize) => onProgress({ batchNum: current, totalBatches: total, processing: batchSize, totalUpdated: 0, totalFailed: 0 }));
+                result = { success, totalUpdated: success ? mappedFeatures.length : 0, totalFailed: success ? 0 : mappedFeatures.length };
             } else {
-                success = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingConditions, onProgress);
+                result = await batchUpdateFeaturesByProperty(fullLayerName, mappedFeatures, matchingConditions, geometryMapping, onProgress);
             }
 
-            if (success) {
-                toast.success(`${operation === 'addon' ? 'Data Addon' : 'Data Update'} completed successfully!`, { id: toastId });
+            if (result.success) {
+                if (operation === 'update') {
+                    toast.success(`Update complete! ${result.totalUpdated} records updated (${result.totalMatched} total matches found).`, { id: toastId });
+                } else {
+                    toast.success(`Data Addon completed successfully!`, { id: toastId });
+                }
                 return true;
             } else {
-                toast.error("Operation failed. Some batches may have failed. Check server logs.", { id: toastId });
+                toast.error(`Operation completed with errors. Matched: ${result.totalMatched || 0} | Updated: ${result.totalUpdated} | Failed/Skipped: ${result.totalFailed}`, { id: toastId });
                 return false;
             }
         } catch (err) {
@@ -530,6 +552,48 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                 </div>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {/* Geometry Update Toggle - Update Mode Only (Moved to Top) */}
+                                    {operation === 'update' && (
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            background: isUpdateGeom ? 'rgba(99, 102, 241, 0.08)' : 'rgba(0,0,0,0.02)',
+                                            padding: '12px 16px', borderRadius: '10px',
+                                            border: `1px solid ${isUpdateGeom ? 'rgba(99, 102, 241, 0.3)' : 'var(--color-border)'}`,
+                                            marginBottom: '12px', transition: 'all 0.3s'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{
+                                                    width: '32px', height: '32px', borderRadius: '8px',
+                                                    background: isUpdateGeom ? 'rgba(99, 102, 241, 0.2)' : 'rgba(0,0,0,0.05)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    color: isUpdateGeom ? '#6366f1' : 'var(--color-text-muted)'
+                                                }}>
+                                                    <Layers size={16} />
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: isUpdateGeom ? '#6366f1' : 'var(--color-text)' }}>Update Geometry</div>
+                                                    <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>Apply coordinate changes to matching records</div>
+                                                </div>
+                                            </div>
+                                            <div
+                                                onClick={() => setIsUpdateGeom(!isUpdateGeom)}
+                                                style={{
+                                                    width: '40px', height: '22px', borderRadius: '11px',
+                                                    background: isUpdateGeom ? '#6366f1' : 'var(--color-border)',
+                                                    padding: '2px', cursor: 'pointer', transition: 'all 0.3s',
+                                                    position: 'relative'
+                                                }}
+                                            >
+                                                <div style={{
+                                                    width: '18px', height: '18px', borderRadius: '50%', background: 'white',
+                                                    transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                                                    transform: isUpdateGeom ? 'translateX(18px)' : 'translateX(0)',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                                }} />
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div style={{ display: 'flex', fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-muted)', padding: '0 10px' }}>
                                         <div style={{ flex: 1 }}>DESTINATION (LAYER)</div>
                                         <div style={{ width: '30px' }}></div>
@@ -577,33 +641,58 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
                                 You are about to {operation === 'addon' ? 'add new features to' : 'update existing features in'} <strong>{targetLayer?.name}</strong>.
                             </p>
 
-                            <div style={{
-                                background: 'var(--color-bg-secondary)', padding: '16px', borderRadius: '12px',
-                                textAlign: 'left', border: '1px solid var(--color-border)'
-                            }}>
-                                <div style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Source Features:</span>
-                                    <span style={{ fontWeight: 600 }}>{sourceData?.features.length}</span>
-                                </div>
-                                <div style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Mapped Fields:</span>
-                                    <span style={{ fontWeight: 600 }}>{Object.keys(mapping).length}</span>
-                                </div>
-                                {operation === 'update' && (
-                                    <div style={{ fontSize: '0.75rem', marginTop: '8px' }}>
-                                        <div style={{ color: 'var(--color-text-muted)', marginBottom: '4px' }}>Matching Conditions:</div>
-                                        {matchingConditions.map((cond, idx) => (
-                                            <div key={idx} style={{
-                                                display: 'flex', justifyContent: 'space-between', paddingLeft: '8px',
-                                                borderLeft: '2px solid #3b82f6', marginBottom: '2px'
-                                            }}>
-                                                <span style={{ fontSize: '0.7rem' }}>{cond.dest}</span>
-                                                <span style={{ fontSize: '0.7rem', color: '#3b82f6' }}>← {cond.src}</span>
-                                            </div>
-                                        ))}
+
+
+                            {isProcessing && updateStatus && operation === 'update' && (
+                                <div style={{
+                                    marginTop: '16px', background: 'var(--color-bg-secondary)', borderRadius: '12px',
+                                    padding: '14px', border: '1px solid var(--color-border)', textAlign: 'left'
+                                }}>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px', color: 'var(--color-text-muted)' }}>
+                                        Update Progress
                                     </div>
-                                )}
-                            </div>
+                                    {/* Progress Bar */}
+                                    <div style={{ height: '4px', background: 'var(--color-border)', borderRadius: '2px', marginBottom: '10px', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${Math.round((updateStatus.batchNum / updateStatus.totalBatches) * 100)}%`,
+                                            background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+                                            transition: 'width 0.4s ease',
+                                            borderRadius: '2px'
+                                        }} />
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                        <div style={{
+                                            background: 'rgba(59, 130, 246, 0.08)', borderRadius: '8px',
+                                            padding: '8px', textAlign: 'center'
+                                        }}>
+                                            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#3b82f6' }}>{updateStatus.totalMatched}</div>
+                                            <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Records Matched</div>
+                                        </div>
+                                        <div style={{
+                                            background: 'rgba(16, 185, 129, 0.08)', borderRadius: '8px',
+                                            padding: '8px', textAlign: 'center'
+                                        }}>
+                                            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#10b981' }}>{updateStatus.totalUpdated}</div>
+                                            <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Successfully Updated</div>
+                                        </div>
+                                        <div style={{
+                                            background: 'rgba(239, 68, 68, 0.08)', borderRadius: '8px',
+                                            padding: '8px', textAlign: 'center'
+                                        }}>
+                                            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#ef4444' }}>{updateStatus.totalFailed}</div>
+                                            <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Failed / Skipped</div>
+                                        </div>
+                                        <div style={{
+                                            background: 'rgba(107, 114, 128, 0.08)', borderRadius: '8px',
+                                            padding: '8px', textAlign: 'center'
+                                        }}>
+                                            <div style={{ fontSize: '1rem', fontWeight: 700 }}>{updateStatus.batchNum}/{updateStatus.totalBatches}</div>
+                                            <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Batch</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

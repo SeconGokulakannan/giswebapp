@@ -634,7 +634,7 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
                             </div>
 
                             <div className="form-group" style={{ marginBottom: '12px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-text-muted)', display: 'block', marginBottom: '5px' }}>Layer Name (System Name)</label>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-text-muted)', display: 'block', marginBottom: '5px' }}>Layer Name</label>
                                 <input
                                     type="text"
                                     className="elite-input"
