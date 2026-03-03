@@ -1822,12 +1822,12 @@ function GISMap() {
   const handleLoadStyle = async (layer) => {
     setActiveLayerTool('styles');
     setEditingStyleLayer(layer);
+
     toast.loading('Loading current styles...', { id: 'style-load' });
     try {
       const result = await getLayerStyle(layer.fullName);
 
       if (result && result.sldBody && result.isLayerSpecificStyle === true) {
-        // ── Fast path: layer already has its own dedicated style ─────────────────
         const { styleName, sldBody } = result;
         const parsed = parseSLD(sldBody);
         setStyleData({

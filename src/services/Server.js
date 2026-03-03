@@ -138,9 +138,6 @@ export const getLayerBBox = async (fullLayerName) => {
 
         const layerData = await layerResponse.json();
         const type = layerData.layer.type.toLowerCase(); // 'featuretype' or 'coverage'
-
-        // Fetch the actual resource (featuretype or coverage)
-        // We build the URL ourselves to avoid absolute URL / CORS issues
         const endpoint = type === 'raster' ? 'coverages' : 'featuretypes';
         const resourceUrl = `${GEOSERVER_URL}/rest/workspaces/${ws}/${endpoint}/${name}.json`;
         const resResponse = await fetch(resourceUrl,
@@ -489,7 +486,6 @@ export const getLayerAttributes = async (fullLayerName, includeDetails = false) 
                         const isGeom = p.type.startsWith('gml:') || p.type.includes('PropertyType') || p.name.toLowerCase() === 'geom' || p.name.toLowerCase() === 'the_geom' || p.name.toLowerCase() === 'geometry';
                         let geomType = 'Unknown';
                         if (isGeom && p.type.includes('PropertyType')) {
-                            // Extract 'MultiPolygon' from 'gml:MultiPolygonPropertyType'
                             geomType = p.type.split(':')[1].replace('PropertyType', '');
                         }
                         return {
@@ -500,8 +496,6 @@ export const getLayerAttributes = async (fullLayerName, includeDetails = false) 
                         };
                     });
                 }
-
-                // Return just names, but filter out common internal/geometry identifiers if not detailed
                 return props.map(p => p.name);
             }
         }
