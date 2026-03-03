@@ -26,6 +26,8 @@ export const reloadGeoServer = async () => {
 };
 
 
+
+
 export const searchLocation = async (query) => {
     if (!query) return null;
     try {
@@ -447,17 +449,27 @@ export const uploadIcon = async (file, workspace) => {
 
 export const getFeaturesForAttributeTable = async (layerId, fullLayerName) => {
     try {
-
         let maxFeatures = 100000;
         const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${fullLayerName}&outputFormat=application/json&maxFeatures=${maxFeatures}`;
         const response = await fetch(url, { headers: { 'Authorization': AUTH_HEADER } });
-        if (response.ok) {
+
+        if (!response.ok) {
+            console.warn(`[WFS] Fetch failed for ${fullLayerName}. Status: ${response.status}`);
+            return [];
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
             const data = await response.json();
             return data.features || [];
+        } else {
+            const text = await response.text();
+            console.warn(`[WFS] Received non-JSON response (${contentType}) for ${fullLayerName}. This usually happens when the layer is not correctly configured in GeoServer or WFS access is restricted.`);
+            return [];
         }
     }
     catch (err) {
-        console.error(`Failed to fetch features for attribute table (LayerID: ${layerId}):`, err);
+        console.error(`[WFS] Exception fetching features for ${fullLayerName}:`, err);
     }
     return [];
 };
@@ -923,6 +935,65 @@ export const addNewLayerConfig = async (properties) => {
     }
     catch (error) {
         console.error("Failed to create specialized layer configuration:", error);
+        return false;
+    }
+};
+
+// Initialize the "Layer" metadata table in GeoServer (REST API)
+export const initializeMetadataLayer = async () => {
+    try {
+        // 1. Find the PostGIS DataStore name
+        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores.json`,
+            {
+                headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' }
+            });
+
+        if (!dsRes.ok) throw new Error("Failed to find datastores");
+        const dsData = await dsRes.json();
+        const dataStoreName = dsData.dataStores?.dataStore?.[0]?.name;
+        if (!dataStoreName) throw new Error("No DataStore found to host metadata.");
+
+        // 2. Define the schema for the "Layer" metadata table (no geometry)
+        const attributes = [
+            { name: 'LayerLabel', binding: 'java.lang.String', nillable: true },
+            { name: 'LayerName', binding: 'java.lang.String', nillable: true },
+            { name: 'LayerSequenceNo', binding: 'java.lang.Integer', nillable: true },
+            { name: 'IsShowLayer', binding: 'java.lang.Boolean', nillable: true },
+            { name: 'LayerVisibilityOnLoad', binding: 'java.lang.Boolean', nillable: true },
+            { name: 'AttributeTableName', binding: 'java.lang.String', nillable: true }
+        ];
+
+        const body = {
+            featureType: {
+                name: 'Layer',
+                nativeName: 'Layer',
+                title: 'Layer Management Metadata',
+                srs: 'EPSG:4326',
+                attributes: {
+                    attribute: attributes
+                }
+            }
+        };
+
+        const ftRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${dataStoreName}/featuretypes`, {
+            method: 'POST',
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (ftRes.ok) {
+            await reloadGeoServer();
+            return true;
+        } else {
+            const errorText = await ftRes.text();
+            console.error("GeoServer init failed:", errorText);
+            return false;
+        }
+    } catch (err) {
+        console.error("Initialization failed:", err);
         return false;
     }
 };
@@ -1544,6 +1615,9 @@ export const GetGeoServerAllLayerDetails = async () => {
             const resourceData = await resourceRes.json();
 
             const featureType = resourceData.featureType;
+            const attrRaw = featureType.attributes?.attribute;
+            const attributes = Array.isArray(attrRaw) ? attrRaw : (attrRaw ? [attrRaw] : []);
+
             return {
                 id: l.name,
                 name: l.name,
@@ -1551,8 +1625,8 @@ export const GetGeoServerAllLayerDetails = async () => {
                 srs: featureType.srs,
                 nativeSRS: featureType.nativeCRS,
                 store: featureType.store.name,
-                attributes: featureType.attributes?.attribute || [],
-                geometryType: featureType.attributes?.attribute?.find(a =>
+                attributes: attributes,
+                geometryType: attributes.find(a =>
                     ['geom', 'the_geom', 'wkb_geometry', 'geometry', 'way'].includes(a.name.toLowerCase())
                 )?.binding?.split('.').pop() || 'Unknown'
             };
@@ -1567,33 +1641,7 @@ export const GetGeoServerAllLayerDetails = async () => {
     }
 };
 
-// Update Projection of Layer in Geoserver
-export const UpdateLayerProjection = async (layerName, newSrid) => {
-    try {
-        const body = {
-            featureType: {
-                srs: `EPSG:${newSrid}`,
-                projectionPolicy: 'FORCE_DECLARED'
-            }
-        };
 
-        const response = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json`,
-            {
-                method: 'PUT',
-                headers: {
-                    'Authorization': AUTH_HEADER,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
-
-        return response.ok;
-
-    } catch (err) {
-        console.error("SRS update failed:", err);
-        return false;
-    }
-};
 
 // Delete Acutal Layer From Geoserver
 export const DeleteLayerInGeoServer = async (layerName) => {

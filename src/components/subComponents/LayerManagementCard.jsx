@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fetchLayerStatuses, WORKSPACE } from '../../services/Server';
-import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server } from 'lucide-react';
+import { fetchLayerStatuses, WORKSPACE, initializeMetadataLayer } from '../../services/Server';
+import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server, Settings2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature, onUpdateFeatures, onSaveNewFeature, onRefresh, onOpenLoadTempModal, onOpenCreateLayer, onOpenDataManipulation, onOpenServerInfo }) => {
@@ -9,6 +9,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     const [pendingChanges, setPendingChanges] = useState({});
     const [newRows, setNewRows] = useState({});
     const [selectedIds, setSelectedIds] = useState([]);
+    const [isInitializing, setIsInitializing] = useState(false);
 
 
     const loadLayers = async () => {
@@ -31,21 +32,20 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     };
 
     const attributeKeys = useMemo(() => {
+        const redundant = ['LayerId', 'AttributeTableSchema', 'GeometryFieldName', 'GeometryType', 'SRId'];
         if (!data || data.length === 0) {
-            return ['LayerId', 'LayerName', 'LayerSequenceNo', 'IsShowLayer', 'LayerVisibilityOnLoad', 'GeometryType', 'GeometryFieldName', 'AttributeTableName', 'AttributeTableSchema', 'SRId', 'GeoServerStatus'];
+            return ['LayerLabel', 'LayerName', 'LayerSequenceNo', 'IsShowLayer', 'LayerVisibilityOnLoad', 'AttributeTableName', 'GeoServerStatus'];
         }
-        return [...Object.keys(data[0].properties), 'GeoServerStatus'];
+        return [...Object.keys(data[0].properties), 'GeoServerStatus'].filter(k => !redundant.includes(k));
     }, [data]);
 
     const displayKeys = useMemo(() => {
-        // User requested: LayerName, IsShowLayer, LayerSequenceNo, AttributeTableName, AttributeTableSchema, GeometryFieldName
-        // And hide LayerId
-        return ['LayerName', 'IsShowLayer', 'LayerSequenceNo', 'AttributeTableName', 'AttributeTableSchema', 'GeometryFieldName', 'GeoServerStatus'];
+        return ['LayerLabel', 'LayerName', 'LayerSequenceNo', 'IsShowLayer', 'LayerVisibilityOnLoad', 'AttributeTableName', 'GeoServerStatus'];
     }, []);
 
     const allConfigs = useMemo(() => {
         const rows = (data || []).map(f => {
-            const id = f.properties?.LayerId || f.id || f.properties?.id;
+            const id = f.id; // Correctly use WFS fid
             return {
                 id,
                 original: f.properties,
@@ -124,9 +124,9 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
         const newId = `new- ${Date.now()} `;
         const initialRow = {};
         attributeKeys.forEach(key => {
-            if (key === 'IsShowLayer') initialRow[key] = true;
-            else if (key === 'SRId') initialRow[key] = 4326;
-            else if (key === 'GeometryType') initialRow[key] = 'Point';
+            if (['IsShowLayer', 'LayerVisibilityOnLoad'].includes(key)) initialRow[key] = true;
+            else if (['LayerSequenceNo'].includes(key)) initialRow[key] = 0;
+            else if (['LayerLabel', 'LayerName', 'AttributeTableName'].includes(key)) initialRow[key] = '';
             else initialRow[key] = '';
         });
 
@@ -143,6 +143,25 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
             }
             setSelectedIds([]);
             if (onRefresh) onRefresh();
+        }
+    };
+
+    const HandleInitializeMetadata = async () => {
+        setIsInitializing(true);
+        const loadingToast = toast.loading("Initializing metadata layer...");
+        try {
+            const success = await initializeMetadataLayer();
+            if (success) {
+                toast.success("Metadata layer 'Layer' created successfully!", { id: loadingToast });
+                loadLayers();
+                if (onRefresh) onRefresh();
+            } else {
+                toast.error("Failed to initialize metadata layer. Check server configuration.", { id: loadingToast });
+            }
+        } catch (err) {
+            toast.error(`Error: ${err.message}`, { id: loadingToast });
+        } finally {
+            setIsInitializing(false);
         }
     };
 
@@ -177,31 +196,55 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                 </div>
 
                 {/* Header */}
-                <div style={{ padding: '12px 20px', background: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
-                            <Globe size={14} />Add Acting Layer
-                        </button>
-                        <button className="elite-btn primary" onClick={onOpenCreateLayer} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #06b6d4, #3b82f6)' }}>
-                            <LayersPlus size={14} />Publish New Layer
-                        </button>
-                        <button className="elite-btn primary" onClick={onOpenDataManipulation} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #f59e0b, #3b82f6)' }}>
-                            <ArrowRightLeft size={14} />Data Manipulation
-                        </button>
-                        <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)' }}>
-                            <Server size={14} />Server Info
-                        </button>
-                        <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem' }}>
-                            <Plus size={14} />Add Layer Config
-                        </button>
+                <div style={{ padding: '12px 20px', background: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {(!layerStatuses[`${WORKSPACE}:Layer`] && !layerStatuses['Layer']) ? (
+                            <button
+                                className="elite-btn primary"
+                                onClick={HandleInitializeMetadata}
+                                disabled={isInitializing}
+                                style={{
+                                    padding: '6px 14px',
+                                    fontSize: '0.8rem',
+                                    background: 'linear-gradient(135deg, #ef4444, #f59e0b)',
+                                    boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                {isInitializing ? <Loader2 size={14} className="animate-spin" /> : <Settings2 size={14} />}
+                                Initialize Metadata Layer (Required)
+                            </button>
+                        ) : (
+                            <>
+                                <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Globe size={14} />Add Acting Layer
+                                </button>
+                                <button className="elite-btn primary" onClick={onOpenCreateLayer} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #06b6d4, #3b82f6)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <LayersPlus size={14} />Publish New Layer
+                                </button>
+                                <button className="elite-btn primary" onClick={onOpenDataManipulation} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #f59e0b, #3b82f6)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <ArrowRightLeft size={14} />Data Manipulation
+                                </button>
+                                <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Server size={14} />Server Info
+                                </button>
+                                <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Plus size={14} />Add Layer Config
+                                </button>
+                            </>
+                        )}
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         {selectedIds.length > 0 && (
-                            <button className="elite-btn danger" onClick={DeleteLayerConfig} style={{ padding: '6px 12px' }}>
+                            <button className="elite-btn danger" onClick={DeleteLayerConfig} style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <Trash2 size={14} />Delete ({selectedIds.length})
                             </button>
                         )}
-                        <button className="elite-btn primary" onClick={RefreshGridData} style={{ gap: '6px' }}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Refresh</button>
+                        <button className="elite-btn primary" onClick={RefreshGridData} style={{ gap: '6px', display: 'flex', alignItems: 'center' }}>
+                            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Refresh
+                        </button>
                     </div>
                 </div>
 
@@ -251,7 +294,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                                             </div>
                                         );
                                     }
-                                    if (typeof value === 'boolean') return <div key={key} style={{ display: 'flex', justifyContent: 'center' }}><input type="checkbox" checked={!!value} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.checked, config.isNew)} /></div>;
+                                    if (typeof value === 'boolean' || ['IsShowLayer', 'LayerVisibilityOnLoad'].includes(key)) return <div key={key} style={{ display: 'flex', justifyContent: 'center' }}><input type="checkbox" checked={!!value} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.checked, config.isNew)} /></div>;
                                     return <input key={key} className="row-input" value={value ?? ''} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.value, config.isNew)} style={{ width: '100%', padding: '4px', textAlign: 'center' }} />;
                                 })}
                                 <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -275,7 +318,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     .row - input { background: var(--color - bg - secondary); border: 1px solid var(--color - border); border - radius: 4px; outline: none; }
                 .row - input:focus { border - color: var(--color - primary); }
 `}</style>
-        </div>
+        </div >
     );
 };
 

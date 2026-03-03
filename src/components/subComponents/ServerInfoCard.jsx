@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Server, Trash2, Globe, List, BookOpen, Save, Loader2, Search, Database, ShieldAlert, Layers } from 'lucide-react';
+import { GetGeoServerAllLayerDetails, DeleteLayerInGeoServer } from '../../services/Server';
+import { X, Server, Trash2, Globe, List, BookOpen, Save, Loader2, Search, Database, ShieldAlert, Layers, RefreshCw, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { GetGeoServerAllLayerDetails, UpdateLayerProjection, DeleteLayerInGeoServer } from '../../services/Server';
 
 const ServerInfoCard = ({ isOpen, onClose }) => {
 
@@ -9,7 +9,6 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedLayer, setSelectedLayer] = useState(null);
-    const [editingSrs, setEditingSrs] = useState({ name: '', value: '' });
 
     useEffect(() => {
         if (isOpen) {
@@ -17,32 +16,14 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
         }
     }, [isOpen]);
 
-    const GetLayerDetails = async () => {
+    const GetLayerDetails = async (isManual = false) => {
         setIsLoading(true);
         try {
             const data = await GetGeoServerAllLayerDetails();
             setLayers(data);
+            if (isManual) toast.success("Inventory list refreshed");
         } catch (err) {
             toast.error("Failed to fetch GeoServer details");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const UpdateProjection = async (layerName) => {
-        if (!editingSrs.value) return;
-        setIsLoading(true);
-        try {
-            const success = await UpdateLayerProjection(layerName, editingSrs.value);
-            if (success) {
-                toast.success(`SRS updated for ${layerName}`);
-                setEditingSrs({ name: '', value: '' });
-                GetLayerDetails();
-            } else {
-                toast.error("Update failed");
-            }
-        } catch (err) {
-            toast.error("Error updating SRS");
         } finally {
             setIsLoading(false);
         }
@@ -109,17 +90,30 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
                     </div>
 
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginRight: '20px' }}>
-                        <div style={{ position: 'relative', width: '250px' }}>
+                        <div style={{ position: 'relative', width: '220px' }}>
                             <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
                             <input
                                 type="text"
                                 className="elite-input"
-                                placeholder="Search layers or stores..."
+                                placeholder="Search..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 style={{ width: '100%', paddingLeft: '32px', height: '36px', fontSize: '0.8rem' }}
                             />
                         </div>
+
+                        <button
+                            className="elite-btn-secondary"
+                            onClick={() => GetLayerDetails(true)}
+                            disabled={isLoading}
+                            style={{ gap: '8px', height: '36px', padding: '0 12px' }}
+                        >
+                            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                            <span>Refresh</span>
+                        </button>
+
+
+
                         <button className="elite-modal-close" onClick={onClose}>
                             <X size={20} />
                         </button>
@@ -159,31 +153,10 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
                                                 </div>
                                             </td>
                                             <td style={{ padding: '14px 20px' }}>
-                                                {editingSrs.name === layer.name ? (
-                                                    <div style={{ display: 'flex', gap: '4px' }}>
-                                                        <input
-                                                            type="text"
-                                                            className="elite-input"
-                                                            value={editingSrs.value}
-                                                            placeholder="EPSG:XXXX"
-                                                            onChange={(e) => setEditingSrs({ ...editingSrs, value: e.target.value })}
-                                                            style={{ width: '80px', height: '28px', fontSize: '0.75rem' }}
-                                                        />
-                                                        <button onClick={() => UpdateProjection(layer.name)} style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '0 8px', cursor: 'pointer' }}><Save size={14} /></button>
-                                                        <button onClick={() => setEditingSrs({ name: '', value: '' })} style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '0 8px', cursor: 'pointer' }}><X size={14} /></button>
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <Globe size={12} color="#3b82f6" />
-                                                        <span>{layer.srs}</span>
-                                                        <button
-                                                            onClick={() => setEditingSrs({ name: layer.name, value: layer.srs.replace('EPSG:', '') })}
-                                                            style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <Globe size={12} color="#3b82f6" />
+                                                    <span>{layer.srs}</span>
+                                                </div>
                                             </td>
                                             <td style={{ padding: '14px 20px' }}>
                                                 <span style={{ fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '12px' }}>
