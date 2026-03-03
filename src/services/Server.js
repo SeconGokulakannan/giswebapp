@@ -802,31 +802,29 @@ export const QueryBuilderFilter = (conditions) => {
 export const fetchLayerStatuses = async () => {
     const statuses = {};
     try {
+        // 1. Get all LAYERS configured in GeoServer via REST
         const restUrl = `${GEOSERVER_URL}/rest/layers.json`;
-        const restResponse = await fetch(restUrl,
-            {
-                headers:
-                {
-                    'Authorization': AUTH_HEADER,
-                    'Accept': 'application/json'
-                }
-            });
+        const restResponse = await fetch(restUrl, {
+            headers: {
+                'Authorization': AUTH_HEADER,
+                'Accept': 'application/json'
+            }
+        });
 
         let configuredLayers = [];
         if (restResponse.ok) {
             const data = await restResponse.json();
             if (data && data.layers && data.layers.layer) {
+                // Return full names like "cite:layer_name"
                 configuredLayers = data.layers.layer.map(l => l.name);
             }
         }
+
+        // 2. Get all FEATURE TYPES active in WFS GetCapabilities
         const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`;
-        const wfsResponse = await fetch(wfsUrl,
-            {
-                headers:
-                {
-                    'Authorization': AUTH_HEADER
-                }
-            });
+        const wfsResponse = await fetch(wfsUrl, {
+            headers: { 'Authorization': AUTH_HEADER }
+        });
 
         let activeLayers = [];
         if (wfsResponse.ok) {
@@ -843,23 +841,21 @@ export const fetchLayerStatuses = async () => {
             }
         }
 
+        // 3. Map status: Configured + In GetCapabilities = "Active"
+        //    Configured but NOT in GetCapabilities = "Error"
+        //    Otherwise = "Inactive"
         configuredLayers.forEach(layerName => {
+            const shortName = layerName.includes(':') ? layerName.split(':').pop() : layerName;
+            const isActive = activeLayers.includes(layerName);
 
-            const normalizedLayerName = layerName.includes(':') ? layerName.split(':').pop() : layerName;
-            const isActive = activeLayers.some(al => {
-                const normalizedAl = al.includes(':') ? al.split(':').pop() : al;
-                return al === layerName || normalizedAl === normalizedLayerName;
-            });
+            const status = isActive ? 'Active' : 'Error';
 
-            if (isActive) {
-                statuses[layerName] = 'Valid Layer';
-            } else {
-                statuses[layerName] = 'Layer Error';
-            }
+            // Store both keys for flexible matching in the UI
+            statuses[layerName] = status;
+            statuses[shortName] = status;
         });
 
-    }
-    catch (err) {
+    } catch (err) {
         console.error('Failed to fetch layer statuses:', err);
     }
     return statuses;

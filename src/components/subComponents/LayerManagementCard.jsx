@@ -37,6 +37,12 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
         return [...Object.keys(data[0].properties), 'GeoServerStatus'];
     }, [data]);
 
+    const displayKeys = useMemo(() => {
+        // User requested: LayerName, IsShowLayer, LayerSequenceNo, AttributeTableName, AttributeTableSchema, GeometryFieldName
+        // And hide LayerId
+        return ['LayerName', 'IsShowLayer', 'LayerSequenceNo', 'AttributeTableName', 'AttributeTableSchema', 'GeometryFieldName', 'GeoServerStatus'];
+    }, []);
+
     const allConfigs = useMemo(() => {
         const rows = (data || []).map(f => {
             const id = f.properties?.LayerId || f.id || f.properties?.id;
@@ -146,7 +152,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
 
     if (!isOpen) return null;
 
-    const gridTemplate = `40px repeat(${attributeKeys.length}, minmax(130px, 1fr)) 40px`;
+    const gridTemplate = `40px repeat(${displayKeys.length}, minmax(130px, 1fr)) 40px`;
 
     return (
         <div className="layer-management-overlay" onClick={onClose}>
@@ -203,7 +209,7 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                 <div style={{ flex: 1, overflow: 'auto' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: '12px', padding: '10px 20px', background: 'var(--color-bg-secondary)', position: 'sticky', top: 0, zIndex: 10, minWidth: 'fit-content' }}>
                         <div />
-                        {attributeKeys.map(key => <div key={key} style={{ fontSize: '0.65rem', fontWeight: 800, textAlign: 'center' }}>{key}</div>)}
+                        {displayKeys.map(key => <div key={key} style={{ fontSize: '0.65rem', fontWeight: 800, textAlign: 'center' }}>{key}</div>)}
                         <div />
                     </div>
 
@@ -213,11 +219,37 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                                 <div onClick={() => toggleSelection(config.id)} style={{ width: '20px', height: '20px', borderRadius: '4px', border: `2px solid ${selectedIds.includes(config.id) ? 'var(--color-primary)' : 'var(--color-border)'} `, background: selectedIds.includes(config.id) ? 'var(--color-primary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                                     {selectedIds.includes(config.id) && <Check size={14} color="white" />}
                                 </div>
-                                {attributeKeys.map(key => {
+                                {displayKeys.map(key => {
                                     const value = config.current[key];
                                     if (key === 'GeoServerStatus') {
-                                        const status = layerStatuses[config.current['LayerName']] || 'Un-Available';
-                                        return <div key={key} style={{ textAlign: 'center' }}><span style={{ padding: '2px 8px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', fontSize: '0.75rem' }}>{status}</span></div>;
+                                        const layerName = config.current['LayerName'];
+                                        const fullLayerName = `${WORKSPACE}:${layerName}`;
+                                        // Try matching by full name first, then short name
+                                        const status = layerStatuses[fullLayerName] || layerStatuses[layerName] || 'Inactive';
+
+                                        const statusConfig = {
+                                            'Active': { bg: 'rgba(16, 185, 129, 0.1)', color: '#10b981' },
+                                            'Error': { bg: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' },
+                                            'Inactive': { bg: 'rgba(107, 114, 128, 0.1)', color: '#6b7280' }
+                                        };
+                                        const style = statusConfig[status] || statusConfig['Inactive'];
+
+                                        return (
+                                            <div key={key} style={{ textAlign: 'center' }}>
+                                                <span style={{
+                                                    padding: '2px 10px',
+                                                    borderRadius: '12px',
+                                                    background: style.bg,
+                                                    color: style.color,
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 600,
+                                                    display: 'inline-block',
+                                                    minWidth: '65px'
+                                                }}>
+                                                    {status}
+                                                </span>
+                                            </div>
+                                        );
                                     }
                                     if (typeof value === 'boolean') return <div key={key} style={{ display: 'flex', justifyContent: 'center' }}><input type="checkbox" checked={!!value} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.checked, config.isNew)} /></div>;
                                     return <input key={key} className="row-input" value={value ?? ''} onChange={(e) => UpdateLayerConfig(config.id, key, e.target.value, config.isNew)} style={{ width: '100%', padding: '4px', textAlign: 'center' }} />;
