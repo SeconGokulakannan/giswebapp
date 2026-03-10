@@ -63,6 +63,9 @@ const QueryBuilderCard = ({
         if (!isOpen) {
             setShowReportButton(false);
             setLastQuerySummary(null);
+            setQbConditions([{ layerId: '', field: '', operator: '=', value: '', logic: 'AND' }]);
+            setSelectedLayerIds([]);
+            setIsMinimized(false);
         }
     }, [isOpen]);
 

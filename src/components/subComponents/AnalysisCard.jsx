@@ -47,6 +47,19 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportR
         }
     }, [selectedLayerId, visibleLayers]);
 
+    // Reset all internal data when card is closed
+    useEffect(() => {
+        if (!isOpen) {
+            setIsPeriodic(false);
+            setDateProperty('');
+            setStartDate('');
+            setEndDate('');
+            setSelectedProperty('');
+            setMappings([{ value: '', color: PRESET_COLORS[0], operator: '=' }]);
+            setIsMinimized(false);
+        }
+    }, [isOpen]);
+
 
     const fetchAttributes = async () => {
         if (!activeLayer) return;

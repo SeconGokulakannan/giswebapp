@@ -36,6 +36,18 @@ const SpatialJoinCard = ({ isOpen, onClose, allGeoServerLayers = [], selectedLay
         }
     }, [isOpen, targetLayerId]);
 
+    // Reset state when card is closed
+    useEffect(() => {
+        if (!isOpen) {
+            setLayerA('');
+            setLayerB('');
+            setAttrA('');
+            setAttrB('');
+            setJoinType('union');
+            setIsMinimized(false);
+        }
+    }, [isOpen]);
+
     // Fetch attributes for Layer A when selected
     useEffect(() => {
         if (layerA) {

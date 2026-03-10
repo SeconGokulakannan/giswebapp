@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fetchLayerStatuses, WORKSPACE, initializeMetadataLayer } from '../../services/Server';
-import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server, Settings2 } from 'lucide-react';
+import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server, Settings2, Toolbox, HardDrive, FunnelPlus, BookPlus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature, onUpdateFeatures, onSaveNewFeature, onRefresh, onOpenLoadTempModal, onOpenCreateLayer, onOpenDataManipulation, onOpenServerInfo }) => {
@@ -219,19 +219,19 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
                         ) : (
                             <>
                                 <button className="elite-btn primary" onClick={onOpenLoadTempModal} style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <Globe size={14} />Add Acting Layer
+                                    <LayersPlus size={16} />Add Acting Layer
                                 </button>
                                 <button className="elite-btn primary" onClick={onOpenCreateLayer} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #06b6d4, #3b82f6)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <LayersPlus size={14} />Publish New Layer
+                                    <FunnelPlus size={16} />Publish New Layer
                                 </button>
                                 <button className="elite-btn primary" onClick={onOpenDataManipulation} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #f59e0b, #3b82f6)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <ArrowRightLeft size={14} />Data Manipulation
+                                    <HardDrive size={16} />Data Manipulation
                                 </button>
                                 <button className="elite-btn primary" onClick={onOpenServerInfo} style={{ padding: '6px 14px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #1e293b, #475569)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <Server size={14} />Server Info
+                                    <Toolbox size={16} />Server Info
                                 </button>
                                 <button className="elite-btn secondary" onClick={AddNewLayerConfig} style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <Plus size={14} />Add Layer Config
+                                    <BookPlus size={16} />Add Layer Config
                                 </button>
                             </>
                         )}
