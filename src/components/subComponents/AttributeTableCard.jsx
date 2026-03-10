@@ -102,7 +102,19 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                     resizable: true,
                     minWidth: 150,
                     flex: 1,
-                    cellClass: `at-data-cell ${key.toLowerCase().includes('date') || key.toLowerCase().includes('time') ? 'at-date-cell' : ''}`,
+                    cellClass: (params) => {
+                        const rowId = params.data.id;
+                        const defaultClasses = `at-data-cell ${key.toLowerCase().includes('date') || key.toLowerCase().includes('time') ? 'at-date-cell' : ''}`;
+                        let stateClass = '';
+
+                        if (rowId && String(rowId).startsWith('new-')) {
+                            stateClass = 'cell-dirty';
+                        } else if (pendingChanges[rowId] && pendingChanges[rowId].hasOwnProperty(params.colDef.field)) {
+                            stateClass = 'cell-dirty';
+                        }
+
+                        return `${defaultClasses} ${stateClass}`.trim();
+                    },
                     headerClass: 'at-header-cell',
                     // Editable if Edit Mode OR if it's a new row, AND not Read Only
                     editable: (params) => !isReadOnly && (isEditMode || (params.data.id && String(params.data.id).startsWith('new-'))),
@@ -112,21 +124,11 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
                         if (!isEditMode && !isNew) return false;
                         params.data[params.colDef.field] = params.newValue;
                         return true;
-                    },
-                    cellClass: (params) => {
-                        const rowId = params.data.id;
-                        if (rowId && String(rowId).startsWith('new-')) return 'cell-dirty'; // Mark all new row cells as dirty/editable visual
-                        if (pendingChanges[rowId] && pendingChanges[rowId].hasOwnProperty(params.colDef.field)) {
-                            return 'cell-dirty';
-                        }
-                        return '';
                     }
                 }))
             ];
 
             // 2. Build Row Data (Existing + New)
-
-            // Existing Features
             rows = data ? data.map((feature, idx) => {
                 const rowId = getFeatureId(feature) || `fallback-${idx}`;
                 const row = {
