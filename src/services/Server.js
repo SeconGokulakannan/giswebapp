@@ -73,10 +73,14 @@ export const fetchLegendRules = async (layerName) => {
         if (!response.ok) return null;
         const data = await response.json();
         if (data?.Legend?.[0]?.rules) {
-            return data.Legend[0].rules.map(rule => ({
-                name: rule.name || rule.title || 'Default',
-                title: rule.title || rule.name || 'Default',
-            }));
+            return data.Legend[0].rules.map(rule => {
+                const rawTitle = rule.title || rule.name || 'Default';
+                const finalTitle = rawTitle.toLowerCase() === 'rule1' ? 'default' : rawTitle;
+                return {
+                    name: rule.name || rule.title || 'Default',
+                    title: finalTitle,
+                };
+            });
         }
         return null;
     } catch (err) {

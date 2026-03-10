@@ -661,6 +661,29 @@ export const applyStyleChanges = (sldBody, props) => {
         }
     }
 
+    // ── Rename "rule1" to "default" ───────────────────────────────────────────
+    // This targets the primary base rule which GeoServer often names "rule1"
+    const firstRule = getEls(doc, 'Rule').find(r => {
+        const t = getTagText(r, 'Title');
+        const n = getTagText(r, 'Name');
+        // Only target if it's NOT one of our special rules (safety check)
+        return !t?.startsWith('Generated') && !n?.startsWith('Generated');
+    });
+
+    if (firstRule) {
+        let titleEl = getEl(firstRule, 'Title');
+        if (!titleEl) {
+            const ns = firstRule.namespaceURI || 'http://www.opengis.net/sld';
+            const prefix = firstRule.prefix ? `${firstRule.prefix}:` : '';
+            titleEl = doc.createElementNS(ns, `${prefix}Title`);
+            firstRule.insertBefore(titleEl, firstRule.firstChild);
+        }
+        const currentTitle = titleEl.textContent?.trim();
+        if (!currentTitle || currentTitle === 'rule1') {
+            titleEl.textContent = 'default';
+        }
+    }
+
     const conditions = props.conditions || [];
     if (conditions.length > 0) {
         const ftsEl = doc.getElementsByTagNameNS('*', 'FeatureTypeStyle')[0];

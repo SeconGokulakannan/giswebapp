@@ -115,6 +115,23 @@ const QueryBuilderCard = ({
             toast.error("Please select at least one layer.");
             return;
         }
+
+        // Final duplicate validation before running query
+        const hasDuplicates = qbConditions.some((cond, idx) => {
+            if (!cond.layerId || !cond.field || cond.value === '') return false;
+            return qbConditions.slice(0, idx).some(prev =>
+                prev.layerId === cond.layerId &&
+                prev.field === cond.field &&
+                prev.operator === cond.operator &&
+                String(prev.value).trim() === String(cond.value).trim()
+            );
+        });
+
+        if (hasDuplicates) {
+            toast.error("Duplicate conditions detected. Please remove them before running the query.", { id: 'qb-duplicate-condition' });
+            return;
+        }
+
         const layerFilters = buildLayerFilters();
         let appliedCount = 0;
         Object.entries(layerFilters).forEach(([id, cql]) => {
@@ -222,9 +239,37 @@ const QueryBuilderCard = ({
         setQbConditions(qbConditions.map((c, i) => {
             if (i === index) {
                 const newCond = { ...c, ...updates };
+
+                // Handle layer change: reset field to first available attribute
                 if (updates.layerId && updates.layerId !== c.layerId) {
                     newCond.field = layerAttributesMap[updates.layerId]?.[0] || '';
                 }
+
+                // DUPLICATE VALIDATION
+                // Check if this new state matches any OTHER condition in the list
+                const isComplete = newCond.layerId && newCond.field && newCond.value !== '';
+                if (isComplete) {
+                    const isDuplicate = qbConditions.some((other, idx) => {
+                        if (idx === index) return false; // Skip the one we are currently editing
+                        return (
+                            other.layerId === newCond.layerId &&
+                            other.field === newCond.field &&
+                            other.operator === newCond.operator &&
+                            String(other.value).trim() === String(newCond.value).trim()
+                        );
+                    });
+
+                    if (isDuplicate) {
+                        const layerName = availableLayers.find(l => l.id === newCond.layerId)?.name || 'Layer';
+                        toast.error(
+                            `Duplicate condition detected: ${layerName} > ${newCond.field} ${newCond.operator} ${newCond.value}`,
+                            { id: 'qb-duplicate-condition' }
+                        );
+                        // Reset the attribute field to force corrected selection
+                        return { ...newCond, field: '' };
+                    }
+                }
+
                 return newCond;
             }
             return c;

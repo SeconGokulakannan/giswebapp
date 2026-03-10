@@ -96,12 +96,53 @@ const AnalysisCard = ({ isOpen, onClose, visibleLayers, onRunAnalysis, onExportR
     };
 
     const updateMapping = (index, updates) => {
-        setMappings(mappings.map((m, i) => i === index ? { ...m, ...updates } : m));
+        setMappings(mappings.map((m, i) => {
+            if (i === index) {
+                const newMap = { ...m, ...updates };
+
+                // DUPLICATE VALIDATION
+                if (newMap.value !== '') {
+                    const isDuplicate = mappings.some((other, idx) => {
+                        if (idx === index) return false;
+                        return (
+                            other.operator === newMap.operator &&
+                            String(other.value).trim() === String(newMap.value).trim()
+                        );
+                    });
+
+                    if (isDuplicate) {
+                        toast.error(
+                            `Duplicate mapping detected: ${newMap.operator} ${newMap.value}`,
+                            { id: 'analysis-duplicate-mapping' }
+                        );
+                        // Reset the value field to force correction
+                        return { ...newMap, value: '' };
+                    }
+                }
+
+                return newMap;
+            }
+            return m;
+        }));
     };
 
     const handleRunAnalysis = () => {
         if (!selectedLayerId || !selectedProperty) {
             toast.error('Please select a layer and an attribute.');
+            return;
+        }
+
+        // Final duplicate validation
+        const hasDuplicates = mappings.some((m, idx) => {
+            if (m.value === '') return false;
+            return mappings.slice(0, idx).some(prev =>
+                prev.operator === m.operator &&
+                String(prev.value).trim() === String(m.value).trim()
+            );
+        });
+
+        if (hasDuplicates) {
+            toast.error("Duplicate mappings detected. Please remove them before running analysis.", { id: 'analysis-duplicate-mapping' });
             return;
         }
 

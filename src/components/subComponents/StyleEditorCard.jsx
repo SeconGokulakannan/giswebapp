@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Brush, Info, Plus, Trash2, Filter, Minimize2, Upload } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const DASH_STYLES = {
     'Solid': null,
@@ -70,7 +71,27 @@ const StyleEditorCard = ({
     const updateCondition = (idx, field, value) => {
         setConditions(prev => {
             const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
+            const updatedCondition = { ...next[idx], [field]: value };
+
+            // Check for duplicate rules (same attribute, operator, and value)
+            const isDuplicate = prev.some((cond, i) =>
+                i !== idx &&
+                cond.attribute === updatedCondition.attribute &&
+                cond.operator === updatedCondition.operator &&
+                String(cond.value).trim() === String(updatedCondition.value).trim() &&
+                cond.attribute !== '' // Only check if attribute is set
+            );
+
+            if (isDuplicate) {
+                toast.error(`Duplicate rule detected: ${updatedCondition.attribute} ${updatedCondition.operator} ${updatedCondition.value}`, {
+                    id: 'style-duplicate-rule'
+                });
+                // Reset the attribute field on the rule being edited to prevent saving duplicate
+                next[idx] = { ...updatedCondition, attribute: '' };
+            } else {
+                next[idx] = updatedCondition;
+            }
+
             return next;
         });
     };
@@ -109,6 +130,23 @@ const StyleEditorCard = ({
     };
 
     const handleSave = () => {
+        // Final sanity check for duplicates before saving
+        const seen = new Set();
+        const duplicates = conditions.filter(cond => {
+            if (!cond.attribute) return false;
+            const key = `${cond.attribute}|${cond.operator}|${String(cond.value).trim()}`;
+            if (seen.has(key)) return true;
+            seen.add(key);
+            return false;
+        });
+
+        if (duplicates.length > 0) {
+            toast.error("Please remove duplicate conditional rules before saving.", {
+                id: 'style-duplicate-rule'
+            });
+            return;
+        }
+
         onSave({ ...localProperties, conditions });
     };
 
@@ -614,11 +652,6 @@ const StyleEditorCard = ({
                                     ))}
                                 </div>
 
-                                {conditions.length > 0 && (
-                                    <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(99,102,241,0.06)', borderRadius: '8px', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                                        ℹ️ Features not matching any rule will use the default symbology above.
-                                    </div>
-                                )}
                             </div>
                         )}
 
