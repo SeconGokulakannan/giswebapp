@@ -303,12 +303,7 @@ function GISMap() {
   };
 
 
-  // ELITE: Cleanup Swipe when tool is changed
-  useEffect(() => {
-    if (activeLayerTool !== 'swipe' && swipeLayerIds.length > 0) {
-      setSwipeLayerIds([]);
-    }
-  }, [activeLayerTool]);
+
 
   // ELITE: Swipe Logic (Clipping) - Multi-layer support
   useEffect(() => {
@@ -1442,6 +1437,62 @@ function GISMap() {
 
     toast.success("Analysis reset. Client-side layers removed.");
   };
+
+  // ELITE: Cleanup Heavy Tools when switching between them
+  useEffect(() => {
+    // Determine which tools are NOT current
+    const isQB = activeLayerTool === 'querybuilder';
+    const isSJ = activeLayerTool === 'spatialjoin';
+    const isAnalysis = activeLayerTool === 'analysis';
+    const isStyles = activeLayerTool === 'styles';
+    const isSwipe = activeLayerTool === 'swipe';
+
+    // 1. Reset Query Builder if not active
+    // ELITE: Also clear CQL filters from all layers
+    if (!isQB) {
+      if (showQueryBuilder || queryingLayer || selectedQueryLayerIds.length > 0) {
+        setShowQueryBuilder(false);
+        setQueryingLayer(null);
+        setSelectedQueryLayerIds([]);
+      }
+
+      // Clear filters if any exist
+      const hasFilters = geoServerLayers.some(l => l.cqlFilter);
+      if (hasFilters) {
+        setGeoServerLayers(prev => prev.map(l => l.cqlFilter ? { ...l, cqlFilter: null } : l));
+        toast.success("Query filters cleared.", { id: 'qb-reset-toast' });
+      }
+    }
+
+    // 2. Reset Spatial Join if not active
+    if (!isSJ) {
+      if (showSpatialJoin || activeSpatialJoinLayerId || spatialJoinLayerIds.length > 0) {
+        setShowSpatialJoin(false);
+        setActiveSpatialJoinLayerId(null);
+        setSpatialJoinLayerIds([]);
+      }
+      // Call join-specific reset handles (clipping vectors, visibility)
+      if (Object.keys(spatialJoinVectorLayersRef.current).length > 0) {
+        handleResetSpatialJoin();
+      }
+    }
+
+    // 3. Reset Run Analysis if not active
+    if (!isAnalysis && (analysisConfig || Object.keys(analysisSLDMap).length > 0)) {
+      handleResetAnalysis();
+    }
+
+    // 4. Reset Layer Styles if not active
+    if (!isStyles && editingStyleLayer) {
+      setEditingStyleLayer(null);
+      setStyleData(null);
+    }
+
+    // 5. Reset Swipe if not active
+    if (!isSwipe && swipeLayerIds.length > 0) {
+      setSwipeLayerIds([]);
+    }
+  }, [activeLayerTool]);
 
   const hexToRgb = (hex) => {
     if (!hex) return { r: 99, g: 102, b: 241 };
