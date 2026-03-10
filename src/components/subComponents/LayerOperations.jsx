@@ -1,9 +1,8 @@
 ﻿import { useState, useEffect, useRef } from 'react';
-import { getLegendUrl } from '../../services/Server';
 import toast from 'react-hot-toast';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
-    Eye, Settings2, List, Info, MapPinned, Zap, Square, Play,
+    Eye, Settings2, Info, MapPinned, Zap, Square, Play,
     Palette, Repeat, Table, Plus, RefreshCw, DatabaseZap, Goal, X, Loader2,
     LayersPlus, FileChartPie, Pencil, CircleDot, Save,
     MousePointer2, BoxSelect, GripVertical, MousePointerClick,
@@ -13,7 +12,8 @@ import {
     FileJson,
     MessageSquareShare,
     SquaresSubtract,
-    Combine
+    Combine,
+    ZoomIn
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -39,7 +39,6 @@ const LayerOperations = ({
     const tools = [
         { icon: Eye, label: 'Visibility', id: 'visibility' },
         { icon: Settings2, label: 'Layer Density', id: 'density' },
-        { icon: List, label: ' Legend', id: 'legend' },
         { icon: MousePointerClick, label: 'Layer Action', id: 'action' },
         { icon: Info, label: 'Feature Info', id: 'info' },
         { icon: Palette, label: 'Layer Styles', id: 'styles' },
@@ -217,7 +216,7 @@ const LayerOperations = ({
                                     className={`action-btn ${isZoomed ? 'active' : ''}`}
                                     onClick={() => handleZoomToLayer(layer.id)}
                                 >
-                                    <Goal size={16} />
+                                    <ZoomIn size={16} />
                                 </button>
                             </Tooltip.Trigger>
                             <Tooltip.Portal>
@@ -247,21 +246,7 @@ const LayerOperations = ({
                     </div>
                 );
             }
-            case 'legend':
-                return (
-                    <div className="layer-legend-preview" style={{ marginLeft: 'auto' }}>
-                        {!layer.isLocal ? (
-                            <img
-                                src={getLegendUrl(layer.fullName)}
-                                alt={`${layer.name} legend`}
-                                style={{ maxHeight: '24px', maxWidth: '100px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
-                                onError={(e) => e.target.style.display = 'none'}
-                            />
-                        ) : (
-                            <div style={{ fontSize: '12px', opacity: 0.5, fontStyle: 'italic' }}>Local Layer</div>
-                        )}
-                    </div>
-                );
+
             case 'styles':
                 return (
                     <button
@@ -417,8 +402,13 @@ const LayerOperations = ({
                             <button
                                 className={`layer-tool-sidebar-btn ${activeLayerTool === tool.id ? 'active' : ''}`}
                                 onClick={() => {
-                                    setActiveLayerTool(activeLayerTool === tool.id ? null : tool.id);
-                                    // Style editing is now handled by GISMap.jsx
+                                    // Clicking the active tool falls back to 'visibility' (never null)
+                                    // so layer toggles are always visible as the default state.
+                                    setActiveLayerTool(
+                                        activeLayerTool === tool.id && tool.id !== 'visibility'
+                                            ? 'visibility'
+                                            : tool.id
+                                    );
                                 }}
                             >
                                 <tool.icon size={22} strokeWidth={1.5} />
@@ -622,7 +612,17 @@ const LayerOperations = ({
                     {(() => {
                         const sourceLayers = activeLayerTool === 'reorder' ? localLayers : serverLayers;
 
-                        const displayedLayers = (activeLayerTool === 'density' || activeLayerTool === 'legend' || activeLayerTool === 'info' || activeLayerTool === 'action' || activeLayerTool === 'styles' || activeLayerTool === 'attribute')
+                        const displayedLayers = (
+                            activeLayerTool === 'density' ||
+                            activeLayerTool === 'info' ||
+                            activeLayerTool === 'action' ||
+                            activeLayerTool === 'styles' ||
+                            activeLayerTool === 'attribute' ||
+                            activeLayerTool === 'swipe' ||
+                            activeLayerTool === 'querybuilder' ||
+                            activeLayerTool === 'spatialjoin' ||
+                            activeLayerTool === 'analysis'
+                        )
                             ? sourceLayers.filter(l => l.visible)
                             : sourceLayers;
 
@@ -793,7 +793,7 @@ const LayerOperations = ({
                                             )}
                                         </div>
                                         {displayedTempLayers.map((layer) => (
-                                            <div key={layer.id} className="layer-item-redesigned" style={{
+                                            <div key={layer.id} className={`layer-item-redesigned ${activeLayerTool === 'density' ? 'density-layout' : ''}`} style={{
                                                 borderLeft: (
                                                     (activeLayerTool === 'action' && (activeZoomLayerId === layer.id || activeHighlightLayerId === layer.id))
                                                 ) ? '3px solid #f59e0b' : 'none',

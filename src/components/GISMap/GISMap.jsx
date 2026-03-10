@@ -148,7 +148,7 @@ function GISMap() {
   const [geoServerLayers, setGeoServerLayers] = useState([]);
   const activeFeatureRef = useRef(null);
   const operationalLayersRef = useRef({}); // Track layer instances
-  const [activeLayerTool, setActiveLayerTool] = useState(null);
+  const [activeLayerTool, setActiveLayerTool] = useState('visibility');
   const [infoSelectionMode, setInfoSelectionMode] = useState('click'); // 'click' or 'drag'
 
   const [featureInfoResult, setFeatureInfoResult] = useState(null);
