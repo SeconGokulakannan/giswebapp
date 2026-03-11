@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, MessageSquareShare, Zap, Minimize2 } from 'lucide-react';
+import { X, Loader2, RefreshCw, MessageSquareShare, Zap, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getLayerAttributes } from '../../services/Server';
+import { getLayerAttributes } from './LayerOperations';
 import { PRESET_COLORS, GEOSERVER_URL, AUTH_HEADER } from '../../constants/AppConstants';
 
 // OL Imports for internal logic
@@ -276,4 +276,38 @@ const SpatialJoinCard = ({
     );
 };
 
+
+/**
+ * Hook to manage Spatial Join state.
+ */
+export const useSpatialJoinLogic = () => {
+    const [showSpatialJoin, setShowSpatialJoin] = useState(false);
+    const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
+    const [spatialJoinLayerIds, setSpatialJoinLayerIds] = useState([]);
+
+    const handleOpenSpatialJoin = (layerId) => {
+        setActiveSpatialJoinLayerId(layerId);
+        setShowSpatialJoin(true);
+    };
+
+    const handleToggleSpatialJoinLayer = (layerId) => {
+        setSpatialJoinLayerIds(prev =>
+            prev.includes(layerId) ? prev.filter(id => id !== layerId) : [...prev, layerId]
+        );
+    };
+
+    return {
+        showSpatialJoin,
+        setShowSpatialJoin,
+        activeSpatialJoinLayerId,
+        setActiveSpatialJoinLayerId,
+        spatialJoinLayerIds,
+        setSpatialJoinLayerIds,
+        handleOpenSpatialJoin,
+        handleToggleSpatialJoinLayer
+    };
+};
+
 export default SpatialJoinCard;
+
+

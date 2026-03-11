@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { X, Plus, Trash2, Database, Layers, Loader2, Info, Upload, File, FileType, CheckCircle2, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
 import GeoJSON from 'ol/format/GeoJSON';
 import KML from 'ol/format/KML';
 import { extend, createEmpty, isEmpty } from 'ol/extent';
-import { batchInsertFeatures, publishNewLayer, WORKSPACE, reloadGeoServer } from '../../services/Server';
+import { publishNewLayer, reloadGeoServer } from '../../services/Server';
+import { batchInsertFeatures } from './DataManipulationCard';
+import { WORKSPACE } from '../../constants/AppConstants';
 
 const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
     const [activeTab, setActiveTab] = useState('manual'); // 'manual' or 'upload'
@@ -844,3 +846,4 @@ const CreateLayerCard = ({ isOpen, onClose, handleLayerRefresh }) => {
 };
 
 export default CreateLayerCard;
+

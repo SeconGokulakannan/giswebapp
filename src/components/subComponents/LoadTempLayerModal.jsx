@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { X, Upload, FileJson, Loader2, Info, Plus, Trash2, CheckCircle2, AlertCircle, Layers, File, ArrowUp } from 'lucide-react';
+import { X, Upload, Loader2, Plus, Trash2, CheckCircle2, AlertCircle, Layers, File, ArrowUp } from 'lucide-react';
 import { parseShp, parseDbf, combine } from 'shpjs';
 import GeoJSON from 'ol/format/GeoJSON';
 import KML from 'ol/format/KML';
@@ -559,3 +559,4 @@ const LoadTempLayerModal = ({ isOpen, onClose, onLayerLoaded, existingNames = []
 };
 
 export default LoadTempLayerModal;
+

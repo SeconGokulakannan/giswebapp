@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { X, Table, Edit, Trash2, MapPin, Grid2x2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser, LayoutGrid } from 'lucide-react';
+import { X, Table, Edit, Trash2, Plus, ChevronsUpDownIcon, Play, Pause, Eraser, LayoutGrid } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 // Register AG Grid modules
@@ -540,3 +540,4 @@ const AttributeTableCard = ({ isOpen, onClose, layerName, layerFullName, layerId
 };
 
 export default AttributeTableCard;
+

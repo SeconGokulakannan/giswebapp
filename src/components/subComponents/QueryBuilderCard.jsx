@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, DatabaseZap, RefreshCw, Loader2, Filter, Trash2, Minimize2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getLayerAttributes, QueryBuilderFilter } from '../../services/Server';
+import { getLayerAttributes } from './LayerOperations';
 import { QB_OPERATORS, GEOSERVER_URL, AUTH_HEADER } from '../../constants/AppConstants';
 
 // OL Imports
@@ -299,4 +299,61 @@ const QueryBuilderCard = ({
     );
 };
 
+
+/**
+ * Hook to manage Query Builder state.
+ */
+export const useQueryBuilder = () => {
+    const [showQueryBuilder, setShowQueryBuilder] = useState(false);
+    const [queryingLayer, setQueryingLayer] = useState(null);
+    const [selectedQueryLayerIds, setSelectedQueryLayerIds] = useState([]);
+
+    const handleOpenQueryBuilder = (layer) => {
+        setQueryingLayer(layer);
+        setShowQueryBuilder(true);
+    };
+
+    const handleCloseQueryBuilder = () => {
+        setShowQueryBuilder(false);
+        setQueryingLayer(null);
+    };
+
+    return {
+        showQueryBuilder,
+        setShowQueryBuilder,
+        queryingLayer,
+        setQueryingLayer,
+        selectedQueryLayerIds,
+        setSelectedQueryLayerIds,
+        handleOpenQueryBuilder,
+        handleCloseQueryBuilder
+    };
+};
+
+
+/**
+ * Query Builder Utilities (Localised)
+ */
+
+export const QueryBuilderFilter = (conditions) => {
+    if (!conditions || conditions.length === 0) return null;
+    const validConditions = conditions.filter(c => c.field && c.value);
+    if (validConditions.length === 0) return null;
+    let cqlParts = [];
+    validConditions.forEach((cond) => {
+        let formattedValue = cond.value;
+        if (cond.operator === 'LIKE' || cond.operator === 'ILIKE') {
+            formattedValue = `'%${cond.value}%'`;
+        } else {
+            if (cond.value === '' || isNaN(cond.value)) {
+                formattedValue = `'${cond.value}'`;
+            }
+        }
+        cqlParts.push(`${cond.field} ${cond.operator} ${formattedValue}`);
+    });
+    return cqlParts.join(' AND ');
+};
+
 export default QueryBuilderCard;
+
+

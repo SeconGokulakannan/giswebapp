@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Activity, RefreshCw, Loader2, ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward, Minimize2, FileText } from 'lucide-react';
+import { X, Plus, Activity, RefreshCw, Loader2, Play, Pause, Minimize2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getLayerAttributes } from '../../services/Server';
+import { getLayerAttributes } from './LayerOperations';
 import { PRESET_COLORS, GEOSERVER_URL, AUTH_HEADER } from '../../constants/AppConstants';
 
 // OL Imports
@@ -346,4 +346,27 @@ const AnalysisCard = ({
     );
 };
 
+/**
+ * Hook to manage Analysis state and operations.
+ */
+export const useAnalysisLogic = () => {
+    const [analysisLayerIds, setAnalysisLayerIds] = useState([]);
+
+    const handleToggleAnalysisLayer = (layerId) => {
+        setAnalysisLayerIds(prev => {
+            if (prev.includes(layerId)) {
+                return [];
+            }
+            return [layerId];
+        });
+    };
+
+    return {
+        analysisLayerIds,
+        setAnalysisLayerIds,
+        handleToggleAnalysisLayer
+    };
+};
+
 export default AnalysisCard;
+

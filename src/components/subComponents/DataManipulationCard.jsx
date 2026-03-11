@@ -1,11 +1,11 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { X, Upload, File, Database, Layers, Loader2, Info, CheckCircle2, ChevronRight, Settings2, ArrowRightLeft, Plus, Save } from 'lucide-react';
+import { X, Upload, File, Database, Layers, Loader2, CheckCircle2, ChevronRight, Settings2, ArrowRightLeft, Plus, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseShp, parseDbf, combine } from 'shpjs';
 import GeoJSONFormat from 'ol/format/GeoJSON';
 import KMLFormat from 'ol/format/KML';
-import { getLayerAttributes } from '../../services/Server';
-import { batchInsertFeatures, batchUpdateFeaturesByProperty } from '../../services/Server';
+import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
+import { getLayerAttributes } from './LayerOperations';
 
 const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     const [activeStep, setActiveStep] = useState(1); // 1: Upload & Select, 2: Map Attributes, 3: Finalize
@@ -741,4 +741,72 @@ const DataManipulationCard = ({ isOpen, onClose, geoServerLayers }) => {
     );
 };
 
+
+/**
+ * Data Manipulation Utilities (Localised)
+ */
+
+export const batchInsertFeatures = async (fullLayerName, features, geometryName = 'geom', srid = '4326', targetGeometryType = 'Unknown', onProgress) => {
+    const batchSize = 100;
+    const totalBatches = Math.ceil(features.length / batchSize);
+    for (let i = 0; i < totalBatches; i++) {
+        const batch = features.slice(i * batchSize, (i + 1) * batchSize);
+        if (onProgress) onProgress(i + 1, totalBatches, batch.length);
+        const prefix = fullLayerName.split(':')[0];
+        let insertXml = '';
+        batch.forEach(f => {
+            let propsXml = '';
+            Object.entries(f.properties).forEach(([k, v]) => {
+                if (['id', 'fid', 'ogc_fid'].includes(k.toLowerCase()) || k.startsWith('_') || v === null || v === undefined) return;
+                propsXml += `<${prefix}:${k}>${String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</${prefix}:${k}>`;
+            });
+            const geom = f.geometry;
+            let gml = '';
+            if (geom.type === 'Point') gml = `<gml:Point srsName="EPSG:${srid}"><gml:pos>${geom.coordinates[0]} ${geom.coordinates[1]}</gml:pos></gml:Point>`;
+            else if (geom.type === 'LineString') gml = `<gml:LineString srsName="EPSG:${srid}"><gml:posList>${geom.coordinates.map(c => `${c[0]} ${c[1]}`).join(' ')}</gml:posList></gml:LineString>`;
+            else if (geom.type === 'Polygon') {
+                const poly = `<gml:Polygon srsName="EPSG:${srid}"><gml:exterior><gml:LinearRing><gml:posList>${geom.coordinates[0].map(c => `${c[0]} ${c[1]}`).join(' ')}</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>`;
+                gml = targetGeometryType.toLowerCase().includes('multi') ? `<gml:MultiPolygon srsName="EPSG:${srid}"><gml:polygonMember>${poly}</gml:polygonMember></gml:MultiPolygon>` : poly;
+            }
+            insertXml += `<${fullLayerName}>${propsXml}<${prefix}:${geometryName}>${gml}</${prefix}:${geometryName}></${fullLayerName}>`;
+        });
+        const transactionXml = `<wfs:Transaction service="WFS" version="1.1.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:gml="http://www.opengis.net/gml" xmlns:${prefix}="${prefix}"><wfs:Insert>${insertXml}</wfs:Insert></wfs:Transaction>`;
+        const res = await fetch(`${GEOSERVER_URL}/wfs`, { method: 'POST', headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' }, body: transactionXml });
+        if (!res.ok) return false;
+    }
+    return true;
+};
+
+export const batchUpdateFeaturesByProperty = async (fullLayerName, features, matchingConditions, geometryMapping, onProgress) => {
+    const batchSize = 50;
+    let totalUpdated = 0, totalMatched = 0, totalFailed = 0;
+    const totalBatches = Math.ceil(features.length / batchSize);
+    for (let i = 0; i < totalBatches; i++) {
+        const batch = features.slice(i * batchSize, (i + 1) * batchSize);
+        for (const f of batch) {
+            let filterXml = '';
+            matchingConditions.forEach(c => {
+                const val = f.properties[c.src];
+                filterXml += `<ogc:PropertyIsEqualTo><ogc:PropertyName>${c.dest}</ogc:PropertyName><ogc:Literal>${val}</ogc:Literal></ogc:PropertyIsEqualTo>`;
+            });
+            if (matchingConditions.length > 1) filterXml = `<ogc:And>${filterXml}</ogc:And>`;
+            let propsXml = '';
+            Object.entries(f.properties).forEach(([k, v]) => {
+                if (matchingConditions.find(c => c.src === k) || ['id', 'fid'].includes(k.toLowerCase())) return;
+                propsXml += `<wfs:Property><wfs:Name>${k}</wfs:Name><wfs:Value>${v}</wfs:Value></wfs:Property>`;
+            });
+            const transactionXml = `<wfs:Transaction service="WFS" version="1.1.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc"><wfs:Update typeName="${fullLayerName}">${propsXml}<ogc:Filter>${filterXml}</ogc:Filter></wfs:Update></wfs:Transaction>`;
+            const res = await fetch(`${GEOSERVER_URL}/wfs`, { method: 'POST', headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' }, body: transactionXml });
+            if (res.ok) {
+                const text = await res.text();
+                if (text.includes('totalUpdated="1"') || text.includes('>1</wfs:totalUpdated>')) { totalUpdated++; totalMatched++; }
+                else totalFailed++;
+            } else totalFailed++;
+        }
+        if (onProgress) onProgress({ batchNum: i + 1, totalBatches, totalUpdated, totalMatched, totalFailed });
+    }
+    return { success: true, totalUpdated, totalMatched, totalFailed };
+};
+
 export default DataManipulationCard;
+

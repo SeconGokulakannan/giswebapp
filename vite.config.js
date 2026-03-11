@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/geoserver': {
-        target: 'http://192.168.7.70:8080',
+        target: 'http://172.30.64.1:8080',
         changeOrigin: true,
         secure: false,
       },

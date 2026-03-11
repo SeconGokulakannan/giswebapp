@@ -4,11 +4,9 @@ import {
     PenTool,
     MapPin,
     Bookmark,
-    Cog,
     Moon,
     Sun,
     Printer,
-    Trash2,
     Lock,
     Unlock,
     DraftingCompass,
@@ -189,3 +187,5 @@ export const getNavSections = ({
             ]
         }
     ];
+
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GetGeoServerAllLayerDetails, DeleteLayerInGeoServer } from '../../services/Server';
-import { X, Server, Trash2, Globe, List, BookOpen, Save, Loader2, Search, Database, ShieldAlert, Layers, RefreshCw, RotateCcw } from 'lucide-react';
+import { X, Server, Trash2, Globe, List, BookOpen, Loader2, Search, Database, ShieldAlert, Layers, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ServerInfoCard = ({ isOpen, onClose }) => {
@@ -244,3 +244,4 @@ const ServerInfoCard = ({ isOpen, onClose }) => {
 };
 
 export default ServerInfoCard;
+

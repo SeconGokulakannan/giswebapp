@@ -10,14 +10,16 @@ import XYZ from 'ol/source/XYZ';
 import TileWMS from 'ol/source/TileWMS';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
-import { Draw, Modify, Snap, DragPan, DragZoom, DragBox } from 'ol/interaction';
-import { createRegularPolygon, createBox } from 'ol/interaction/Draw';
-import { always, platformModifierKeyOnly } from 'ol/events/condition';
+import { DragPan, DragBox } from 'ol/interaction';
+import { always } from 'ol/events/condition';
 import { Stroke, Style, Circle as CircleStyle, Fill } from 'ol/style';
 import Feature from 'ol/Feature';
+import { fromLonLat, toLonLat } from 'ol/proj';
+import Point from 'ol/geom/Point';
+import { defaults as defaultControls } from 'ol/control';
+import GeoJSON from 'ol/format/GeoJSON';
 
 // Sub-components
-import MapHeader from '../subComponents/MapHeader';
 import PrimarySidebar from '../subComponents/PrimarySidebar';
 import MapSidebar from '../subComponents/MapSidebar';
 import MapPanel from '../subComponents/MapPanel';
@@ -26,6 +28,10 @@ import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 import AttributeTableCard from '../subComponents/AttributeTableCard';
 import QueryBuilderCard from '../subComponents/QueryBuilderCard';
 import AnalysisCard from '../subComponents/AnalysisCard';
+import MeasureCard from '../subComponents/MeasureCard';
+import LocationCard from '../subComponents/LocationCard';
+import BookmarksCard from '../subComponents/BookmarksCard';
+import PrintCard from '../subComponents/PrintCard';
 import LayerManagementCard from '../subComponents/LayerManagementCard';
 import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
 import StyleEditorCard from '../subComponents/StyleEditorCard';
@@ -35,27 +41,50 @@ import DataManipulationCard from '../subComponents/DataManipulationCard';
 import ServerInfoCard from '../subComponents/ServerInfoCard';
 import { parseSLD, applyStyleChanges } from '../../utils/StyleUtils';
 import TopLegendPanel from '../subComponents/TopLegendPanel';
-import { getRenderPixel } from 'ol/render';
+import * as Tooltip from '@radix-ui/react-tooltip';
 
 //Map Utils
-import { styleFunction, highlightStyleFunction, modifyStyle, formatLength, formatArea, generateAnalysisSLD, mergeAnalysisRules, mapGridStyles } from '../../utils/mapUtils';
+import { mapGridStyles } from '../../utils/mapUtils';
 
 // Service from Server.js
+// Service Utilities (Localised)
+
+const getWMSSourceParams = (layerName) => ({
+  url: `${GEOSERVER_URL}/wms`,
+  params: { 'LAYERS': layerName, 'TILED': true },
+  serverType: 'geoserver',
+  transition: 0,
+});
+
 import {
-  searchLocation, getLayerAttributes, getFeaturesForAttributeTable, getGeoServerLayers, getWMSSourceParams, getLayerBBox,
-  getLayerStyle, updateLayerStyle, setLayerDefaultStyle, saveSequence, deleteFeature, updateFeature, SaveNewAttribute, addNewLayerConfig, publishNewLayer,
-  batchInsertFeatures, batchUpdateFeaturesByProperty, WORKSPACE, getLegendUrl, getLegendRuleUrl, fetchLegendRules, uploadIcon
+  getGeoServerLayers, saveSequence
 } from '../../services/Server';
+import {
+  getLayerAttributes, getFeaturesForAttributeTable,
+  getLayerStyle, updateLayerStyle, setLayerDefaultStyle, SaveNewAttribute,
+  getLegendUrl, getLegendRuleUrl, fetchLegendRules, uploadIcon
+} from '../subComponents/LayerOperations';
+import { WORKSPACE } from '../../constants/AppConstants';
 
 // Server Credentials
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
-// Cookie Helpers
-import { getCookie, setCookie, getUniqueCookieKey } from '../../utils/cookieHelpers';
 
-const DRAWING_SOLID_COLORS = [
-  '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#84cc16', '#f97316', '#06b6d4'
-];
+// Constants
+import { MAP_DEFAULT_ZOOM } from '../../constants/AppConstants';
+
+// Custom Hooks from subComponents
+import { useLayerVisibility, useLayerActions } from '../subComponents/LayerOperations';
+import { useSwipeTool } from '../subComponents/SwipeControl';
+import { useLayerManagement } from '../subComponents/LayerManagementCard';
+import { useSpatialJoinLogic } from '../subComponents/SpatialJoinCard';
+import { useAnalysisLogic } from '../subComponents/AnalysisCard';
+import { useQueryBuilder } from '../subComponents/QueryBuilderCard';
+import { useBaseMap } from '../subComponents/BaseMapSelector';
+import { useDrawingTools } from '../../hooks/useDrawingTools';
+import { useMeasureTools } from '../../hooks/useMeasureTools';
+import { useLocationTools } from '../../hooks/useLocationTools';
+import { useBookmarkTools } from '../../hooks/useBookmarkTools';
+import { usePrintTools } from '../../hooks/usePrintTools';
 
 function GISMap() {
 
@@ -63,38 +92,32 @@ function GISMap() {
   //map refs
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const drawInteractionRef = useRef(null);
-  const vectorSourceRef = useRef(null);
-  const vectorLayerRef = useRef(null);
   const selectionSourceRef = useRef(null);
   const selectionLayerRef = useRef(null);
+  const operationalLayersRef = useRef({}); // Track layer instances
 
 
   //map states
   const [coordinates, setCoordinates] = useState({ lon: 0, lat: 0 });
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(MAP_DEFAULT_ZOOM);
   const [scale, setScale] = useState('0 km');
 
 
 
-  //map tools
-  const [activeTool, setActiveTool] = useState(null);
-  const [baseLayer, setBaseLayer] = useState('osm');
-  const [measurementValue, setMeasurementValue] = useState('');
+  // Theme and BaseMap
+  const [theme, setTheme] = useState('light');
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  }, []);
+  
+  const { baseLayer, setBaseLayer } = useBaseMap(mapInstanceRef, theme);
   const [activePanel, setActivePanel] = useState(null);
   const [isPanelMinimized, setIsPanelMinimized] = useState(false);
-
-
-  const [isDrawingVisible, setIsDrawingVisible] = useState(true);
-  const [isMeasuring, setIsMeasuring] = useState(false);
-  const [hasDrawings, setHasDrawings] = useState(false);
-  const [hasMeasurements, setHasMeasurements] = useState(false);
-
-
-  //Map Directions
-  const [gotoLat, setGotoLat] = useState('');
-  const [gotoLon, setGotoLon] = useState('');
 
   // Map Lock 
   const [isLocked, setIsLocked] = useState(false);
@@ -113,42 +136,105 @@ function GISMap() {
     setActivePanel(null);
   };
 
+  const printTools = usePrintTools(mapRef, theme);
 
-  const [showDrawingLabels, setShowDrawingLabels] = useState(() => {
-    const saved = localStorage.getItem('showDrawingLabels');
-    return saved === null ? false : saved === 'true'; // Default to false
-  });
-
-
-  const [showAnalysisLabels, setShowAnalysisLabels] = useState(() => {
-    const saved = localStorage.getItem('showAnalysisLabels');
-    return saved === null ? false : saved === 'true'; // Default to false
-  });
-
-
-  const [measurementUnits, setMeasurementUnits] = useState(() => {
-    return localStorage.getItem('measurementUnits') || 'kilometers'; // Default to kilometers
-  });
-
-  const measurementUnitsRef = useRef(measurementUnits);
-  const showDrawingLabelsRef = useRef(showDrawingLabels);
-  const showAnalysisLabelsRef = useRef(showAnalysisLabels);
-  const [printTitle, setPrintTitle] = useState('');
-  const [printSubtitle, setPrintSubtitle] = useState('');
-  const [printFileName, setPrintFileName] = useState('Map');
-  const [exportFormat, setExportFormat] = useState('pdf');
-  const [geoServerLayers, setGeoServerLayers] = useState([]);
-  const activeFeatureRef = useRef(null);
-  const operationalLayersRef = useRef({}); // Track layer instances
+  // ELITE: Base tool states remaining in GISMap for simplicity or shared access
   const [activeLayerTool, setActiveLayerTool] = useState('visibility');
   const [infoSelectionMode, setInfoSelectionMode] = useState('click'); // 'click' or 'drag'
+  const activeLayerToolRef = useRef(activeLayerTool);
+  const infoSelectionModeRef = useRef(infoSelectionMode);
+
+  // ELITE: Use Custom Hooks for Modular Logic
+  const {
+    geoServerLayers, setGeoServerLayers,
+    localVectorLayers, setLocalVectorLayers,
+    handleToggleGeoLayer, handleToggleAllLayers,
+    handleLayerOpacityChange, handleToggleLayerQuery,
+    handleApplyLayerFilter, handleApplyMultiLayerFilters,
+    handleAddLocalVectorLayer
+  } = useLayerVisibility([], []);
+
+  // Sync refs for stable access in OL callbacks if needed
+  const geoServerLayersRef = useRef(geoServerLayers);
+  const localVectorLayersRef = useRef(localVectorLayers);
+
+  const {
+    activeZoomLayerId, setActiveZoomLayerId,
+    activeHighlightLayerId, setActiveHighlightLayerId,
+    isHighlightAnimating, setIsHighlightAnimating,
+    handleZoomToLayer, handleHighlightLayer
+  } = useLayerActions(mapInstanceRef, operationalLayersRef);
+
+  const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
+  const isHighlightAnimatingRef = useRef(isHighlightAnimating);
+
+  const {
+    swipeLayerIds, setSwipeLayerIds,
+    swipePosition, setSwipePosition,
+    handleToggleSwipe, handleToggleSwipeAll
+  } = useSwipeTool(mapInstanceRef, operationalLayersRef, geoServerLayers, localVectorLayers, handleToggleGeoLayer);
+
+  const {
+    showLayerManagement, setShowLayerManagement,
+    layerManagementData, setLayerManagementData,
+    isLayerManagementLoading, handleRefreshLayerManagement,
+    handleOpenLayerManagement,
+    handleDeleteLayerMetadata, handleUpdateLayerMetadata, handleSaveNewLayerMetadata
+  } = useLayerManagement();
+
+  const {
+    showSpatialJoin, setShowSpatialJoin,
+    activeSpatialJoinLayerId, setActiveSpatialJoinLayerId,
+    spatialJoinLayerIds, setSpatialJoinLayerIds,
+    handleOpenSpatialJoin, handleToggleSpatialJoinLayer
+  } = useSpatialJoinLogic(mapInstanceRef, geoServerLayers, setGeoServerLayers);
+
+  const {
+    analysisLayerIds,
+    handleToggleAnalysisLayer
+  } = useAnalysisLogic();
+
+  const {
+    showQueryBuilder, setShowQueryBuilder,
+    queryingLayer, setQueryingLayer,
+    selectedQueryLayerIds, setSelectedQueryLayerIds,
+  } = useQueryBuilder();
+
+  const bookmarkTools = useBookmarkTools(mapInstanceRef);
+
+  const saveWorkspace = () => {
+    // Save View State
+    const view = mapInstanceRef.current?.getView();
+    if (view) {
+      localStorage.setItem('gis_view', JSON.stringify({
+        center: view.getCenter(),
+        zoom: view.getZoom()
+      }));
+    }
+  };
+
+  const drawingTools = useDrawingTools(
+    mapInstanceRef,
+    geoServerLayers,
+    operationalLayersRef,
+    isLocked,
+    isHighlightAnimatingRef,
+    activeHighlightLayerIdRef,
+    saveWorkspace
+  );
+
+  const measureTools = useMeasureTools(
+    mapInstanceRef,
+    drawingTools.vectorSourceRef, // Shared vector source
+    drawingTools.vectorLayerRef,  // Shared vector layer for redraws
+    saveWorkspace
+  );
+
+  const locationTools = useLocationTools(mapInstanceRef, drawingTools);
 
   const [featureInfoResult, setFeatureInfoResult] = useState(null);
   const [featureInfoCoordinate, setFeatureInfoCoordinate] = useState(null);
   const [mapRenderKey, setMapRenderKey] = useState(0); // Forces card re-render on map move
-  const [activeZoomLayerId, setActiveZoomLayerId] = useState(null);
-  const [activeHighlightLayerId, setActiveHighlightLayerId] = useState(null);
-  const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
   const [selectedAttributeLayerId, setSelectedAttributeLayerId] = useState(null);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [isAttributeTableMinimized, setIsAttributeTableMinimized] = useState(false);
@@ -158,56 +244,21 @@ function GISMap() {
   const featureInfoOverlayRef = useRef(null);
   const popupElementRef = useRef(null);
   const dragBoxRef = useRef(null);
-  const activeLayerToolRef = useRef(activeLayerTool);
-  const infoSelectionModeRef = useRef(infoSelectionMode);
-  const geoServerLayersRef = useRef(geoServerLayers);
-  const activeHighlightLayerIdRef = useRef(activeHighlightLayerId);
-  const isHighlightAnimatingRef = useRef(isHighlightAnimating);
-  const [availableDrawings, setAvailableDrawings] = useState([]); // ELITE: For adding attributes
-
-  const [localVectorLayers, setLocalVectorLayers] = useState([]);
-  const localVectorLayersRef = useRef(localVectorLayers);
   const [showLoadTempModal, setShowLoadTempModal] = useState(false);
 
-  // Query Builder State
-  const [showQueryBuilder, setShowQueryBuilder] = useState(false);
-  const [queryingLayer, setQueryingLayer] = useState(null);
-  const [selectedQueryLayerIds, setSelectedQueryLayerIds] = useState([]);
-
-  // Spatial Join State
-  const [showSpatialJoin, setShowSpatialJoin] = useState(false);
-  const [activeSpatialJoinLayerId, setActiveSpatialJoinLayerId] = useState(null);
-  const [spatialJoinLayerIds, setSpatialJoinLayerIds] = useState([]);
+  // Modal and Panel states
   const [showCreateLayerModal, setShowCreateLayerModal] = useState(false);
   const [showDataManipulationModal, setShowDataManipulationModal] = useState(false);
   const [showServerInfoModal, setShowServerInfoModal] = useState(false);
-  const spatialJoinVectorLayersRef = useRef({});
-  const spatialJoinWMSVisibilitiesRef = useRef({});
 
-  const handleOpenSpatialJoin = (layerId) => {
-    setActiveSpatialJoinLayerId(layerId);
-    setShowSpatialJoin(true);
-  };
 
-  const handleToggleSpatialJoinLayer = (layerId) => {
-    setSpatialJoinLayerIds(prev =>
-      prev.includes(layerId) ? prev.filter(id => id !== layerId) : [...prev, layerId]
-    );
-  };
-
-  // Analysis State
-  const [analysisLayerIds, setAnalysisLayerIds] = useState([]);
+  // Analysis and Style states
   const [showTopLegend, setShowTopLegend] = useState(false);
   const [editingStyleLayer, setEditingStyleLayer] = useState(null);
   const [styleData, setStyleData] = useState(null);
   const [isSavingStyle, setIsSavingStyle] = useState(false);
   const [layerStyleAttributes, setLayerStyleAttributes] = useState([]);
-  const drawingColorIndexRef = useRef(0);
-  const [bookmarks, setBookmarks] = useState(() => {
-    const key = getUniqueCookieKey('gis_bookmarks');
-    const saved = getCookie(key);
-    return saved || [];
-  });
+
 
   useEffect(() => {
     activeLayerToolRef.current = activeLayerTool;
@@ -244,190 +295,12 @@ function GISMap() {
       viewport.style.cursor = '';
     }
   }, [activeLayerTool, infoSelectionMode, isLocked, mapReady]);
-  // ELITE: Swipe Tool State - Multi-layer support
-  const [swipeLayerIds, setSwipeLayerIds] = useState([]); // Array of layer IDs
-  const [swipePosition, setSwipePosition] = useState(50); // Percentage
-  const swipeLayersRef = useRef(new Map()); // Map of layerId -> olLayer
-
-  // ELITE: Toggle Swipe Mode - Multi-layer support
-  const handleToggleSwipe = (layerId) => {
-    setSwipeLayerIds(prev => {
-      const isSelected = prev.includes(layerId);
-      if (isSelected) {
-        return prev.filter(id => id !== layerId);
-      } else {
-        // Auto-enable visibility if the layer is currently hidden
-        const layerData = [...geoServerLayers, ...localVectorLayers].find(l => l.id === layerId);
-        if (layerData && !layerData.visible) {
-          handleToggleGeoLayer(layerId);
-        }
-        return [...prev, layerId];
-      }
-    });
-  };
-
-  // ELITE: Toggle All Visible Layers for Swipe
-  const handleToggleSwipeAll = (turnOn) => {
-    const visibleLayers = geoServerLayers.filter(l => l.visible);
-    if (turnOn) {
-      setSwipeLayerIds(visibleLayers.map(l => l.id));
-    } else {
-      setSwipeLayerIds([]);
-    }
-  };
-
-  const handleToggleAnalysisLayer = (layerId) => {
-    setAnalysisLayerIds(prev => {
-      // If already selected, deselect it
-      if (prev.includes(layerId)) {
-        return [];
-      }
-      // Otherwise, select ONLY this layer
-      return [layerId];
-    });
-  };
 
 
 
 
-  // ELITE: Swipe Logic (Clipping) - Multi-layer support
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
 
-    // Safety check for ids
-    const activeIds = Array.isArray(swipeLayerIds) ? swipeLayerIds : [];
 
-    // Always rebuild the LIST of layers from source of truth (IDs)
-    // using an Array is safer than Map for iteration in some environments
-    const layersToClip = [];
-    activeIds.forEach(id => {
-      const olLayer = operationalLayersRef.current[id];
-      if (olLayer) {
-        layersToClip.push(olLayer);
-      }
-    });
-
-    // Update global ref for external access (e.g. debugging) - keep as Map for consistency elsewhere if needed, 
-    // or better yet, just store the array to match the local usage.
-    // For now, let's keep the ref as a Map to avoid breaking other potential usages, 
-    // but populate it from our safe array.
-    const newMap = new Map();
-    layersToClip.forEach(layer => {
-      // We need the ID to set it in the map, but we only have the layer here.
-      // Actually, let's just update the ref to be a Map for compatibility with existing code that might expect it,
-      // but we won't use the ref validation logic anymore.
-      const id = Object.keys(operationalLayersRef.current).find(key => operationalLayersRef.current[key] === layer);
-      if (id) newMap.set(id, layer);
-    });
-    swipeLayersRef.current = newMap;
-
-    if (layersToClip.length === 0) {
-      map.render();
-      return;
-    }
-
-    const handlePreRender = (event) => {
-      const ctx = event.context;
-      const width = ctx.canvas.width * (swipePosition / 100);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, width, ctx.canvas.height);
-      ctx.clip();
-    };
-
-    const handlePostRender = (event) => {
-      const ctx = event.context;
-      ctx.restore();
-    };
-
-    // Attach listeners to active swipe layers
-    layersToClip.forEach((layer) => {
-      layer.on('prerender', handlePreRender);
-      layer.on('postrender', handlePostRender);
-      if (layer instanceof VectorLayer) {
-        layer.changed(); // Force vector layers to re-render for clipping
-      } else {
-        layer.getSource().changed(); // Tile layers also need refresh
-      }
-    });
-
-    map.render();
-
-    // Cleanup: Remove listeners from the SAME layers we attached to
-    return () => {
-      layersToClip.forEach((layer) => {
-        layer.un('prerender', handlePreRender);
-        layer.un('postrender', handlePostRender);
-        if (layer instanceof VectorLayer) {
-          layer.changed();
-        } else {
-          layer.getSource().changed();
-        }
-      });
-      map.render();
-    };
-  }, [swipeLayerIds, swipePosition, geoServerLayers, localVectorLayers]);
-
-  const saveWorkspace = () => {
-    if (!vectorSourceRef.current || !mapInstanceRef.current) return;
-
-    // Save Settings
-    localStorage.setItem('measurementUnits', measurementUnitsRef.current);
-    localStorage.setItem('showDrawingLabels', showDrawingLabelsRef.current);
-    localStorage.setItem('showAnalysisLabels', showAnalysisLabelsRef.current);
-    localStorage.setItem('theme', theme);
-
-    // Save View State
-    const view = mapInstanceRef.current.getView();
-    localStorage.setItem('gis_view', JSON.stringify({
-      center: view.getCenter(),
-      zoom: view.getZoom()
-    }));
-
-    // Save Bookmarks
-    const key = getUniqueCookieKey('gis_bookmarks');
-    setCookie(key, bookmarks, 7);
-  };
-
-  // Sync unit ref and trigger redraw when state changes
-  useEffect(() => {
-    measurementUnitsRef.current = measurementUnits;
-    showDrawingLabelsRef.current = showDrawingLabels;
-    showAnalysisLabelsRef.current = showAnalysisLabels;
-    saveWorkspace();
-
-    // Refresh map labels instantly
-    if (vectorLayerRef.current) {
-      vectorLayerRef.current.changed();
-    }
-
-    // Refresh active interaction labels
-    if (drawInteractionRef.current && drawInteractionRef.current.getOverlay) {
-      drawInteractionRef.current.getOverlay().getSource().getFeatures().forEach(f => f.changed());
-    }
-    // Update dashboard badge value if measuring
-    if (activeFeatureRef.current) {
-      const geom = activeFeatureRef.current.getGeometry();
-      const value = geom instanceof LineString ?
-        formatLength(geom, measurementUnits) :
-        formatArea(geom, measurementUnits);
-      setMeasurementValue(value);
-    }
-  }, [measurementUnits, showDrawingLabels, showAnalysisLabels]);
-
-  // ELITE: Debounced background save
-  const saveTimeoutRef = useRef(null);
-  const triggerAutoSave = () => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(saveWorkspace, 1000);
-  };
-
-  // ELITE: Auto-save when bookmarks change
-  useEffect(() => {
-    triggerAutoSave();
-  }, [bookmarks]);
 
   // Initialize theme from localStorage
   // ELITE: Background Layer Loader
@@ -572,190 +445,10 @@ function GISMap() {
     });
   }, [geoServerLayers, localVectorLayers]);
 
-  const handleToggleGeoLayer = (layerId) => {
-    setGeoServerLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, visible: !l.visible } : l
-    ));
-    setLocalVectorLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, visible: !l.visible } : l
-    ));
-  };
-
-  const handleToggleLayerQuery = (layerId) => {
-    setGeoServerLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, queryable: !l.queryable } : l
-    ));
-    setLocalVectorLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, queryable: !l.queryable } : l
-    ));
-  };
-
-  const handleToggleAllLayers = (turnOn) => {
-    setGeoServerLayers(prev => prev.map(l => ({ ...l, visible: turnOn })));
-    setLocalVectorLayers(prev => prev.map(l => ({ ...l, visible: turnOn })));
-  };
-
-  const handleLayerOpacityChange = (layerId, newOpacity) => {
-    setGeoServerLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, opacity: parseFloat(newOpacity) } : l
-    ));
-    setLocalVectorLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, opacity: parseFloat(newOpacity) } : l
-    ));
-  };
 
 
 
   //#region Zoom / Highlight / 
-  const handleZoomToLayer = async (layerId) => {
-    if (!mapInstanceRef.current) return;
-    const layer = [...geoServerLayers, ...localVectorLayers].find(l => l.id === layerId);
-    if (!layer) return;
-
-    // Set as the active selected layer
-    setActiveZoomLayerId(layerId);
-    setActiveHighlightLayerId(null); // Clear other tool's selection
-
-    try {
-      if (layer.isLocal) {
-        const olLayer = operationalLayersRef.current[layer.id];
-        if (olLayer) {
-          const source = olLayer.getSource();
-          const extent = source.getExtent();
-
-          // Check if extent is valid (not infinite and not empty)
-          if (extent && !isEmpty(extent) && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
-            // Check for empty extent
-            mapInstanceRef.current.getView().fit(extent, {
-              padding: [50, 50, 50, 50],
-              duration: 1000,
-              maxZoom: 16
-            });
-          } else {
-            toast.error('Cannot zoom: Layer is empty or has invalid extent.');
-          }
-        }
-        return;
-      }
-
-      // Check for saved extent first
-      if (layer.extent) {
-        const extentPart = layer.extent.split(',').map(Number);
-        if (extentPart.length === 4 && extentPart.every(val => isFinite(val)) && !isEmpty(extentPart)) {
-          mapInstanceRef.current.getView().fit(extentPart, {
-            padding: [50, 50, 50, 50],
-            maxZoom: 16,
-            duration: 1000
-          });
-          return;
-        }
-      }
-
-      const bbox = await getLayerBBox(layer.fullName);
-      if (bbox && bbox.every(val => isFinite(val))) {
-        // [minx, miny, maxx, maxy]
-        const p1 = fromLonLat([bbox[0], bbox[1]]);
-        const p2 = fromLonLat([bbox[2], bbox[3]]);
-        const extent = [p1[0], p1[1], p2[0], p2[1]];
-
-        // Double check transformed extent
-        if (!isEmpty(extent) && !extent.some(val => !isFinite(val))) {
-          mapInstanceRef.current.getView().fit(extent, {
-            padding: [50, 50, 50, 50],
-            maxZoom: 16,
-            duration: 1000
-          });
-        } else {
-          toast.error('Invalid layer extent (empty or infinite).');
-        }
-      } else {
-        toast.error('Layer extent not available.');
-      }
-    } catch (err) {
-      console.error('Zoom error:', err);
-      toast.error(`Zoom failed: ${err.message}`);
-    }
-  };
-
-
-  const handleHighlightLayer = async (layerId) => {
-    if (!mapInstanceRef.current) return;
-    const allLayers = [...geoServerLayers, ...localVectorLayers];
-    const layer = allLayers.find(l => l.id === layerId);
-    if (!layer) return;
-
-    // Toggle logic
-    if (activeHighlightLayerId === layerId && isHighlightAnimating) {
-      // STOP animating
-      setIsHighlightAnimating(false);
-      // Reset opacity to original
-      const olLayer = operationalLayersRef.current[layerId];
-      if (olLayer) olLayer.setOpacity(layer.opacity || 1);
-      return;
-    }
-
-    // START animating (or switch to new layer)
-    // If switching, reset previous layer first
-    if (activeHighlightLayerId && activeHighlightLayerId !== layerId) {
-      const prevLayer = operationalLayersRef.current[activeHighlightLayerId];
-      const prevLayerData = allLayers.find(l => l.id === activeHighlightLayerId);
-      if (prevLayer && prevLayerData) prevLayer.setOpacity(prevLayerData.opacity || 1);
-    }
-
-    setActiveHighlightLayerId(layerId);
-    setIsHighlightAnimating(true);
-    setActiveZoomLayerId(null);
-
-    try {
-      if (layer.isLocal) {
-        // Local vector layer: read extent from OL source directly
-        const olLayer = operationalLayersRef.current[layerId];
-        if (olLayer) {
-          const source = olLayer.getSource();
-          const extent = source.getExtent();
-
-          if (extent && !isEmpty(extent) && !extent.some(val => !isFinite(val)) && extent[0] !== Infinity) {
-            mapInstanceRef.current.getView().fit(extent, {
-              padding: [50, 50, 50, 50],
-              maxZoom: 14,
-              duration: 800
-            });
-          }
-        }
-      } else {
-        // Check for saved extent first
-        if (layer.extent) {
-          const extentPart = layer.extent.split(',').map(Number);
-          if (extentPart.length === 4 && extentPart.every(val => isFinite(val))) {
-            mapInstanceRef.current.getView().fit(extentPart, {
-              padding: [50, 50, 50, 50],
-              maxZoom: 14,
-              duration: 800
-            });
-            return;
-          }
-        }
-
-        const bbox = await getLayerBBox(layer.fullName);
-        if (bbox && bbox.every(val => isFinite(val))) {
-          // Pan to the layer
-          const p1 = fromLonLat([bbox[0], bbox[1]]);
-          const p2 = fromLonLat([bbox[2], bbox[3]]);
-          const extent = [p1[0], p1[1], p2[0], p2[1]];
-
-          if (!isEmpty(extent) && !extent.some(val => !isFinite(val))) {
-            mapInstanceRef.current.getView().fit(extent, {
-              padding: [50, 50, 50, 50],
-              maxZoom: 14,
-              duration: 800
-            });
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Highlight error:', err);
-    }
-  };
 
   //#endregion
 
@@ -775,31 +468,6 @@ function GISMap() {
     return false;
   };
 
-  const handleApplyLayerFilter = (layerId, cqlFilter) => {
-    setGeoServerLayers(prev => prev.map(l =>
-      l.id === layerId ? { ...l, cqlFilter: cqlFilter } : l
-    ));
-
-    // Also update the currently querying layer if it matches
-    if (queryingLayer && queryingLayer.id === layerId) {
-      setQueryingLayer(prev => ({ ...prev, cqlFilter: cqlFilter }));
-    }
-  };
-
-  const handleApplyMultiLayerFilters = (filterMap) => {
-    // filterMap: { layerId: cqlFilter }
-    setGeoServerLayers(prev => prev.map(l => {
-      if (filterMap.hasOwnProperty(l.id)) {
-        return { ...l, cqlFilter: filterMap[l.id] };
-      }
-      return l;
-    }));
-
-    // Update queryingLayer if its ID is in the map
-    if (queryingLayer && filterMap.hasOwnProperty(queryingLayer.id)) {
-      setQueryingLayer(prev => ({ ...prev, cqlFilter: filterMap[queryingLayer.id] }));
-    }
-  };
 
 
 
@@ -846,67 +514,13 @@ function GISMap() {
     }
   };
 
-  //#region Layer Management
-  const [showLayerManagement, setShowLayerManagement] = useState(false);
-  const [layerManagementData, setLayerManagementData] = useState([]);
-  const [isLayerManagementLoading, setIsLayerManagementLoading] = useState(false);
-
-
-  const handleOpenLayerManagement = async () => {
-    setShowLayerManagement(true);
-    handleRefreshLayerManagement();
-  };
-
-  const handleRefreshLayerManagement = async () => {
-    setIsLayerManagementLoading(true);
-    try {
-      const data = await getFeaturesForAttributeTable('Layer', 'gisweb:Layer');
-      setLayerManagementData(data);
-    } catch (err) {
-      console.error("Failed to refresh layer management data:", err);
-    } finally {
-      setIsLayerManagementLoading(false);
-    }
-  };
 
   //#endregion
 
 
 
-  const handleAddLocalVectorLayer = (newLayer) => {
-    setLocalVectorLayers(prev => [...prev, newLayer]);
-  };
 
-  const handleUpdateLayerMetadata = async (fullLayerName, changes) => {
-    let successCount = 0;
-    for (const [rowId, props] of Object.entries(changes)) {
-      // Resolve the true GeoServer FID using either the LayerId or the original feature ID
-      const feature = layerManagementData.find(f =>
-        (f.properties?.LayerId?.toString() === rowId.toString()) ||
-        (f.id === rowId) ||
-        (f.properties?.id?.toString() === rowId.toString())
-      );
 
-      const targetId = feature ? feature.id : rowId;
-      const ok = await updateFeature(fullLayerName, targetId, props);
-      if (ok) successCount++;
-    }
-    if (successCount > 0) handleRefreshLayerManagement();
-    return successCount > 0;
-  };
-
-  const handleSaveNewLayerMetadata = async (fullLayerName, props) => {
-    // Specialized service for Layer configuration
-    const success = await addNewLayerConfig(props);
-    if (success) handleRefreshLayerManagement();
-    return success;
-  };
-
-  const handleDeleteLayerMetadata = async (fullLayerName, feature) => {
-    const success = await deleteFeature(fullLayerName, feature);
-    if (success) handleRefreshLayerManagement();
-    return success;
-  };
 
 
 
@@ -943,16 +557,9 @@ function GISMap() {
         setActiveSpatialJoinLayerId(null);
         setSpatialJoinLayerIds([]);
       }
-      // Call join-specific reset handles (clipping vectors, visibility)
-      if (Object.keys(spatialJoinVectorLayersRef.current).length > 0) {
-        handleResetSpatialJoin();
-      }
     }
 
-    // 3. Reset Run Analysis if not active
-    if (!isAnalysis && (analysisConfig || Object.keys(analysisSLDMap).length > 0)) {
-      handleResetAnalysis();
-    }
+
 
     // 4. Reset Layer Styles if not active
     if (!isStyles && editingStyleLayer) {
@@ -978,147 +585,6 @@ function GISMap() {
     return { r, g, b };
   };
 
-
-
-  //#region Spatial Join Handlers
-  const handlePerformSpatialJoin = async (config) => {
-    const { layerA: layerAId, attrA, layerB: layerBId, attrB, colorA, colorB, joinType, matchColor } = config;
-    const layerAObj = geoServerLayers.find(l => l.id === layerAId);
-    const layerBObj = geoServerLayers.find(l => l.id === layerBId);
-    if (!layerAObj || !layerBObj || !mapInstanceRef.current) return;
-
-    toast.loading('Fetching data for spatial join...', { id: 'spatialjoin-toast' });
-
-    try {
-      // 1. Fetch WFS GeoJSON for both layers
-      const fetchWFS = async (layer) => {
-        const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&outputFormat=application/json&srsName=EPSG:3857`;
-        const res = await fetch(wfsUrl, { headers: { 'Authorization': AUTH_HEADER } });
-        if (!res.ok) throw new Error(`Failed to fetch ${layer.name}`);
-        return res.json();
-      };
-
-      const [geojsonA, geojsonB] = await Promise.all([fetchWFS(layerAObj), fetchWFS(layerBObj)]);
-
-      if (!geojsonA.features?.length || !geojsonB.features?.length) {
-        toast.error('One or both layers returned no features', { id: 'spatialjoin-toast' });
-        return;
-      }
-
-      // 2. Build lookup sets
-      const valuesA = new Set(geojsonA.features.map(f => String(f.properties?.[attrA] ?? '')));
-      const valuesB = new Set(geojsonB.features.map(f => String(f.properties?.[attrB] ?? '')));
-
-      // 3. Hide original WMS layers
-      [layerAId, layerBId].forEach(lid => {
-        const layer = geoServerLayers.find(l => l.id === lid);
-        if (layer) {
-          spatialJoinWMSVisibilitiesRef.current[lid] = layer.visible;
-          setGeoServerLayers(prev => prev.map(l =>
-            l.id === lid ? { ...l, visible: false } : l
-          ));
-        }
-      });
-
-      // 4. Style function factory
-      const createStyleFn = (attrName, matchSet, matchColor, unmatchColor = null, showAll = false) => (feature) => {
-        const val = String(feature.get(attrName) ?? '');
-        const isMatch = matchSet.has(val);
-
-        if (!isMatch && !showAll) return [];
-
-        const color = isMatch ? matchColor : unmatchColor;
-        if (!color) return [];
-
-        return [
-          new Style({
-            fill: new Fill({ color: color + 'b3' }),
-            stroke: new Stroke({ color: '#fff', width: 1.5 }),
-            image: new CircleStyle({
-              radius: 6,
-              fill: new Fill({ color: color }),
-              stroke: new Stroke({ color: '#fff', width: 1 })
-            })
-          })
-        ];
-      };
-
-      // 5. Create vector layers
-      const addJoinLayer = (geojson, layerId, attrName, matchSet, matchColor, unmatchColor, showAll) => {
-        const source = new VectorSource({ features: new GeoJSON().readFeatures(geojson) });
-        const vectorLayer = new VectorLayer({
-          source,
-          style: createStyleFn(attrName, matchSet, matchColor, unmatchColor, showAll),
-          zIndex: 1001,
-          properties: { id: `spatialjoin-${layerId}`, isSpatialJoin: true }
-        });
-
-        // Cleanup existing
-        if (spatialJoinVectorLayersRef.current[layerId]) {
-          mapInstanceRef.current.removeLayer(spatialJoinVectorLayersRef.current[layerId]);
-        }
-        mapInstanceRef.current.addLayer(vectorLayer);
-        spatialJoinVectorLayersRef.current[layerId] = vectorLayer;
-      };
-
-      // Cleanup previous spatial join vector layers first
-      Object.keys(spatialJoinVectorLayersRef.current).forEach(lid => {
-        const olLayer = spatialJoinVectorLayersRef.current[lid];
-        if (olLayer) mapInstanceRef.current.removeLayer(olLayer);
-      });
-      spatialJoinVectorLayersRef.current = {};
-
-      if (joinType === 'union') {
-        // Union: Show only Target matching features in matchColor
-        addJoinLayer(geojsonA, layerAId, attrA, valuesB, matchColor, null, false);
-      } else if (joinType === 'left') {
-        // Left Join: All Target features. Matches = Source color, Unmatches = Target color
-        addJoinLayer(geojsonA, layerAId, attrA, valuesB, colorB, colorA, true);
-      } else if (joinType === 'right') {
-        // Right Join: All Source features. Matches = Target color, Unmatches = Source color
-        addJoinLayer(geojsonB, layerBId, attrB, valuesA, colorA, colorB, true);
-      }
-
-      const matchCount = [...valuesA].filter(v => valuesB.has(v)).length;
-      toast.success(`Spatial join complete! ${matchCount} matching value(s) found.`, { id: 'spatialjoin-toast' });
-
-    } catch (err) {
-      console.error('Spatial join failed:', err);
-      toast.error(`Spatial join failed: ${err.message}`, { id: 'spatialjoin-toast' });
-    }
-  };
-
-  const handleResetSpatialJoin = () => {
-    if (mapInstanceRef.current) {
-      // 1. Remove Join Layers
-      Object.keys(spatialJoinVectorLayersRef.current).forEach(layerId => {
-        const vectorLayer = spatialJoinVectorLayersRef.current[layerId];
-        if (vectorLayer) {
-          mapInstanceRef.current.removeLayer(vectorLayer);
-        }
-
-        // 2. Restore Original Visibilities
-        const originalVisible = spatialJoinWMSVisibilitiesRef.current[layerId];
-        if (originalVisible !== undefined) {
-          setGeoServerLayers(prev => prev.map(l =>
-            l.id === layerId ? { ...l, visible: originalVisible } : l
-          ));
-        }
-      });
-
-      // 3. Reset Map View to Defaults
-      const view = mapInstanceRef.current.getView();
-      view.animate({
-        center: fromLonLat([0, 20]),
-        zoom: 2,
-        duration: 1000
-      });
-    }
-
-    spatialJoinVectorLayersRef.current = {};
-    spatialJoinWMSVisibilitiesRef.current = {};
-    toast.success('Spatial join reset. View restored to default.');
-  };
 
   const createDefaultSldForLayer = (fullLayerName, geometryType = '') => {
     const layerName = fullLayerName.includes(':') ? fullLayerName.split(':')[1] : fullLayerName;
@@ -1381,111 +847,12 @@ function GISMap() {
   };
 
 
-  // Analysis Playback Loop
-  useEffect(() => {
-    let interval;
-    if (isAnalysisPlaying && analysisConfig?.filteredDates?.length > 0) {
-      interval = setInterval(() => {
-        setAnalysisFrameIndex(prev => (prev + 1) % analysisConfig.filteredDates.length);
-      }, 2000);
-    }
-    return () => clearInterval(interval);
-  }, [isAnalysisPlaying, analysisConfig]);
 
-  // Sync Analysis Frame with Map Filter/Visibility
-  useEffect(() => {
-    if (analysisConfig && analysisConfig.filteredDates && analysisConfig.filteredDates[analysisFrameIndex]) {
-      const { layerId, property, mappings, dateProperty, filteredDates } = analysisConfig;
-      const date = filteredDates[analysisFrameIndex];
-
-      const vectorLayer = analysisVectorLayersRef.current[layerId];
-      if (vectorLayer) {
-        // Apply a style function that filters by date AND applies the color mapping
-        vectorLayer.setStyle((feature) => {
-          const featureDate = feature.get(dateProperty);
-
-          // Filter by date
-          if (String(featureDate) !== String(date)) {
-            return new Style({}); // Invisible
-          }
-
-          // Apply Color Mapping (same logic as handleRunAnalysis)
-          const val = feature.get(property);
-          const match = mappings.find(m => {
-            if (!m.value) return false;
-            const op = m.operator || '=';
-            const mappingVal = m.value;
-
-            switch (op) {
-              case '=': return String(val) === String(mappingVal);
-              case '!=': return String(val) !== String(mappingVal);
-              case '>': return Number(val) > Number(mappingVal);
-              case '<': return Number(val) < Number(mappingVal);
-              case '>=': return Number(val) >= Number(mappingVal);
-              case '<=': return Number(val) <= Number(mappingVal);
-              case 'LIKE': return String(val).toLowerCase().includes(String(mappingVal).toLowerCase());
-              default: return String(val) === String(mappingVal);
-            }
-          });
-
-          if (match) {
-            const color = match.color;
-            return [
-              new Style({
-                fill: new Fill({ color: color + 'b3' }),
-                stroke: new Stroke({ color: '#fff', width: 1 }),
-                image: new CircleStyle({
-                  radius: 6,
-                  fill: new Fill({ color: color }),
-                  stroke: new Stroke({ color: '#fff', width: 1 })
-                })
-              })
-            ];
-          }
-
-          return [
-            new Style({
-              fill: new Fill({ color: 'rgba(204, 204, 204, 0.2)' }),
-              stroke: new Stroke({ color: 'rgba(153, 153, 153, 0.5)', width: 0.5 })
-            })
-          ];
-        });
-      }
-    }
-  }, [analysisFrameIndex, analysisConfig]);
 
   const GetLayerAttributesStub = (layerId) => {
     console.log(`Getting attributes for layer: ${layerId}`);
     // This is used by AttributeTableCard, but for Query Builder in LayerOperations 
     // we might call getLayerAttributes directly from the service or via a prop.
-  };
-
-  const handleAddBookmark = (name) => {
-    if (!mapInstanceRef.current) return;
-    const view = mapInstanceRef.current.getView();
-    const newBookmark = {
-      id: Date.now().toString(),
-      name: name,
-      center: view.getCenter(),
-      zoom: view.getZoom(),
-      timestamp: new Date().toISOString()
-    };
-    setBookmarks(prev => [...prev, newBookmark]);
-    toast.success('Bookmark added successfully');
-  };
-
-  const handleDeleteBookmark = (id) => {
-    setBookmarks(prev => prev.filter(b => b.id !== id));
-    toast.success('Bookmark deleted');
-  };
-
-  const handleNavigateToBookmark = (bookmark) => {
-    if (!mapInstanceRef.current) return;
-    mapInstanceRef.current.getView().animate({
-      center: bookmark.center,
-      zoom: bookmark.zoom,
-      duration: 1200
-    });
   };
 
   // Elite: Automatic Tool Deactivation
@@ -1495,9 +862,9 @@ function GISMap() {
     if (activePanel !== 'tools' && activePanel !== 'utility_tools') {
       // Small delay to prevent race conditions during state transitions
       const timer = setTimeout(() => {
-        if (activeTool) {
-          setActiveTool(null);
-          removeInteractions();
+        if (drawingTools.activeTool) {
+          drawingTools.setActiveTool(null);
+          drawingTools.removeInteractions();
         }
       }, 50);
       return () => clearTimeout(timer);
@@ -1507,143 +874,11 @@ function GISMap() {
 
 
 
-  // Update feature status based on vector source
-  const updateFeatureStatus = (source) => {
-    if (!source) return;
-    const features = source.getFeatures();
-    // Ensure every non-measurement drawing has a persistent color so
-    // map rendering and dropdown indicators stay in sync.
-    features.forEach((f) => {
-      if (!f.get('isMeasurement') && !f.get('drawingColor')) {
-        const color = DRAWING_SOLID_COLORS[drawingColorIndexRef.current % DRAWING_SOLID_COLORS.length];
-        drawingColorIndexRef.current += 1;
-        f.set('drawingColor', color);
-      }
-    });
 
-    const drawings = features.some(f => !f.get('isMeasurement'));
-    const measurements = features.some(f => f.get('isMeasurement'));
-    setHasDrawings(drawings);
-    setHasMeasurements(measurements);
-
-    // ELITE: Update available drawings list for Attribute Table
-    const validDrawings = features
-      .filter(f => !f.get('isMeasurement'))
-      .map(f => {
-        // Ensure it has an ID
-        let id = f.getId();
-        if (!id) {
-          id = `drawing-${Math.random().toString(36).substr(2, 9)}`;
-          f.setId(id);
-        }
-        return {
-          id: id,
-          type: f.getGeometry().getType(),
-          name: f.get('name') || `Drawing (${f.getGeometry().getType()})`,
-          color: f.get('drawingColor') || '#3b82f6'
-        };
-      });
-    setAvailableDrawings(validDrawings);
-  };
-
-
-
-  // ELITE ANIMATION: Energy Flow & Sonar
-  const animationOffsetRef = useRef(0);
-  const animationFrameRef = useRef(null);
-
-  // High-performance animation loop (Non-blocking)
-  useEffect(() => {
-    const animate = () => {
-      try {
-        animationOffsetRef.current = (animationOffsetRef.current + 0.6) % 40;
-
-        // Trigger map redraw without React re-render
-        if (vectorLayerRef.current) {
-          vectorLayerRef.current.changed();
-        }
-
-        // Trigger selection highlight redraw
-        if (selectionLayerRef.current) {
-          selectionLayerRef.current.changed();
-        }
-
-        // Also animate interactions if active and supported
-        if (drawInteractionRef.current && typeof drawInteractionRef.current.getOverlay === 'function') {
-          const overlay = drawInteractionRef.current.getOverlay();
-          if (overlay) {
-            const overlaySource = overlay.getSource();
-            if (overlaySource) {
-              overlaySource.getFeatures().forEach((f) => f.changed());
-            }
-          }
-        }
-
-        // ELITE: Wave Animation for Highlighted Layer
-        if (isHighlightAnimatingRef.current && activeHighlightLayerIdRef.current) {
-          const olLayer = operationalLayersRef.current[activeHighlightLayerIdRef.current];
-          if (olLayer) {
-            const time = Date.now() / 1000;
-            // Wave animation: oscillating opacity between 0.3 and 1.0 at moderate speed (3 rad/s)
-            const waveOpacity = 0.65 + 0.35 * Math.sin(time * 3);
-            olLayer.setOpacity(waveOpacity);
-          }
-        }
-      } catch (err) {
-        console.warn('Animation loop warning:', err);
-      } finally {
-        animationFrameRef.current = requestAnimationFrame(animate);
-      }
-    };
-    animationFrameRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, []);
-
-  // Sync Drawing Layer Visibility
-  useEffect(() => {
-    if (vectorLayerRef.current) {
-      vectorLayerRef.current.setVisible(isDrawingVisible);
-    }
-  }, [isDrawingVisible]);
 
   // Initialize map
   useEffect(() => {
     if (!mapRef.current) return;
-
-    const vectorSource = new VectorSource();
-    vectorSourceRef.current = vectorSource;
-
-    // Initial status update
-    updateFeatureStatus(vectorSource);
-
-    // Auto-save triggers
-    vectorSource.on(['addfeature', 'removefeature', 'changefeature'], () => {
-      triggerAutoSave();
-      updateFeatureStatus(vectorSource);
-    });
-
-    const vectorLayer = new VectorLayer({
-      source: vectorSource,
-      style: (feature) => {
-        const isMeasurement = feature.get('isMeasurement');
-        const show = isMeasurement ? showAnalysisLabelsRef.current : showDrawingLabelsRef.current;
-        return styleFunction(feature, true, null, null, animationOffsetRef.current, measurementUnitsRef.current, show);
-      },
-      zIndex: 9999 // User requested "top layer of all layers"
-    });
-    vectorLayerRef.current = vectorLayer;
-
-    // ELITE: Selection Layer for Highlights
-    const selectionSource = new VectorSource();
-    selectionSourceRef.current = selectionSource;
-    const selectionLayer = new VectorLayer({
-      source: selectionSource,
-      style: (feature) => highlightStyleFunction(feature, animationOffsetRef.current),
-      zIndex: 10000 // Always on top of everything, including drawings
-    });
-    selectionLayerRef.current = selectionLayer;
 
     const osmLayer = new TileLayer({
       source: new OSM(),
@@ -1699,7 +934,7 @@ function GISMap() {
       target: mapRef.current,
       layers: [
         osmLayer, satelliteLayer, terrainLayer, darkLayer, lightLayer, streetLayer,
-        mapGridStyles, vectorLayer, selectionLayer
+        mapGridStyles
       ],
       view: new View({
         center: savedView ? savedView.center : fromLonLat([0, 20]),
@@ -1708,7 +943,6 @@ function GISMap() {
       controls: defaultControls({ attribution: false, zoom: false, rotate: false }),
     });
 
-    vectorLayerRef.current = vectorLayer;
     mapInstanceRef.current = map;
     map.baseLayers = {
       osm: osmLayer,
@@ -2055,326 +1289,16 @@ function GISMap() {
 
 
 
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    const layers = mapInstanceRef.current.baseLayers;
-    Object.keys(layers).forEach((key) => layers[key].setVisible(key === baseLayer));
-  }, [baseLayer]);
 
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const interactions = mapInstanceRef.current.getInteractions();
     interactions.forEach((interaction) => {
       if (interaction instanceof DragPan) {
-        interaction.setActive(!isLocked && activeTool !== 'ZoomBox');
+        interaction.setActive(!isLocked && drawingTools.activeTool !== 'ZoomBox');
       }
     });
-  }, [isLocked, activeTool]);
-
-  const updateBadge = (feature) => {
-    if (!feature) return;
-    const geom = feature.getGeometry();
-    if (!geom) return;
-    const value = geom.getType() === 'Circle' ?
-      formatArea(geom, measurementUnitsRef.current) :
-      (geom instanceof LineString ?
-        formatLength(geom, measurementUnitsRef.current) :
-        formatArea(geom, measurementUnitsRef.current));
-    setMeasurementValue(value);
-  };
-
-  const addDrawInteraction = (type) => {
-    if (!mapInstanceRef.current || !vectorSourceRef.current || !type) return;
-    removeInteractions();
-
-    // Determine the OpenLayers draw type and geometry function
-    let drawType = type;
-    let geometryFunction = undefined;
-    let freehand = false;
-
-    switch (type) {
-      case 'Circle':
-        drawType = 'Circle';
-        geometryFunction = createRegularPolygon(64);
-        break;
-      case 'Triangle':
-        drawType = 'Circle';
-        geometryFunction = createRegularPolygon(3);
-        break;
-      case 'Extent':
-        drawType = 'Circle';
-        geometryFunction = createBox();
-        break;
-      case 'Ellipse':
-        drawType = 'Circle';
-        // Ellipse is simulated with a 64-sided polygon (same as circle for now)
-        geometryFunction = createRegularPolygon(64);
-        break;
-      case 'FreehandLine':
-        drawType = 'LineString';
-        freehand = true;
-        break;
-      case 'FreehandPolygon':
-        drawType = 'Polygon';
-        freehand = true;
-        break;
-      default:
-        drawType = type;
-        break;
-    }
-
-    const draw = new Draw({
-      source: vectorSourceRef.current,
-      type: drawType,
-      geometryFunction: geometryFunction,
-      freehand: freehand,
-      style: (feature) => styleFunction(feature, false, type, null, animationOffsetRef.current, measurementUnitsRef.current, showDrawingLabelsRef.current),
-    });
-
-    draw.on('drawstart', (evt) => {
-      setIsMeasuring(true);
-      setMeasurementValue('');
-      const sketch = evt.feature;
-      if (type === 'Circle') {
-        sketch.set('isCircle', true);
-      }
-      activeFeatureRef.current = sketch;
-      sketch.getGeometry().on('change', () => updateBadge(sketch));
-    });
-
-    draw.on('drawend', (evt) => {
-      if (type === 'Circle') {
-        evt.feature.set('isCircle', true);
-      }
-      if (!evt.feature.get('isMeasurement') && !evt.feature.get('drawingColor')) {
-        const color = DRAWING_SOLID_COLORS[drawingColorIndexRef.current % DRAWING_SOLID_COLORS.length];
-        drawingColorIndexRef.current += 1;
-        evt.feature.set('drawingColor', color);
-      }
-      updateBadge(evt.feature);
-      setIsMeasuring(false);
-      activeFeatureRef.current = evt.feature;
-    });
-
-    drawInteractionRef.current = draw;
-    mapInstanceRef.current.addInteraction(draw);
-
-    // Only add modify and snap if not just a point
-    if (type !== 'Point') {
-      const modify = new Modify({ source: vectorSourceRef.current, style: modifyStyle });
-      modify.on('modifystart', (evt) => {
-        setIsMeasuring(true);
-        const feature = evt.features.getArray()[0];
-        if (feature) {
-          activeFeatureRef.current = feature;
-          feature.getGeometry().on('change', () => updateBadge(feature));
-        }
-      });
-      modify.on('modifyend', (evt) => {
-        setIsMeasuring(false);
-        const feature = evt.features.getArray()[0];
-        if (feature) {
-          updateBadge(feature);
-        }
-      });
-
-      mapInstanceRef.current.addInteraction(modify);
-      mapInstanceRef.current.addInteraction(new Snap({ source: vectorSourceRef.current }));
-    }
-  };
-
-  const addZoomBoxInteraction = () => {
-    if (!mapInstanceRef.current) return;
-    removeInteractions();
-
-    const dragZoom = new DragZoom({
-      condition: always,
-      className: 'ol-dragzoom elite-zoom-box',
-    });
-
-    // Elite touch: Revert to pan mode after zooming
-    dragZoom.on('boxend', () => {
-      setTimeout(() => {
-        setActiveTool(null);
-        removeInteractions();
-      }, 500);
-    });
-
-    drawInteractionRef.current = dragZoom;
-    mapInstanceRef.current.addInteraction(dragZoom);
-  };
-
-  const addMeasureInteraction = (type) => {
-    if (!mapInstanceRef.current || !vectorSourceRef.current || !type) return;
-    removeInteractions();
-
-    const drawType = type === 'distance' ? 'LineString' : 'Polygon';
-    const activeTip = 'Click to continue drawing';
-    const idleTip = 'Click to start measuring';
-    let tip = idleTip;
-
-    const draw = new Draw({
-      source: vectorSourceRef.current,
-      type: drawType,
-      style: (feature) => {
-        return styleFunction(feature, true, drawType, tip, animationOffsetRef.current, measurementUnitsRef.current, showAnalysisLabelsRef.current);
-      },
-    });
-
-    drawInteractionRef.current = draw;
-    mapInstanceRef.current.addInteraction(draw);
-
-    const modify = new Modify({ source: vectorSourceRef.current, style: modifyStyle });
-    mapInstanceRef.current.addInteraction(modify);
-
-    const snap = new Snap({ source: vectorSourceRef.current });
-    mapInstanceRef.current.addInteraction(snap);
-
-    draw.on('drawstart', (evt) => {
-      setIsMeasuring(true);
-      setMeasurementValue('');
-      modify.setActive(false);
-      tip = activeTip;
-
-      const sketch = evt.feature;
-      activeFeatureRef.current = sketch;
-      sketch.getGeometry().on('change', () => updateBadge(sketch));
-    });
-
-    draw.on('drawend', (evt) => {
-      evt.feature.set('isMeasurement', true);
-      modify.setActive(true);
-      updateBadge(evt.feature);
-
-      mapInstanceRef.current?.once('pointermove', function () {
-        modifyStyle.setGeometry(undefined);
-      });
-      setIsMeasuring(false);
-      tip = idleTip;
-      activeFeatureRef.current = evt.feature;
-    });
-
-    // Elite: Real-time update during modification
-    modify.on('modifystart', (evt) => {
-      setIsMeasuring(true);
-      const feature = evt.features.getArray()[0];
-      if (feature) {
-        activeFeatureRef.current = feature;
-        feature.getGeometry().on('change', () => updateBadge(feature));
-      }
-    });
-
-    modify.on('modifyend', (evt) => {
-      setIsMeasuring(false);
-      const feature = evt.features.getArray()[0];
-      if (feature) {
-        updateBadge(feature);
-      }
-    });
-  };
-
-  const removeInteractions = () => {
-    if (!mapInstanceRef.current) return;
-    const interactions = mapInstanceRef.current.getInteractions().getArray().slice();
-    interactions.forEach((interaction) => {
-      if (interaction instanceof Draw || interaction instanceof Modify || interaction instanceof Snap || interaction instanceof DragZoom) {
-        mapInstanceRef.current.removeInteraction(interaction);
-      }
-    });
-    drawInteractionRef.current = null;
-
-    // Reset measurement states
-    setIsMeasuring(false);
-    setMeasurementValue('');
-    activeFeatureRef.current = null;
-  };
-
-  const resetTools = () => {
-    // Reset Higlight opacity if animating
-    if (isHighlightAnimating && activeHighlightLayerId) {
-      const olLayer = operationalLayersRef.current[activeHighlightLayerId];
-      const layerData = geoServerLayers.find(l => l.id === activeHighlightLayerId);
-      if (olLayer && layerData) olLayer.setOpacity(layerData.opacity || 1);
-    }
-
-    setActiveTool(null);
-    setActiveZoomLayerId(null);
-    setActiveHighlightLayerId(null);
-    setIsHighlightAnimating(false);
-    removeInteractions();
-  };
-
-  const handleToolClick = (tool) => {
-    removeInteractions(); // Reset current operations
-    if (activeTool === tool) {
-      setActiveTool(null);
-    } else {
-      setActiveTool(tool);
-      if (tool === 'ZoomBox') {
-        addZoomBoxInteraction();
-      } else {
-        addDrawInteraction(tool);
-      }
-    }
-  };
-
-  const handleGoToLocation = () => {
-    if (!mapInstanceRef.current) return;
-    const lat = parseFloat(gotoLat);
-    const lon = parseFloat(gotoLon);
-
-    if (isNaN(lat) || isNaN(lon)) {
-      toast.error('Please enter valid coordinates');
-      return;
-    }
-
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      toast.error('Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)');
-      return;
-    }
-
-    mapInstanceRef.current.getView().animate({
-      center: fromLonLat([lon, lat]),
-      zoom: 12,
-      duration: 1000,
-    });
-
-    setActiveTool(null);
-    removeInteractions();
-  };
-
-  async function handleSearch(query) {
-    if (!mapInstanceRef.current || !query) return;
-
-    const result = await searchLocation(query);
-    if (result) {
-      const view = mapInstanceRef.current.getView();
-
-      // Elite fly-to animation
-      view.animate({
-        center: fromLonLat([result.lon, result.lat]),
-        duration: 2000,
-        zoom: 14,
-      });
-
-      setActiveTool(null);
-      removeInteractions();
-
-      return true;
-    }
-    return false;
-  };
-
-  const handleMeasureClick = (type) => {
-    removeInteractions(); // Reset current operations
-    if (activeTool === type) {
-      setActiveTool(null);
-    } else {
-      setActiveTool(type);
-      addMeasureInteraction(type);
-    }
-  };
-
+  }, [isLocked, drawingTools.activeTool]);
 
   //#region  Side Panel Actions
 
@@ -2481,90 +1405,7 @@ function GISMap() {
   };
   //#endregion
 
-  //#region Print Map
-  function handlePrintClick() {
-    setActivePanel(activePanel === 'print' ? null : 'print');
-    setIsPanelMinimized(false);
-  };
-
-  async function handleExportMap() {
-    if (!mapRef.current) return;
-
-    try {
-      // Capture the map container
-      const canvas = await html2canvas(mapRef.current, {
-        useCORS: true,
-        backgroundColor: theme === 'dark' ? '#111' : '#fff'
-      });
-
-      const fileName = printFileName || 'Map';
-      const fullFileName = fileName.toLowerCase().endsWith(`.${exportFormat}`) ? fileName : `${fileName}.${exportFormat}`;
-
-      if (exportFormat === 'pdf') {
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('l', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-
-        // Calculate image dimensions to fit page (maintaining aspect ratio)
-        const imgProps = pdf.getImageProperties(imgData);
-        const imgWidth = pdfWidth - 20; // 10mm margin on each side
-        const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-        // Header Section
-        pdf.setFillColor(theme === 'dark' ? 20 : 245);
-        pdf.rect(0, 0, pdfWidth, 40, 'F');
-
-        // Title
-        pdf.setTextColor(theme === 'dark' ? 255 : 33);
-        pdf.setFontSize(22);
-        pdf.text(printTitle || 'GIS Map Export', 10, 20);
-
-        // Subtitle
-        pdf.setFontSize(12);
-        pdf.setTextColor(theme === 'dark' ? 180 : 100);
-        pdf.text(printSubtitle || `Generated on ${new Date().toLocaleString()}`, 10, 30);
-
-        // The Map Image
-        pdf.addImage(imgData, 'PNG', 10, 45, imgWidth, imgHeight);
-
-        // Footer
-        pdf.setFontSize(10);
-        pdf.setTextColor(150);
-        pdf.text('Generated via GIS Workspace', 10, pdfHeight - 10);
-
-        pdf.save(fullFileName);
-      } else {
-        // Image formats (PNG/JPG)
-        const link = document.createElement('a');
-        link.download = fullFileName;
-        link.href = canvas.toDataURL(`image/${exportFormat === 'jpg' ? 'jpeg' : 'png'}`);
-        link.click();
-      }
-
-      toast.success('Map exported successfully!');
-    } catch (error) {
-      console.error('Export failed:', error);
-      toast.error('Failed to generate export. Please try again.');
-    }
-  };
   //#endregion
-
-  //#region Theme Changes
-
-  const [theme, setTheme] = useState('light');
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
-    }
-  }, []);
-
-  useEffect(() => {
-    setBaseLayer(theme === 'dark' ? 'dark' : 'osm');
-  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
@@ -2573,8 +1414,6 @@ function GISMap() {
     localStorage.setItem('theme', newTheme);
     setTimeout(saveWorkspace, 0);
   };
-
-  //#endregion
 
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -2585,15 +1424,18 @@ function GISMap() {
             setActivePanel={(panel) => {
               setActivePanel(panel);
               if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
-                setActiveTool(null);
-                removeInteractions();
+                drawingTools.setActiveTool(null);
+                drawingTools.removeInteractions();
               }
             }}
             setIsPanelMinimized={setIsPanelMinimized}
             toggleTheme={toggleTheme}
             theme={theme}
-            handleClearDrawings={handleClearDrawings}
-            handlePrintClick={handlePrintClick}
+            handleClearDrawings={drawingTools.handleClearDrawings}
+            handlePrintClick={() => {
+              setActivePanel(activePanel === 'print' ? null : 'print');
+              setIsPanelMinimized(false);
+            }}
             onOpenLayerManagement={handleOpenLayerManagement}
             isLayerManagementOpen={showLayerManagement}
             layoutMode={layoutMode}
@@ -2616,21 +1458,21 @@ function GISMap() {
               setActivePanel={(panel) => {
                 setActivePanel(panel);
                 if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
-                  setActiveTool(null);
-                  removeInteractions();
+                  drawingTools.setActiveTool(null);
+                  drawingTools.removeInteractions();
                 }
               }}
               setIsPanelMinimized={setIsPanelMinimized}
               toggleTheme={toggleTheme}
               theme={theme}
-              handleClearDrawings={handleClearDrawings}
+              handleClearDrawings={drawingTools.handleClearDrawings}
               handlePrintClick={handlePrintClick}
               isLocked={isLocked}
               setIsLocked={setIsLocked}
-              activeTool={activeTool}
-              handleToolClick={handleToolClick}
-              hasDrawings={hasDrawings}
-              hasMeasurements={hasMeasurements}
+              activeTool={drawingTools.activeTool}
+              handleToolClick={drawingTools.handleToolClick}
+              hasDrawings={drawingTools.hasDrawings}
+              hasMeasurements={drawingTools.hasMeasurements}
               onOpenLoadTempModal={() => setShowLoadTempModal(true)}
               showTopLegend={showTopLegend}
               setShowTopLegend={setShowTopLegend}
@@ -2640,7 +1482,7 @@ function GISMap() {
           {/* Map Container */}
           <div className="map-container">
             <div ref={mapRef} className="map" />
-            {activeTool === 'ZoomBox' && (
+            {drawingTools.activeTool === 'ZoomBox' && (
               <div
                 style={{
                   position: 'absolute',
@@ -2688,8 +1530,10 @@ function GISMap() {
               setActivePanel={(panel) => {
                 setActivePanel(panel);
                 if (panel !== null && panel !== 'tools' && panel !== 'utility_tools' && panel !== 'print') {
-                  setActiveTool(null);
-                  removeInteractions();
+                  drawingTools.setActiveTool(null);
+                  drawingTools.removeInteractions();
+                  measureTools.setActiveMeasureTool(null);
+                  measureTools.removeMeasureInteractions();
                 }
                 if (panel === null) {
                   setActiveLayerTool(null);
@@ -2700,34 +1544,61 @@ function GISMap() {
               layoutMode={layoutMode}
               baseLayer={baseLayer}
               setBaseLayer={setBaseLayer}
-              isDrawingVisible={isDrawingVisible}
-              setIsDrawingVisible={setIsDrawingVisible}
-              activeTool={activeTool}
-              handleToolClick={handleToolClick}
-              handleMeasureClick={handleMeasureClick}
-              gotoLat={gotoLat}
-              setGotoLat={setGotoLat}
-              gotoLon={gotoLon}
-              setGotoLon={setGotoLon}
-              handleGoToLocation={handleGoToLocation}
-              handleSearch={handleSearch}
-              measurementUnits={measurementUnits}
-              setMeasurementUnits={setMeasurementUnits}
-              showDrawingLabels={showDrawingLabels}
-              setShowDrawingLabels={setShowDrawingLabels}
-              showAnalysisLabels={showAnalysisLabels}
-              setShowAnalysisLabels={setShowAnalysisLabels}
-              handleClearDrawings={handleClearDrawings}
-              resetTools={resetTools}
-              printTitle={printTitle}
-              setPrintTitle={setPrintTitle}
-              printSubtitle={printSubtitle}
-              setPrintSubtitle={setPrintSubtitle}
-              printFileName={printFileName}
-              setPrintFileName={setPrintFileName}
-              exportFormat={exportFormat}
-              setExportFormat={setExportFormat}
-              handleExportMap={handleExportMap}
+              isDrawingVisible={drawingTools.isDrawingVisible}
+              setIsDrawingVisible={drawingTools.setIsDrawingVisible}
+              
+              // Drawing Tools Props
+              activeTool={drawingTools.activeTool}
+              handleToolClick={(tool) => {
+                measureTools.setActiveMeasureTool(null);
+                drawingTools.handleToolClick(tool);
+              }}
+              showDrawingLabels={drawingTools.showDrawingLabels}
+              setShowDrawingLabels={drawingTools.setShowDrawingLabels}
+              handleClearDrawings={drawingTools.handleClearDrawings}
+
+              // Measurement Tools Props
+              activeMeasureTool={measureTools.activeMeasureTool}
+              handleMeasureClick={(type) => {
+                drawingTools.setActiveTool(null);
+                measureTools.handleMeasureClick(type);
+              }}
+              showMeasureLabels={measureTools.showMeasureLabels}
+              setShowMeasureLabels={measureTools.setShowMeasureLabels}
+              handleClearMeasurements={measureTools.clearMeasurements}
+
+              measurementUnits={measureTools.measurementUnits}
+              setMeasurementUnits={measureTools.setMeasurementUnits}
+              
+              // Location Tools Props
+              gotoLat={locationTools.gotoLat}
+              setGotoLat={locationTools.setGotoLat}
+              gotoLon={locationTools.gotoLon}
+              setGotoLon={locationTools.setGotoLon}
+              handleGoToLocation={locationTools.handleGoToLocation}
+              handleSearch={locationTools.handleSearch}
+              isSearching={locationTools.isSearching}
+
+              resetTools={() => {
+                drawingTools.resetTools();
+                measureTools.setActiveMeasureTool(null);
+                measureTools.removeMeasureInteractions();
+                locationTools.setGotoLat('');
+                locationTools.setGotoLon('');
+              }}
+                      
+              // Print Tools Props
+              printTitle={printTools.printTitle}
+              setPrintTitle={printTools.setPrintTitle}
+              printSubtitle={printTools.printSubtitle}
+              setPrintSubtitle={printTools.setPrintSubtitle}
+              printFileName={printTools.printFileName}
+              setPrintFileName={printTools.setPrintFileName}
+              exportFormat={printTools.exportFormat}
+              setExportFormat={printTools.setExportFormat}
+              handleExportMap={printTools.handleExportMap}
+              isExporting={printTools.isExporting}
+
               geoServerLayers={geoServerLayers}
               handleToggleGeoLayer={handleToggleGeoLayer}
               handleLayerOpacityChange={handleLayerOpacityChange}
@@ -2763,10 +1634,11 @@ function GISMap() {
               handleToggleAnalysisLayer={handleToggleAnalysisLayer}
               spatialJoinLayerIds={spatialJoinLayerIds}
               handleToggleSpatialJoinLayer={handleToggleSpatialJoinLayer}
-              bookmarks={bookmarks}
-              handleAddBookmark={handleAddBookmark}
-              handleDeleteBookmark={handleDeleteBookmark}
-              handleNavigateToBookmark={handleNavigateToBookmark}
+              // Bookmark Tools Props
+              bookmarks={bookmarkTools.bookmarks}
+              handleAddBookmark={bookmarkTools.handleAddBookmark}
+              handleDeleteBookmark={bookmarkTools.handleDeleteBookmark}
+              handleNavigateToBookmark={bookmarkTools.handleNavigateToBookmark}
               selectedQueryLayerIds={selectedQueryLayerIds}
               setSelectedQueryLayerIds={setSelectedQueryLayerIds}
               setShowSpatialJoin={setShowSpatialJoin}
@@ -2793,7 +1665,7 @@ function GISMap() {
                         onClose={() => {
                           setFeatureInfoResult(null);
                           setFeatureInfoCoordinate(null);
-                          if (selectionSourceRef.current) selectionSourceRef.current.clear();
+                          if (drawingTools.selectionSourceRef.current) drawingTools.selectionSourceRef.current.clear();
                         }}
                         style={{
                           position: 'absolute',
@@ -2819,8 +1691,8 @@ function GISMap() {
                       isOpen={showAttributeTable}
                       onClose={() => {
                         // Clear highlights when closing table
-                        if (selectionSourceRef.current) {
-                          selectionSourceRef.current.clear();
+                        if (drawingTools.selectionSourceRef.current) {
+                          drawingTools.selectionSourceRef.current.clear();
                         }
                         setShowAttributeTable(false);
                         setSelectedAttributeLayerId(null);
@@ -2835,8 +1707,8 @@ function GISMap() {
                         if (!features || features.length === 0) return;
 
                         // Clear previous highlights
-                        if (selectionSourceRef.current) {
-                          selectionSourceRef.current.clear();
+                        if (drawingTools.selectionSourceRef.current) {
+                          drawingTools.selectionSourceRef.current.clear();
                         }
 
                         // Parse and add features to selection layer
@@ -2850,8 +1722,8 @@ function GISMap() {
                             });
 
                             // Add to selection source for highlighting
-                            if (selectionSourceRef.current) {
-                              selectionSourceRef.current.addFeature(olFeature);
+                            if (drawingTools.selectionSourceRef.current) {
+                              drawingTools.selectionSourceRef.current.addFeature(olFeature);
                             }
                           } catch (error) {
                             console.error('Error parsing feature for highlight:', error, feature);
@@ -2859,8 +1731,8 @@ function GISMap() {
                         });
 
                         // Zoom to highlighted features
-                        if (selectionSourceRef.current && selectionSourceRef.current.getFeatures().length > 0) {
-                          const extent = selectionSourceRef.current.getExtent();
+                        if (drawingTools.selectionSourceRef.current && drawingTools.selectionSourceRef.current.getFeatures().length > 0) {
+                          const extent = drawingTools.selectionSourceRef.current.getExtent();
                           mapInstanceRef.current.getView().fit(extent, {
                             padding: [50, 50, 50, 50],
                             duration: 500,
@@ -2872,8 +1744,8 @@ function GISMap() {
                       }}
                       onClearHighlights={() => {
                         // Clear highlights when Stop button is clicked
-                        if (selectionSourceRef.current) {
-                          selectionSourceRef.current.clear();
+                        if (drawingTools.selectionSourceRef.current) {
+                          drawingTools.selectionSourceRef.current.clear();
                         }
                       }}
                       onDeleteFeature={async (fullLayerName, feature) => {
@@ -2922,7 +1794,7 @@ function GISMap() {
                       }}
                       isMinimized={isAttributeTableMinimized}
                       onToggleMinimize={() => setIsAttributeTableMinimized(!isAttributeTableMinimized)}
-                      drawings={availableDrawings}
+                      drawings={drawingTools.availableDrawings}
                       onSaveNewAttribute={handleSaveNewAttribute}
                       geometryName={activeAttributeLayer.geometryFieldName}
                       geometryType={activeAttributeLayer.geometryType}
@@ -2957,9 +1829,8 @@ function GISMap() {
               handleApplyLayerFilter={handleApplyLayerFilter}
               selectedLayerIds={selectedQueryLayerIds}
               setSelectedLayerIds={setSelectedQueryLayerIds}
-              mapInstance={mapInstanceRef.current}
               mapRef={mapRef}
-              selectionSource={selectionSourceRef.current}
+              selectionSource={drawingTools.selectionSourceRef.current}
               theme={theme}
               isParentPanelMinimized={isPanelMinimized}
               layoutMode={layoutMode}
@@ -2969,9 +1840,9 @@ function GISMap() {
               isOpen={showSpatialJoin}
               onClose={() => setShowSpatialJoin(false)}
               allGeoServerLayers={geoServerLayers}
+              setGeoServerLayers={setGeoServerLayers}
               selectedLayerIds={spatialJoinLayerIds}
-              onPerformSpatialJoin={handlePerformSpatialJoin}
-              onResetSpatialJoin={handleResetSpatialJoin}
+              mapInstance={mapInstanceRef.current}
               targetLayerId={activeSpatialJoinLayerId}
               isParentPanelMinimized={isPanelMinimized}
               layoutMode={layoutMode}
@@ -3047,3 +1918,5 @@ function GISMap() {
 }
 
 export default GISMap;
+
+

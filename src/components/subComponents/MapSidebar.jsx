@@ -1,6 +1,6 @@
 import React from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { Plus, Minus, LayoutGrid, Maximize, LocateFixed, Navigation } from 'lucide-react';
+import { Plus, Minus, LayoutGrid, Maximize, Navigation } from 'lucide-react';
 
 const MapSidebar = ({
     handleZoomIn,
@@ -97,3 +97,4 @@ const MapSidebar = ({
 };
 
 export default MapSidebar;
+

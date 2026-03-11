@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fetchLayerStatuses, WORKSPACE, initializeMetadataLayer } from '../../services/Server';
-import { X, LayoutGrid, Plus, Save, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, Globe, LayersPlus, ArrowRightLeft, Server, Settings2, Toolbox, HardDrive, FunnelPlus, BookPlus } from 'lucide-react';
+import axios from 'axios';
+import { GEOSERVER_URL, AUTH_HEADER, WORKSPACE } from '../../constants/AppConstants';
+import { X, LayoutGrid, RefreshCw, Layers, Trash2, Check, AlertCircle, Loader2, LayersPlus, Server, Settings2, Toolbox, HardDrive, FunnelPlus, BookPlus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { getFeaturesForAttributeTable, deleteFeature, updateFeature } from './LayerOperations';
 
 const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature, onUpdateFeatures, onSaveNewFeature, onRefresh, onOpenLoadTempModal, onOpenCreateLayer, onOpenDataManipulation, onOpenServerInfo }) => {
 
@@ -322,4 +324,262 @@ const LayerManagementCard = ({ isOpen, onClose, data, isLoading, onDeleteFeature
     );
 };
 
+export const reloadGeoServer = async () => {
+    try {
+        const response = await fetch(`${GEOSERVER_URL}/rest/reload`, {
+            method: 'POST',
+            headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' }
+        });
+        return response.ok;
+    } catch (err) { console.error('GeoServer reload failed:', err); return false; }
+};
+
+export const fetchLayerStatuses = async () => {
+    const statuses = {};
+    try {
+        const restUrl = `${GEOSERVER_URL}/rest/layers.json`;
+        const restResponse = await fetch(restUrl, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+        let configuredLayers = [];
+        if (restResponse.ok) {
+            const data = await restResponse.json();
+            if (data?.layers?.layer) configuredLayers = data.layers.layer.map(l => l.name);
+        }
+        const wfsUrl = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`;
+        const wfsResponse = await fetch(wfsUrl, { headers: { 'Authorization': AUTH_HEADER } });
+        let activeLayers = [];
+        if (wfsResponse.ok) {
+            const text = await wfsResponse.text();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(text, "text/xml");
+            const featureTypes = xmlDoc.getElementsByTagName("FeatureType");
+            for (let i = 0; i < featureTypes.length; i++) {
+                const nameNodes = featureTypes[i].getElementsByTagName("Name");
+                if (nameNodes.length > 0) activeLayers.push(nameNodes[0].textContent);
+            }
+        }
+        configuredLayers.forEach(layerName => {
+            const shortName = layerName.includes(':') ? layerName.split(':').pop() : layerName;
+            const isActive = activeLayers.includes(layerName);
+            const status = isActive ? 'Active' : 'Error';
+            statuses[layerName] = status;
+            statuses[shortName] = status;
+        });
+    } catch (err) { console.error('Failed to fetch layer statuses:', err); }
+    return statuses;
+};
+
+export const addNewLayerConfig = async (properties) => {
+    try {
+        const fullLayerName = `${WORKSPACE}:Layer`;
+        const prefix = WORKSPACE;
+        let featureContentXml = '';
+        for (const [key, value] of Object.entries(properties)) {
+            if (!key || ['id', 'layerid', 'fid', 'ogc_fid'].includes(key.toLowerCase()) || key.startsWith('_') || value === null || value === undefined || value === '') continue;
+            featureContentXml += `<${prefix}:${key}>${value}</${prefix}:${key}>`;
+        }
+        const wfsTransactionXml = `
+        <wfs:Transaction service="WFS" version="1.1.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:${prefix}="${prefix}" xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+        <wfs:Insert><${fullLayerName}>${featureContentXml}</${fullLayerName}></wfs:Insert>
+        </wfs:Transaction>`.trim();
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, { method: 'POST', headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' }, body: wfsTransactionXml });
+        if (response.ok) {
+            const resultText = await response.text();
+            return resultText.includes('TransactionSummary') && (resultText.includes('totalInserted="1"') || resultText.includes('>1</wfs:totalInserted>'));
+        }
+        return false;
+    } catch (error) { console.error("Failed to create layer config:", error); return false; }
+};
+
+export const initializeMetadataLayer = async () => {
+    try {
+        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores.json`, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+        if (!dsRes.ok) throw new Error("Failed to find datastores");
+        const dsData = await dsRes.json();
+        const dataStoreName = dsData.dataStores?.dataStore?.[0]?.name;
+        if (!dataStoreName) throw new Error("No DataStore found");
+        const attributes = [
+            { name: 'LayerLabel', binding: 'java.lang.String', nillable: true },
+            { name: 'LayerName', binding: 'java.lang.String', nillable: true },
+            { name: 'LayerSequenceNo', binding: 'java.lang.Integer', nillable: true },
+            { name: 'IsShowLayer', binding: 'java.lang.Boolean', nillable: true },
+            { name: 'LayerVisibilityOnLoad', binding: 'java.lang.Boolean', nillable: true },
+            { name: 'AttributeTableName', binding: 'java.lang.String', nillable: true }
+        ];
+        const body = { featureType: { name: 'Layer', nativeName: 'Layer', title: 'Layer Management Metadata', srs: 'EPSG:4326', attributes: { attribute: attributes } } };
+        const ftRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${dataStoreName}/featuretypes`, {
+            method: 'POST', headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (ftRes.ok) { await reloadGeoServer(); return true; }
+        return false;
+    } catch (err) { console.error("Initialization failed:", err); return false; }
+};
+
+export const saveSequence = async (sequenceList) => {
+    try {
+        let tempUpdates = '', finalUpdates = '';
+        sequenceList.forEach((item, index) => {
+            if (item.sequenceNumber === undefined || item.sequenceNumber === null) return;
+            const tempSeq = 100000 + index + Math.floor(Math.random() * 1000);
+            const filter = item.fid ? `<ogc:FeatureId fid="${item.fid}"/>` : `<ogc:PropertyIsEqualTo><ogc:PropertyName>LayerName</ogc:PropertyName><ogc:Literal>${item.layerId}</ogc:Literal></ogc:PropertyIsEqualTo>`;
+            tempUpdates += `<wfs:Update typeName="${WORKSPACE}:Layer"><wfs:Property><wfs:Name>LayerSequenceNo</wfs:Name><wfs:Value>${tempSeq}</wfs:Value></wfs:Property><ogc:Filter>${filter}</ogc:Filter></wfs:Update>`;
+            finalUpdates += `<wfs:Update typeName="${WORKSPACE}:Layer"><wfs:Property><wfs:Name>LayerSequenceNo</wfs:Name><wfs:Value>${item.sequenceNumber}</wfs:Value></wfs:Property><ogc:Filter>${filter}</ogc:Filter></wfs:Update>`;
+        });
+        if (!tempUpdates) return false;
+        const wfsTransactionXml = `<wfs:Transaction service="WFS" version="1.1.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">${tempUpdates + finalUpdates}</wfs:Transaction>`;
+        const response = await fetch(`${GEOSERVER_URL}/wfs`, { method: 'POST', headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'text/xml' }, body: wfsTransactionXml });
+        if (response.ok) {
+            const resultText = await response.text();
+            return resultText.includes('TransactionSummary');
+        }
+        return false;
+    } catch (error) { console.error("Failed to save sequences:", error); return false; }
+};
+
+export const publishNewLayer = async (config) => {
+    const { layerName, geometryType, srid = '4326', attributes = [] } = config;
+    try {
+        const dsRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores.json`, { headers: { 'Authorization': AUTH_HEADER, 'Accept': 'application/json' } });
+        if (!dsRes.ok) throw new Error("Failed to find datastores");
+        const dsData = await dsRes.json();
+        const dataStoreName = dsData.dataStores?.dataStore?.[0]?.name;
+        if (!dataStoreName) throw new Error("No DataStore found");
+        const computedAttributes = [{ name: 'geom', binding: `org.locationtech.jts.geom.${geometryType}`, nillable: true }, ...attributes.filter(attr => !['geom', 'the_geom', 'geometry'].includes((attr.name || '').toLowerCase())).map(attr => ({ name: attr.name, binding: attr.type === 'String' ? 'java.lang.String' : attr.type === 'Integer' ? 'java.lang.Integer' : attr.type === 'Boolean' ? 'java.lang.Boolean' : 'java.lang.Double', nillable: true }))];
+        let nativeBBox = null;
+        if (config.extent) {
+            const ext = config.extent.split(',').map(Number);
+            if (ext.length === 4) nativeBBox = { minx: ext[0], miny: ext[1], maxx: ext[2], maxy: ext[3], crs: `EPSG:${srid}` };
+        }
+        const body = { featureType: { name: layerName, nativeName: layerName, title: layerName, srs: `EPSG:${srid}`, nativeCRS: `EPSG:${srid}`, projectionPolicy: 'FORCE_DECLARED', attributes: { attribute: computedAttributes }, ...(nativeBBox && { nativeBoundingBox: nativeBBox, latLonBoundingBox: nativeBBox }) } };
+        const ftRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/datastores/${dataStoreName}/featuretypes`, { method: 'POST', headers: { 'Authorization': AUTH_HEADER, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!ftRes.ok) throw new Error(await ftRes.text());
+        const metadata = { LayerName: layerName, LayerSequenceNo: 0, LayerVisibilityOnLoad: true, IsShowLayer: true, AttributeTableName: layerName };
+        await addNewLayerConfig(metadata);
+        return true;
+    } catch (err) { console.error("Publishing error:", err); throw err; }
+};
+
+export const GetGeoServerAllLayerDetails = async () => {
+    try {
+        const listRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers.json`, { headers: { 'Authorization': AUTH_HEADER } });
+        if (!listRes.ok) throw new Error("Could not fetch layers");
+        const listData = await listRes.json();
+        const layers = listData.layers?.layer || [];
+        const details = await Promise.all(layers.map(async (l) => {
+            const layerRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${l.name}.json`, { headers: { 'Authorization': AUTH_HEADER } });
+            if (!layerRes.ok) return null;
+            const layerData = await layerRes.json();
+            const type = layerData.layer?.type;
+            const endpoint = type === 'RASTER' ? 'coverages' : 'featuretypes';
+            const resRes = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/${endpoint}/${l.name}.json`, { headers: { 'Authorization': AUTH_HEADER } });
+            if (!resRes.ok) return null;
+            const resData = await resRes.json();
+            const info = resData.featureType || resData.coverage;
+            const attrs = info.attributes?.attribute || [];
+            return { id: l.name, name: l.name, fullPath: `${WORKSPACE}:${l.name}`, srs: info.srs, store: info.store?.name, attributes: Array.isArray(attrs) ? attrs : [attrs], geometryType: type === 'RASTER' ? 'Raster' : (Array.isArray(attrs) ? attrs : [attrs]).find(a => ['geom', 'the_geom', 'geometry'].includes(a.name.toLowerCase()))?.binding?.split('.').pop() || 'Unknown' };
+        }));
+        return details.filter(Boolean);
+    } catch (err) { console.error("Fetch full details failed:", err); return []; }
+};
+
+export const DeleteLayerInGeoServer = async (layerName) => {
+    try {
+        const layerDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/layers/${layerName}.json`, { method: 'DELETE', headers: { 'Authorization': AUTH_HEADER } });
+        const ftDel = await fetch(`${GEOSERVER_URL}/rest/workspaces/${WORKSPACE}/featuretypes/${layerName}.json?recurse=true`, { method: 'DELETE', headers: { 'Authorization': AUTH_HEADER } });
+        return layerDel.ok || ftDel.ok;
+    } catch (err) { console.error("Delete failed:", err); return false; }
+};
+
+export const getGeoServerLayers = async () => {
+    try {
+        const url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${WORKSPACE}:Layer&outputFormat=application/json`;
+        const response = await axios.get(url, { headers: { 'Authorization': AUTH_HEADER } });
+        if (response.data?.features) {
+            return response.data.features
+                .filter(f => f.properties.LayerName !== 'Layer' && f.properties.IsShowLayer === true)
+                .sort((a, b) => (a.properties.LayerSequenceNo ?? 999) - (b.properties.LayerSequenceNo ?? 999))
+                .map(f => ({
+                    fullName: `${WORKSPACE}:${f.properties.LayerName}`,
+                    sequence: f.properties.LayerSequenceNo ?? 999,
+                    initialVisibility: Boolean(f.properties.LayerVisibilityOnLoad),
+                    layerId: f.properties.LayerName,
+                    fid: f.id,
+                    geometryFieldName: f.properties.GeometryFieldName || 'geom',
+                    geometryType: f.properties.GeometryType || 'Unknown',
+                    srid: f.properties.SRId || '4326',
+                    extent: f.properties.Extent || null
+                }));
+        }
+    } catch (error) { console.error("Failed to fetch layers:", error); }
+    return [];
+};
+
+/**
+ * Hook to manage Layer Management state and operations.
+ */
+export const useLayerManagement = () => {
+    const [showLayerManagement, setShowLayerManagement] = useState(false);
+    const [layerManagementData, setLayerManagementData] = useState([]);
+    const [isLayerManagementLoading, setIsLayerManagementLoading] = useState(false);
+
+    const handleRefreshLayerManagement = async () => {
+        setIsLayerManagementLoading(true);
+        try {
+            const data = await getFeaturesForAttributeTable('Layer', `${WORKSPACE}:Layer`);
+            setLayerManagementData(data);
+        } catch (err) {
+            console.error("Failed to refresh layer management data:", err);
+        } finally {
+            setIsLayerManagementLoading(false);
+        }
+    };
+
+    const handleUpdateLayerMetadata = async (fullLayerName, changes) => {
+        let successCount = 0;
+        for (const [rowId, props] of Object.entries(changes)) {
+            const feature = layerManagementData.find(f =>
+                (f.properties?.LayerId?.toString() === rowId.toString()) ||
+                (f.id === rowId) ||
+                (f.properties?.id?.toString() === rowId.toString())
+            );
+
+            const targetId = feature ? feature.id : rowId;
+            const ok = await updateFeature(fullLayerName, targetId, props);
+            if (ok) successCount++;
+        }
+        if (successCount > 0) handleRefreshLayerManagement();
+        return successCount > 0;
+    };
+
+    const handleSaveNewLayerMetadata = async (fullLayerName, props) => {
+        const success = await addNewLayerConfig(props);
+        if (success) handleRefreshLayerManagement();
+        return success;
+    };
+
+    const handleDeleteLayerMetadata = async (fullLayerName, feature) => {
+        const success = await deleteFeature(fullLayerName, feature);
+        if (success) handleRefreshLayerManagement();
+        return success;
+    };
+
+    const handleOpenLayerManagement = () => {
+        setShowLayerManagement(true);
+        handleRefreshLayerManagement();
+    };
+
+    return {
+        showLayerManagement,
+        setShowLayerManagement,
+        layerManagementData,
+        setLayerManagementData,
+        isLayerManagementLoading,
+        handleRefreshLayerManagement,
+        handleOpenLayerManagement,
+        handleUpdateLayerMetadata,
+        handleSaveNewLayerMetadata,
+        handleDeleteLayerMetadata
+    };
+};
+
 export default LayerManagementCard;
+

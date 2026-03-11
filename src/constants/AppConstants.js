@@ -27,6 +27,10 @@ export const DRAWING_SOLID_COLORS = [
     '#ec4899', '#14b8a6', '#84cc16', '#f97316', '#06b6d4'
 ];
 
+// Map Defaults
+export const MAP_DEFAULT_CENTER = [0, 20];
+export const MAP_DEFAULT_ZOOM = 2;
+
 // Common Query Builder Operators
 export const QB_OPERATORS = [
     { value: '=', label: 'Equals (=)' },
