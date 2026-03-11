@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, DatabaseZap, RefreshCw, Loader2, ChevronLeft, ChevronRight, Filter, Trash2, Minimize2, FileText } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Plus, DatabaseZap, RefreshCw, Loader2, Filter, Trash2, Minimize2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLayerAttributes, QueryBuilderFilter } from '../../services/Server';
+import { QB_OPERATORS, GEOSERVER_URL, AUTH_HEADER } from '../../constants/AppConstants';
 
-const QB_OPERATORS = [
-    { value: '=', label: 'Equals (=)' },
-    { value: '<>', label: 'Not Equals (<>)' },
-    { value: '>', label: 'Greater Than (>)' },
-    { value: '<', label: 'Less Than (<)' },
-    { value: '>=', label: 'Greater or Equal (>=)' },
-    { value: '<=', label: 'Less or Equal (<=)' },
-    { value: 'LIKE', label: 'Contains (LIKE)' },
-    { value: 'ILIKE', label: 'Case-Insensitive (ILIKE)' },
-];
+// OL Imports
+import GeoJSON from 'ol/format/GeoJSON';
+
+// Utils
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const QueryBuilderCard = ({
     isOpen,
@@ -20,11 +17,12 @@ const QueryBuilderCard = ({
     activeLayer,
     availableLayers,
     handleApplyLayerFilter,
-    onRunQuery,
-    onGenerateReport,
-    onGenerateSnapshotReport,
     selectedLayerIds,
     setSelectedLayerIds,
+    mapInstance,
+    mapRef,
+    selectionSource,
+    theme = 'light',
     isParentPanelMinimized = false,
     layoutMode = 'sidebar'
 }) => {
@@ -35,28 +33,23 @@ const QueryBuilderCard = ({
     const [showReportButton, setShowReportButton] = useState(false);
     const [lastQuerySummary, setLastQuerySummary] = useState(null);
 
+    // Initial Setup
     useEffect(() => {
         if (isOpen && availableLayers) {
             const visibleLayerIds = availableLayers.filter(l => l.visible).map(l => l.id);
-            if (selectedLayerIds.length === 0) {
-                setSelectedLayerIds(visibleLayerIds);
-            }
+            if (selectedLayerIds.length === 0) setSelectedLayerIds(visibleLayerIds);
             if (activeLayer && !selectedLayerIds.includes(activeLayer.id)) {
                 setSelectedLayerIds(prev => [...prev, activeLayer.id]);
             }
-            if (qbConditions.length === 1 && !qbConditions[0].layerId && (activeLayer || selectedLayerIds.length > 0 || visibleLayerIds.length > 0)) {
+            if (qbConditions.length === 1 && !qbConditions[0].layerId) {
                 const targetId = activeLayer?.id || selectedLayerIds[0] || visibleLayerIds[0];
-                if (targetId) {
-                    setQbConditions([{ layerId: targetId, field: '', operator: '=', value: '', logic: 'AND' }]);
-                }
+                if (targetId) setQbConditions([{ layerId: targetId, field: '', operator: '=', value: '', logic: 'AND' }]);
             }
         }
     }, [isOpen, availableLayers?.length, activeLayer?.id]);
 
     useEffect(() => {
-        if (isOpen && selectedLayerIds.length > 0) {
-            fetchAllAttributes();
-        }
+        if (isOpen && selectedLayerIds.length > 0) fetchAllAttributes();
     }, [isOpen, selectedLayerIds.length]);
 
     useEffect(() => {
@@ -93,190 +86,137 @@ const QueryBuilderCard = ({
                     return cond;
                 }));
             }
-        } catch (error) {
-            console.error("Error fetching attributes:", error);
-            toast.error("Failed to fetch some layer attributes.");
-        } finally {
-            setIsFetchingAttributes(false);
-        }
+        } catch (error) { console.error(error); }
+        finally { setIsFetchingAttributes(false); }
     };
 
-    const buildLayerFilters = () => {
-        const layerFilters = {};
-        selectedLayerIds.forEach(id => {
-            const conditionsForLayer = qbConditions.filter(c => c.layerId === id);
-            if (conditionsForLayer.length > 0) {
-                const cql = QueryBuilderFilter(conditionsForLayer);
-                if (cql) layerFilters[id] = cql;
-            }
-        });
-        return layerFilters;
+    const fetchFeatures = async (layer, cql) => {
+        try {
+            let url = `${GEOSERVER_URL}/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=${layer.fullName}&outputFormat=application/json&srsName=EPSG:3857&maxFeatures=10000`;
+            if (cql) url += `&cql_filter=${encodeURIComponent(cql)}`;
+            const res = await fetch(url, { headers: { Authorization: AUTH_HEADER } });
+            const data = await res.json();
+            return data.features || [];
+        } catch (e) { return []; }
     };
 
     const handleApplyFilter = async () => {
-        if (selectedLayerIds.length === 0) {
-            toast.error("Please select at least one layer.");
-            return;
-        }
-
-        // Final duplicate validation before running query
-        const hasDuplicates = qbConditions.some((cond, idx) => {
-            if (!cond.layerId || !cond.field || cond.value === '') return false;
-            return qbConditions.slice(0, idx).some(prev =>
-                prev.layerId === cond.layerId &&
-                prev.field === cond.field &&
-                prev.operator === cond.operator &&
-                String(prev.value).trim() === String(cond.value).trim()
-            );
-        });
-
-        if (hasDuplicates) {
-            toast.error("Duplicate conditions detected. Please remove them before running the query.", { id: 'qb-duplicate-condition' });
-            return;
-        }
-
-        const layerFilters = buildLayerFilters();
-        let appliedCount = 0;
-        Object.entries(layerFilters).forEach(([id, cql]) => {
-            handleApplyLayerFilter(id, cql);
-            appliedCount++;
-        });
-        if (appliedCount > 0) {
-            toast.success(`Applied filters to ${appliedCount} layer${appliedCount > 1 ? 's' : ''}!`);
-            if (typeof onRunQuery === 'function') {
-                const summary = await onRunQuery({
-                    layerFilters,
-                    conditions: qbConditions,
-                    selectedLayerIds
-                });
-                const totalCount = Number(summary?.totalCount || 0);
-                setLastQuerySummary(summary || null);
-                setShowReportButton(totalCount > 0);
-                if (totalCount > 0) {
-                    toast.success(`Found ${totalCount} matching feature${totalCount > 1 ? 's' : ''}.`);
-                } else {
-                    toast.error("No matching features found for report.");
-                }
-            } else {
-                setShowReportButton(false);
-                setLastQuerySummary(null);
+        if (selectedLayerIds.length === 0) { toast.error("Select at least one layer."); return; }
+        const layerFilters = {};
+        selectedLayerIds.forEach(id => {
+            const conds = qbConditions.filter(c => c.layerId === id);
+            if (conds.length > 0) {
+                const cql = QueryBuilderFilter(conds);
+                if (cql) layerFilters[id] = cql;
             }
-        } else {
-            setShowReportButton(false);
-            setLastQuerySummary(null);
-            toast.error("No valid conditions found.");
+        });
+
+        Object.entries(layerFilters).forEach(([id, cql]) => handleApplyLayerFilter(id, cql));
+
+        const toastId = toast.loading('Running query summary...');
+        const entries = Object.entries(layerFilters);
+        const layerReports = [];
+        let total = 0;
+
+        for (const [id, cql] of entries) {
+            const layer = availableLayers.find(l => String(l.id) === String(id));
+            if (!layer) continue;
+            const features = await fetchFeatures(layer, cql);
+            layerReports.push({ layerId: layer.id, layerName: layer.name, fullName: layer.fullName, cqlFilter: cql, features, featureCount: features.length });
+            total += features.length;
         }
+
+        const summary = { totalCount: total, layerReports, generatedAt: new Date().toISOString() };
+        setLastQuerySummary(summary);
+        setShowReportButton(total > 0);
+
+        if (total > 0) toast.success(`Found ${total} matching features.`, { id: toastId });
+        else toast.error("No matches found.", { id: toastId });
+    };
+
+    const waitForMap = async () => {
+        if (!mapInstance) return;
+        await new Promise(r => {
+            mapInstance.once('rendercomplete', () => setTimeout(r, 150));
+            mapInstance.renderSync();
+            setTimeout(r, 900);
+        });
+    };
+
+    const focusAndCapture = async (featureJson) => {
+        if (!mapInstance || !mapRef.current) return null;
+        const format = new GeoJSON();
+        const olFeature = format.readFeature(featureJson, { dataProjection: 'EPSG:3857', featureProjection: 'EPSG:3857' });
+        if (selectionSource) { selectionSource.clear(); selectionSource.addFeature(olFeature.clone()); }
+        const geom = olFeature.getGeometry();
+        if (geom) {
+            mapInstance.getView().fit(geom.getExtent(), { padding: [80, 80, 80, 80], duration: 500, maxZoom: 17 });
+            await new Promise(r => setTimeout(r, 600));
+        }
+        await waitForMap();
+        const canvas = await html2canvas(mapRef.current, { useCORS: true, backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc' });
+        return canvas.toDataURL('image/png');
     };
 
     const handleGenerateReport = async () => {
-        if (!showReportButton || !lastQuerySummary || Number(lastQuerySummary.totalCount || 0) <= 0) {
-            toast.error("Run query with matching features first.");
-            return;
-        }
+        if (!lastQuerySummary || lastQuerySummary.totalCount === 0) return;
+        const toastId = toast.loading('Generating premium report...');
+        try {
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageW = pdf.internal.pageSize.getWidth();
+            const reports = lastQuerySummary.layerReports.filter(r => r.features.length > 0);
+            let processed = 0;
+            const totalToProcess = Math.min(20, lastQuerySummary.totalCount);
 
-        if (typeof onGenerateReport === 'function') {
-            await onGenerateReport({
-                querySummary: lastQuerySummary,
-                conditions: qbConditions,
-                selectedLayerIds
-            });
-            return;
-        }
+            for (const lr of reports) {
+                for (let i = 0; i < lr.features.length && processed < totalToProcess; i++) {
+                    if (processed > 0) pdf.addPage();
+                    processed++;
+                    toast.loading(`Processing feature ${processed}/${totalToProcess}...`, { id: toastId });
 
-        toast.success('Report option is ready. Connect report export handler to generate output.');
+                    pdf.setFillColor(49, 82, 232); pdf.rect(0, 0, pageW, 22, 'F');
+                    pdf.setTextColor(255); pdf.setFontSize(10); pdf.text(`Query Report - ${lr.layerName} #${i + 1}`, 12, 14);
+
+                    const img = await focusAndCapture(lr.features[i]);
+                    if (img) pdf.addImage(img, 'PNG', 12, 28, pageW - 24, 60);
+
+                    let y = 100;
+                    const props = lr.features[i].properties || {};
+                    Object.entries(props).slice(0, 15).forEach(([k, v]) => {
+                        if (['geom', 'the_geom', 'geometry'].includes(k.toLowerCase())) return;
+                        pdf.setTextColor(30); pdf.setFontSize(8); pdf.text(`${k}: ${v}`, 14, y);
+                        y += 5;
+                    });
+                }
+            }
+            pdf.save(`Query_Report_${Date.now()}.pdf`);
+            toast.success('Report exported!', { id: toastId });
+        } catch (e) { toast.error('Report failed', { id: toastId }); }
+        finally { if (selectionSource) selectionSource.clear(); }
     };
 
     const handleGenerateSnapshotReport = async () => {
-        if (!showReportButton || !lastQuerySummary || Number(lastQuerySummary.totalCount || 0) <= 0) {
-            toast.error("Run query with matching features first.");
-            return;
-        }
-
-        if (typeof onGenerateSnapshotReport === 'function') {
-            await onGenerateSnapshotReport({
-                querySummary: lastQuerySummary,
-                conditions: qbConditions,
-                selectedLayerIds
-            });
-            return;
-        }
-
-        toast.success('Snapshot report option is ready. Connect snapshot export handler to generate output.');
+        if (!mapRef.current) return;
+        const toastId = toast.loading('Exporting snapshot...');
+        try {
+            await waitForMap();
+            const canvas = await html2canvas(mapRef.current, { useCORS: true, backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc' });
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageW = pdf.internal.pageSize.getWidth();
+            pdf.setFillColor(49, 82, 232); pdf.rect(0, 0, pageW, 22, 'F');
+            pdf.setTextColor(255); pdf.text('Map selection snapshot', 12, 14);
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 12, 28, pageW - 24, 130);
+            pdf.save(`Snapshot_${Date.now()}.pdf`);
+            toast.success('Snapshot exported!', { id: toastId });
+        } catch (e) { toast.error('Snapshot failed', { id: toastId }); }
     };
 
     const handleResetAll = () => {
         selectedLayerIds.forEach(id => handleApplyLayerFilter(id, null));
-        const firstId = selectedLayerIds[0] || '';
-        const firstAttr = layerAttributesMap[firstId]?.[0] || '';
-        setQbConditions([{ layerId: firstId, field: firstAttr, operator: '=', value: '', logic: 'AND' }]);
+        setQbConditions([{ layerId: selectedLayerIds[0] || '', field: '', operator: '=', value: '', logic: 'AND' }]);
         setShowReportButton(false);
         setLastQuerySummary(null);
-        toast.success("All filters cleared!");
-    };
-
-    const addCondition = () => {
-        const firstId = selectedLayerIds[0] || '';
-        const firstAttr = layerAttributesMap[firstId]?.[0] || '';
-        setShowReportButton(false);
-        setLastQuerySummary(null);
-        setQbConditions([...qbConditions, { layerId: firstId, field: firstAttr, operator: '=', value: '', logic: 'AND' }]);
-    };
-
-    const removeCondition = (index) => {
-        if (qbConditions.length > 1) {
-            setShowReportButton(false);
-            setLastQuerySummary(null);
-            setQbConditions(qbConditions.filter((_, i) => i !== index));
-        } else {
-            const firstId = selectedLayerIds[0] || '';
-            const firstAttr = layerAttributesMap[firstId]?.[0] || '';
-            setShowReportButton(false);
-            setLastQuerySummary(null);
-            setQbConditions([{ layerId: firstId, field: firstAttr, operator: '=', value: '', logic: 'AND' }]);
-        }
-    };
-
-    const updateCondition = (index, updates) => {
-        setShowReportButton(false);
-        setLastQuerySummary(null);
-        setQbConditions(qbConditions.map((c, i) => {
-            if (i === index) {
-                const newCond = { ...c, ...updates };
-
-                // Handle layer change: reset field to first available attribute
-                if (updates.layerId && updates.layerId !== c.layerId) {
-                    newCond.field = layerAttributesMap[updates.layerId]?.[0] || '';
-                }
-
-                // DUPLICATE VALIDATION
-                // Check if this new state matches any OTHER condition in the list
-                const isComplete = newCond.layerId && newCond.field && newCond.value !== '';
-                if (isComplete) {
-                    const isDuplicate = qbConditions.some((other, idx) => {
-                        if (idx === index) return false; // Skip the one we are currently editing
-                        return (
-                            other.layerId === newCond.layerId &&
-                            other.field === newCond.field &&
-                            other.operator === newCond.operator &&
-                            String(other.value).trim() === String(newCond.value).trim()
-                        );
-                    });
-
-                    if (isDuplicate) {
-                        const layerName = availableLayers.find(l => l.id === newCond.layerId)?.name || 'Layer';
-                        toast.error(
-                            `Duplicate condition detected: ${layerName} > ${newCond.field} ${newCond.operator} ${newCond.value}`,
-                            { id: 'qb-duplicate-condition' }
-                        );
-                        // Reset the attribute field to force corrected selection
-                        return { ...newCond, field: '' };
-                    }
-                }
-
-                return newCond;
-            }
-            return c;
-        }));
+        toast.success("Filters cleared!");
     };
 
     const activeSelectedLayers = availableLayers.filter(l => selectedLayerIds.includes(l.id));
@@ -285,178 +225,71 @@ const QueryBuilderCard = ({
 
     return (
         <div className={`qb-panel-wrapper ${isMinimized ? 'qb-panel-minimized' : ''} ${isParentPanelMinimized ? 'ac-parent-panel-minimized' : ''} layout-${layoutMode}`}>
-            {/* Floating Expand Button (shown only when minimized) */}
             {isMinimized && (
-                <button
-                    onClick={() => setIsMinimized(false)}
-                    className="card-expand-float-btn card-expand-float-btn-query"
-                    title="Expand Query Builder"
-                >
+                <button onClick={() => setIsMinimized(false)} className="card-expand-float-btn card-expand-float-btn-query">
                     <Filter size={24} strokeWidth={2.5} />
                 </button>
             )}
 
-            {/* Main Card */}
             <div className="qb-card">
-                {/* Header */}
                 <div className="qb-header">
                     <div className="qb-header-left">
-                        <div className="qb-header-icon">
-                            <Filter size={16} strokeWidth={2.5} />
-                        </div>
+                        <div className="qb-header-icon"><Filter size={16} strokeWidth={2.5} /></div>
                         <div>
                             <h3 className="qb-title">Query Builder</h3>
                             <p className="qb-subtitle">Filter map data by attributes</p>
                         </div>
                     </div>
-                    <div className="qb-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <button
-                            onClick={() => setIsMinimized(true)}
-                            className="card-minimize-btn"
-                            title="Minimize"
-                        >
-                            <Minimize2 size={16} strokeWidth={2.5} />
-                        </button>
-                        <button onClick={onClose} className="qb-close-btn" title="Close">
-                            <X size={16} strokeWidth={2.5} />
-                        </button>
+                    <div className="qb-header-actions">
+                        <button onClick={() => setIsMinimized(true)} className="card-minimize-btn"><Minimize2 size={16} /></button>
+                        <button onClick={onClose} className="qb-close-btn"><X size={16} /></button>
                     </div>
                 </div>
 
-                {/* Body */}
                 <div className="qb-body">
                     {selectedLayerIds.length === 0 ? (
                         <div className="qb-empty-state">
-                            <div className="qb-empty-icon">
-                                <DatabaseZap size={28} />
-                            </div>
+                            <div className="qb-empty-icon"><DatabaseZap size={28} /></div>
                             <p className="qb-empty-title">No Layers Selected</p>
-                            <p className="qb-empty-desc">Enable layers from the layers panel to start building queries.</p>
                         </div>
                     ) : isFetchingAttributes ? (
-                        <div className="qb-loading-state">
-                            <Loader2 size={24} className="qb-spinner" />
-                            <span className="qb-loading-text">Loading attributes...</span>
-                        </div>
+                        <div className="qb-loading-state"><Loader2 size={24} className="qb-spinner" /></div>
                     ) : (
                         <div className="qb-conditions-list">
-                            {qbConditions.map((cond, index) => (
-                                <div key={index} className="qb-condition-block">
-                                    {/* Logic connector between conditions */}
-                                    {index > 0 && (
-                                        <div className="qb-logic-connector">
-                                            {['AND', 'OR'].map(l => (
-                                                <button
-                                                    key={l}
-                                                    onClick={() => updateCondition(index, { logic: l })}
-                                                    className={`qb-logic-pill ${cond.logic === l ? 'active' : ''}`}
-                                                >
-                                                    {l}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-
+                            {qbConditions.map((cond, idx) => (
+                                <div key={idx} className="qb-condition-block">
                                     <div className="qb-condition-card-clean">
-                                        {/* Row 1: Layer */}
-                                        <div className="qb-field-group">
-                                            <label className="qb-field-label">Layer</label>
-                                            <select
-                                                value={cond.layerId}
-                                                onChange={(e) => updateCondition(index, { layerId: e.target.value })}
-                                                className="qb-select"
-                                            >
-                                                {activeSelectedLayers.map(l => (
-                                                    <option key={l.id} value={l.id}>{l.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        {/* Row 2: Attribute + Operator */}
-                                        <div className="qb-field-row">
-                                            <div className="qb-field-group" style={{ flex: 1.3 }}>
-                                                <label className="qb-field-label">Attribute</label>
-                                                <select
-                                                    value={cond.field}
-                                                    onChange={(e) => updateCondition(index, { field: e.target.value })}
-                                                    className="qb-select"
-                                                >
-                                                    {(layerAttributesMap[cond.layerId] || []).map(attr => (
-                                                        <option key={attr} value={attr}>{attr}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Operator</label>
-                                                <select
-                                                    value={cond.operator}
-                                                    onChange={(e) => updateCondition(index, { operator: e.target.value })}
-                                                    className="qb-select"
-                                                >
-                                                    {QB_OPERATORS.map(op => (
-                                                        <option key={op.value} value={op.value}>{op.label}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        {/* Row 3: Value + Delete */}
-                                        <div className="qb-field-row" style={{ alignItems: 'flex-end' }}>
-                                            <div className="qb-field-group" style={{ flex: 1 }}>
-                                                <label className="qb-field-label">Value</label>
-                                                <input
-                                                    type="text"
-                                                    value={cond.value}
-                                                    onChange={(e) => updateCondition(index, { value: e.target.value })}
-                                                    placeholder="Enter value..."
-                                                    className="qb-input"
-                                                    onKeyDown={(e) => e.key === 'Enter' && handleApplyFilter()}
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => removeCondition(index)}
-                                                className="qb-remove-btn"
-                                                title="Remove condition"
-                                            >
-                                                <Trash2 size={14} strokeWidth={2} />
-                                            </button>
-                                        </div>
+                                        <select value={cond.layerId} onChange={(e) => setQbConditions(qbConditions.map((c, i) => i === idx ? { ...c, layerId: e.target.value, field: layerAttributesMap[e.target.value]?.[0] || '' } : c))} className="qb-select">
+                                            {activeSelectedLayers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                        </select>
+                                        <select value={cond.field} onChange={(e) => setQbConditions(qbConditions.map((c, i) => i === idx ? { ...c, field: e.target.value } : c))} className="qb-select">
+                                            {(layerAttributesMap[cond.layerId] || []).map(a => <option key={a} value={a}>{a}</option>)}
+                                        </select>
+                                        <select value={cond.operator} onChange={(e) => setQbConditions(qbConditions.map((c, i) => i === idx ? { ...c, operator: e.target.value } : c))} className="qb-select">
+                                            {QB_OPERATORS.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+                                        </select>
+                                        <input type="text" value={cond.value} onChange={(e) => setQbConditions(qbConditions.map((c, i) => i === idx ? { ...c, value: e.target.value } : c))} className="qb-input" placeholder="Value..." />
+                                        <button onClick={() => setQbConditions(qbConditions.filter((_, i) => i !== idx))} className="qb-remove-btn"><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}
-
-                            {/* Add Condition */}
-                            <button onClick={addCondition} className="qb-add-condition-btn">
-                                <Plus size={16} strokeWidth={2.5} />
-                                <span>Add Condition</span>
+                            <button onClick={() => setQbConditions([...qbConditions, { layerId: selectedLayerIds[0], field: layerAttributesMap[selectedLayerIds[0]]?.[0] || '', operator: '=', value: '', logic: 'AND' }])} className="qb-add-condition-btn">
+                                <Plus size={16} /> <span>Add Condition</span>
                             </button>
                         </div>
                     )}
                 </div>
 
-                {/* Footer Actions */}
                 {selectedLayerIds.length > 0 && !isFetchingAttributes && (
-                    <div className="qb-footer" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={handleResetAll} className="qb-reset-btn">
-                                <RefreshCw size={14} strokeWidth={2.5} />
-                                <span>Reset</span>
-                            </button>
-                            <button onClick={handleApplyFilter} className="qb-apply-btn">
-                                <Filter size={14} strokeWidth={2.5} />
-                                <span>Run Query</span>
-                            </button>
+                    <div className="qb-footer">
+                        <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                            <button onClick={handleResetAll} className="qb-reset-btn" style={{ flex: 1 }}><RefreshCw size={14} /> <span>Reset</span></button>
+                            <button onClick={handleApplyFilter} className="qb-apply-btn" style={{ flex: 2 }}><Filter size={14} /> <span>Run Query</span></button>
                         </div>
                         {showReportButton && (
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button onClick={handleGenerateReport} className="qb-report-btn" style={{ flex: 1 }}>
-                                    <FileText size={14} strokeWidth={2.5} />
-                                    <span>Features Report (20)</span>
-                                </button>
-                                <button onClick={handleGenerateSnapshotReport} className="qb-report-btn qb-report-secondary-btn" style={{ flex: 1 }}>
-                                    <FileText size={14} strokeWidth={2.5} />
-                                    <span>Snapshot Report</span>
-                                </button>
+                            <div style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '8px' }}>
+                                <button onClick={handleGenerateReport} className="qb-report-btn" style={{ flex: 1 }}><FileText size={14} /> <span>Premium Report</span></button>
+                                <button onClick={handleGenerateSnapshotReport} className="qb-report-btn qb-report-secondary-btn" style={{ flex: 1 }}><FileText size={14} /> <span>Snapshot</span></button>
                             </div>
                         )}
                     </div>
