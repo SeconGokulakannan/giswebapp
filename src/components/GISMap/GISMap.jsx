@@ -28,10 +28,6 @@ import FeatureInfoCard from '../subComponents/FeatureInfoCard';
 import AttributeTableCard from '../subComponents/AttributeTableCard';
 import QueryBuilderCard from '../subComponents/QueryBuilderCard';
 import AnalysisCard from '../subComponents/AnalysisCard';
-import MeasureCard from '../subComponents/MeasureCard';
-import LocationCard from '../subComponents/LocationCard';
-import BookmarksCard from '../subComponents/BookmarksCard';
-import PrintCard from '../subComponents/PrintCard';
 import LayerManagementCard from '../subComponents/LayerManagementCard';
 import LoadTempLayerModal from '../subComponents/LoadTempLayerModal';
 import StyleEditorCard from '../subComponents/StyleEditorCard';
@@ -56,15 +52,8 @@ const getWMSSourceParams = (layerName) => ({
   transition: 0,
 });
 
-import {
-  getGeoServerLayers, saveSequence
-} from '../../services/Server';
-import {
-  getLayerAttributes, getFeaturesForAttributeTable,
-  getLayerStyle, updateLayerStyle, setLayerDefaultStyle, SaveNewAttribute,
-  getLegendUrl, getLegendRuleUrl, fetchLegendRules, uploadIcon
-} from '../subComponents/LayerOperations';
-import { WORKSPACE } from '../../constants/AppConstants';
+import {getGeoServerLayers, saveSequence} from '../../services/Server';
+import {getLayerAttributes, getFeaturesForAttributeTable, getLayerStyle, updateLayerStyle, setLayerDefaultStyle, SaveNewAttribute, getLegendUrl, getLegendRuleUrl, fetchLegendRules, uploadIcon} from '../subComponents/LayerOperations';
 
 // Server Credentials
 import { GEOSERVER_URL, AUTH_HEADER } from '../../services/ServerCredentials';
@@ -93,7 +82,6 @@ function GISMap() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const selectionSourceRef = useRef(null);
-  const selectionLayerRef = useRef(null);
   const operationalLayersRef = useRef({}); // Track layer instances
 
 
