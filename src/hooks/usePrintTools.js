@@ -2,8 +2,10 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { useMap } from '../context/MapContext';
 
-export const usePrintTools = (mapContainerRef, theme) => {
+export const usePrintTools = (mapContainerRef) => {
+    const { theme } = useMap();
     const [printTitle, setPrintTitle] = useState('');
     const [printSubtitle, setPrintSubtitle] = useState('');
     const [printFileName, setPrintFileName] = useState('Map');

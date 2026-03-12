@@ -2,6 +2,16 @@ import { Circle as CircleStyle, Fill, RegularShape, Stroke, Style, Text } from '
 import { getArea, getLength } from 'ol/sphere';
 import { LineString, Point } from 'ol/geom';
 import Graticule from 'ol/layer/Graticule';
+import Map from 'ol/Map';
+import View from 'ol/View';
+import TileLayer from 'ol/layer/Tile';
+import ImageLayer from 'ol/layer/Image';
+import VectorLayer from 'ol/layer/Vector';
+import ImageWMS from 'ol/source/ImageWMS';
+import VectorSource from 'ol/source/Vector';
+import { fromLonLat } from 'ol/proj';
+import { defaults as defaultControls } from 'ol/control';
+import { defaults as defaultInteractions } from 'ol/interaction';
 
 
 /* Elite Color System */
@@ -222,38 +232,38 @@ export const styleFunction = (feature, segments, drawType, tip, offset = 0, unit
                 line = geometry;
             }
         } else {
-        const isArea = type === 'Polygon' || type === 'Circle';
-        const color = isArea ? COLORS.area : COLORS.distance;
+            const isArea = type === 'Polygon' || type === 'Circle';
+            const color = isArea ? COLORS.area : COLORS.distance;
 
-        // Base Glow
-        styles.push(flowGlowStyle);
+            // Base Glow
+            styles.push(flowGlowStyle);
 
-        // Primary Line
-        const mainStyle = style.clone();
-        mainStyle.getStroke().setColor(color);
-        mainStyle.getFill().setColor(isArea ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.08)');
-        styles.push(mainStyle);
+            // Primary Line
+            const mainStyle = style.clone();
+            mainStyle.getStroke().setColor(color);
+            mainStyle.getFill().setColor(isArea ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.08)');
+            styles.push(mainStyle);
 
-        // Energy Flow Pulse (Animated)
-        const pulseStyle = flowPulseStyle.clone();
-        pulseStyle.getStroke().setLineDashOffset(offset);
-        styles.push(pulseStyle);
+            // Energy Flow Pulse (Animated)
+            const pulseStyle = flowPulseStyle.clone();
+            pulseStyle.getStroke().setLineDashOffset(offset);
+            styles.push(pulseStyle);
 
-        const isAreaTool = ['Polygon', 'Circle', 'Triangle', 'Extent', 'Ellipse', 'FreehandPolygon'].includes(type);
+            const isAreaTool = ['Polygon', 'Circle', 'Triangle', 'Extent', 'Ellipse', 'FreehandPolygon'].includes(type);
 
-        if (type === 'Polygon' || type === 'FreehandPolygon' || type === 'Extent' || type === 'Triangle' || type === 'Ellipse') {
-            point = geometry.getInteriorPoint ? geometry.getInteriorPoint() : new Point(geometry.getClosestPoint(mapInstanceRef.current.getView().getCenter()));
-            label = formatArea(geometry, units);
-            line = new LineString(geometry.getCoordinates()[0]);
-        } else if (type === 'Circle') {
-            point = new Point(geometry.getCenter());
-            label = formatArea(geometry, units);
-            line = null;
-        } else {
-            point = new Point(geometry.getLastCoordinate());
-            label = formatLength(geometry, units);
-            line = geometry;
-        }
+            if (type === 'Polygon' || type === 'FreehandPolygon' || type === 'Extent' || type === 'Triangle' || type === 'Ellipse') {
+                point = geometry.getInteriorPoint ? geometry.getInteriorPoint() : new Point(geometry.getClosestPoint(mapInstanceRef.current.getView().getCenter()));
+                label = formatArea(geometry, units);
+                line = new LineString(geometry.getCoordinates()[0]);
+            } else if (type === 'Circle') {
+                point = new Point(geometry.getCenter());
+                label = formatArea(geometry, units);
+                line = null;
+            } else {
+                point = new Point(geometry.getLastCoordinate());
+                label = formatLength(geometry, units);
+                line = geometry;
+            }
         }
     } else if (type === 'Point') {
         if (!isMeasurement) {
@@ -480,3 +490,78 @@ export const mapGridStyles = new Graticule({
     wrapX: true,
     visible: false,
 });
+
+/* CORE MAP UTILITIES */
+
+/**
+ * Initializes the OpenLayers map
+ */
+export const initMap = (target, viewConfig) => {
+    return new Map({
+        target: target,
+        layers: [mapGridStyles],
+        view: new View({
+            center: viewConfig.center || [8638063.15, 1450280.08],
+            zoom: viewConfig.zoom || 12,
+            maxZoom: 22,
+            minZoom: 2,
+        }),
+        controls: defaultControls({ zoom: false, rotate: false, attribution: false }),
+        interactions: defaultInteractions({ doubleClickZoom: false }),
+    });
+};
+
+/**
+ * Adds a WMS layer to the map
+ */
+export const addWMSLayerToMap = (map, serverUrl, layerName, id, visible = true, opacity = 1) => {
+    const layer = new ImageLayer({
+        id: id,
+        visible: visible,
+        opacity: opacity,
+        source: new ImageWMS({
+            url: serverUrl,
+            params: {
+                'LAYERS': layerName,
+                'TILED': true,
+                'TRANSPARENT': true,
+                'FORMAT': 'image/png'
+            },
+            serverType: 'geoserver',
+            crossOrigin: 'anonymous',
+        }),
+    });
+    map.addLayer(layer);
+    return layer;
+};
+
+/**
+ * Adds a Vector layer to the map (for temporary/local layers)
+ */
+export const addVectorLayerToMap = (map, source, id, style, visible = true) => {
+    const layer = new VectorLayer({
+        id: id,
+        source: source,
+        style: style,
+        visible: visible
+    });
+    map.addLayer(layer);
+    return layer;
+};
+
+/**
+ * Handles GetFeatureInfo request for a coordinate
+ */
+export const handleGetFeatureInfo = async (evt, map, layers) => {
+    const view = map.getView();
+    const viewResolution = view.getResolution();
+    const coordinate = evt.coordinate;
+
+    // We iterate through visible layers to find feature info
+    for (const layerConfig of layers) {
+        if (!layerConfig.visible || !layerConfig.queryable) continue;
+
+        // This is a simplified implementation. Real one would call GetFeatureInfo URL
+        // and show a popup. For now, we'll just log or emit a toast if needed.
+    }
+};

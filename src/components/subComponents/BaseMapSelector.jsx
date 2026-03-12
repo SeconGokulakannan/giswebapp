@@ -1,6 +1,7 @@
 import React from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Map as MapIcon } from 'lucide-react';
+import { useMap } from '../../context/MapContext';
 
 // Import Basemap Images directly for Vite
 import osmImg from '../../assets/images/basemaps/osm.png';
@@ -55,7 +56,8 @@ const BaseMapSelector = ({ baseLayer, setBaseLayer }) => {
     );
 };
 
-export const useBaseMap = (mapInstanceRef, theme) => {
+export const useBaseMap = () => {
+    const { mapInstanceRef, theme } = useMap();
     const [baseLayer, setBaseLayer] = React.useState('osm');
 
     React.useEffect(() => {

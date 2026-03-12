@@ -1,19 +1,25 @@
 import React from 'react';
 import { Printer, Loader2, ChevronDown } from 'lucide-react';
+import { usePrintTools } from '../../hooks/usePrintTools';
+import { useMap } from '../../context/MapContext';
 
 const PrintCard = ({
     activePanel,
-    printTitle,
-    setPrintTitle,
-    printSubtitle,
-    setPrintSubtitle,
-    printFileName,
-    setPrintFileName,
-    exportFormat,
-    setExportFormat,
-    handleExportMap,
-    isExporting
 }) => {
+    const { mapRef } = useMap();
+    const {
+        printTitle,
+        setPrintTitle,
+        printSubtitle,
+        setPrintSubtitle,
+        printFileName,
+        setPrintFileName,
+        exportFormat,
+        setExportFormat,
+        handleExportMap,
+        isExporting
+    } = usePrintTools(mapRef);
+
     if (activePanel !== 'print') return null;
 
     return (

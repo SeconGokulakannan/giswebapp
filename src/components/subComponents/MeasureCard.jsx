@@ -6,17 +6,23 @@ import {
     ChevronDown,
     Trash2
 } from 'lucide-react';
+import { useMeasureTools } from '../../hooks/useMeasureTools';
+import { useMap } from '../../context/MapContext';
 
 const MeasureCard = ({
     activePanel,
-    activeMeasureTool,
-    handleMeasureClick,
-    showMeasureLabels,
-    setShowMeasureLabels,
-    measurementUnits,
-    setMeasurementUnits,
-    handleClearMeasurements
 }) => {
+    const { saveWorkspace } = useMap();
+    const {
+        activeMeasureTool,
+        handleMeasureClick,
+        showMeasureLabels,
+        setShowMeasureLabels,
+        measurementUnits,
+        setMeasurementUnits,
+        handleClearMeasurements
+    } = useMeasureTools(saveWorkspace);
+
     if (activePanel !== 'utility_tools') return null;
 
     return (

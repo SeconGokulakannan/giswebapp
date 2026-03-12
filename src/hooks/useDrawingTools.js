@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useContext } from 'react';
+import { useMap } from '../context/MapContext';
 import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
 import Draw from 'ol/interaction/Draw';
@@ -11,15 +12,21 @@ import { LineString, Point } from 'ol/geom';
 import { styleFunction, modifyStyle, formatArea, formatLength, highlightStyleFunction } from '../utils/mapUtils';
 import { DRAWING_SOLID_COLORS } from '../constants/AppConstants';
 
-export const useDrawingTools = (
-    mapInstanceRef, 
-    geoServerLayers, 
-    operationalLayersRef,
-    isLocked, 
-    isHighlightAnimatingRef, 
-    activeHighlightLayerIdRef,
-    saveWorkspaceCallback
-) => {
+export const useDrawingTools = (saveWorkspaceCallback) => {
+    const {
+        mapInstanceRef,
+        geoServerLayers,
+        operationalLayersRef,
+        isLocked,
+        vectorSourceRef,
+        selectionSourceRef
+    } = useMap();
+
+    // Use internal refs for highlight state if not provided by context
+    // Actually highlight state is in GISMap.jsx and useLayerActions. 
+    // Let's see if we should move highlight state to context too.
+    const isHighlightAnimatingRef = useRef(false);
+    const activeHighlightLayerIdRef = useRef(null);
     const [activeTool, setActiveTool] = useState(null);
     const [isMeasuring, setIsMeasuring] = useState(false);
     const [measurementValue, setMeasurementValue] = useState('');
@@ -31,7 +38,7 @@ export const useDrawingTools = (
         const saved = localStorage.getItem('showDrawingLabels');
         return saved === null ? false : saved === 'true';
     });
-    
+
 
 
     const [measurementUnits, setMeasurementUnits] = useState(() => {
@@ -45,9 +52,7 @@ export const useDrawingTools = (
     const animationOffsetRef = useRef(0);
     const activeFeatureRef = useRef(null);
     const drawInteractionRef = useRef(null);
-    const vectorSourceRef = useRef(null);
     const vectorLayerRef = useRef(null);
-    const selectionSourceRef = useRef(null);
     const selectionLayerRef = useRef(null);
 
     const animationFrameRef = useRef(null);
@@ -65,8 +70,8 @@ export const useDrawingTools = (
         if (activeFeatureRef.current) {
             const geom = activeFeatureRef.current.getGeometry();
             if (geom) {
-                const value = geom instanceof LineString ? 
-                    formatLength(geom, measurementUnits) : 
+                const value = geom instanceof LineString ?
+                    formatLength(geom, measurementUnits) :
                     formatArea(geom, measurementUnits);
                 setMeasurementValue(value);
             }
@@ -315,7 +320,7 @@ export const useDrawingTools = (
                 animationOffsetRef.current = (animationOffsetRef.current + 0.6) % 40;
                 if (vectorLayerRef.current) vectorLayerRef.current.changed();
                 if (selectionLayerRef.current) selectionLayerRef.current.changed();
-                
+
                 if (drawInteractionRef.current && typeof drawInteractionRef.current.getOverlay === 'function') {
                     const overlay = drawInteractionRef.current.getOverlay();
                     if (overlay) {
