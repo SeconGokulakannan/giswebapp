@@ -1,29 +1,27 @@
-import { useState, useCallback, useContext } from 'react';
+import { useState, useCallback } from 'react';
 import { fromLonLat } from 'ol/proj';
 import toast from 'react-hot-toast';
-import { useMap } from '../context/MapContext';
 
 const searchLocation = async (query) => {
-    if (!query) return null;
-    try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-        const response = await fetch(url, { headers: { 'User-Agent': 'EliteGIS/1.0' } });
-        const data = await response.json();
-        if (data && data.length > 0) {
-            return {
-                lon: parseFloat(data[0].lon),
-                lat: parseFloat(data[0].lat),
-            };
-        }
-    } catch (error) {
-        console.error('Location search failed:', error);
-        toast.error('Location search failed. Please try again.');
+  if (!query) return null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+    const response = await fetch(url, { headers: { 'User-Agent': 'EliteGIS/1.0' } });
+    const data = await response.json();
+    if (data && data.length > 0) {
+      return {
+        lon: parseFloat(data[0].lon),
+        lat: parseFloat(data[0].lat),
+      };
     }
-    return null;
+  } catch (error) {
+    console.error('Location search failed:', error);
+    toast.error('Location search failed. Please try again.');
+  }
+  return null;
 };
 
-export const useLocationTools = (drawingTools) => {
-    const { mapInstanceRef } = useMap();
+export const useLocationTools = (mapInstanceRef, drawingTools) => {
     const [gotoLat, setGotoLat] = useState('');
     const [gotoLon, setGotoLon] = useState('');
     const [isSearching, setIsSearching] = useState(false);

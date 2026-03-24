@@ -13,23 +13,20 @@ import {
     ChevronDown,
     Trash2
 } from 'lucide-react';
-import { useDrawingTools } from '../../hooks/useDrawingTools';
-import { useMap } from '../../context/MapContext';
 
 const DrawingToolsCard = ({
     activePanel,
+    activeTool,
+    handleToolClick,
+    handleMeasureClick,
+    showDrawingLabels,
+    setShowDrawingLabels,
+    showAnalysisLabels,
+    setShowAnalysisLabels,
+    measurementUnits,
+    setMeasurementUnits,
+    handleClearDrawings
 }) => {
-    const { saveWorkspace } = useMap();
-    const {
-        activeTool,
-        handleToolClick,
-        showDrawingLabels,
-        setShowDrawingLabels,
-        measurementUnits,
-        setMeasurementUnits,
-        handleClearDrawings
-    } = useDrawingTools(saveWorkspace);
-
     if (activePanel === 'tools') {
         return (
             <div className="panel-section">
@@ -150,3 +147,4 @@ const DrawingToolsCard = ({
 };
 
 export default DrawingToolsCard;
+

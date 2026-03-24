@@ -1,10 +1,8 @@
-import { useState, useCallback, useEffect, useContext } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { getCookie, setCookie, getUniqueCookieKey } from '../utils/cookieHelpers';
-import { useMap } from '../context/MapContext';
 
-export const useBookmarkTools = () => {
-    const { mapInstanceRef } = useMap();
+export const useBookmarkTools = (mapInstanceRef) => {
     const [bookmarks, setBookmarks] = useState(() => {
         const key = getUniqueCookieKey('gis_bookmarks');
         const saved = getCookie(key);

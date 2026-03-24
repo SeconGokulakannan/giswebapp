@@ -12,15 +12,36 @@ import MeasureCard from './MeasureCard';
 import LocationCard from './LocationCard';
 import BookmarksCard from './BookmarksCard';
 import PrintCard from './PrintCard';
-import { useMap } from '../../context/MapContext';
 
 const MapPanel = ({
     activePanel,
     setActivePanel,
     isPanelMinimized,
     setIsPanelMinimized,
+    layoutMode = 'sidebar',
     baseLayer,
     setBaseLayer,
+    isDrawingVisible,
+    setIsDrawingVisible,
+    activeTool,
+    handleToolClick,
+    showDrawingLabels,
+    setShowDrawingLabels,
+    handleClearDrawings,
+    activeMeasureTool,
+    handleMeasureClick,
+    showMeasureLabels,
+    setShowMeasureLabels,
+    handleClearMeasurements,
+    measurementUnits,
+    setMeasurementUnits,
+    gotoLat,
+    setGotoLat,
+    gotoLon,
+    setGotoLon,
+    handleGoToLocation,
+    handleSearch,
+    isSearching,
     resetTools,
     printTitle,
     setPrintTitle,
@@ -75,10 +96,10 @@ const MapPanel = ({
     setSelectedQueryLayerIds,
     setShowSpatialJoin,
     onOpenSpatialJoin,
-    allAvailableLayers
+    allAvailableLayers,
+    showTopLegend,
+    setShowTopLegend
 }) => {
-    const { layoutMode } = useMap();
-
     if (!activePanel) return null;
 
     return (
@@ -158,6 +179,8 @@ const MapPanel = ({
 
                 {(activePanel === 'layers' || activePanel === 'layermanagement') && (
                     <LayerOperations
+                        isDrawingVisible={isDrawingVisible}
+                        setIsDrawingVisible={setIsDrawingVisible}
                         geoServerLayers={allAvailableLayers || geoServerLayers}
                         handleToggleGeoLayer={handleToggleGeoLayer}
                         handleLayerOpacityChange={handleLayerOpacityChange}
@@ -197,24 +220,47 @@ const MapPanel = ({
                         setSelectedQueryLayerIds={setSelectedQueryLayerIds}
                         setShowSpatialJoin={setShowSpatialJoin}
                         onOpenSpatialJoin={onOpenSpatialJoin}
+                        showTopLegend={showTopLegend}
+                        setShowTopLegend={setShowTopLegend}
                     />
                 )}
 
                 {activePanel === 'tools' && (
                     <DrawingToolsCard
                         activePanel={activePanel}
+                        activeTool={activeTool}
+                        handleToolClick={handleToolClick}
+                        showDrawingLabels={showDrawingLabels}
+                        setShowDrawingLabels={setShowDrawingLabels}
+                        measurementUnits={measurementUnits}
+                        setMeasurementUnits={setMeasurementUnits}
+                        handleClearDrawings={handleClearDrawings}
                     />
                 )}
 
                 {activePanel === 'utility_tools' && (
                     <MeasureCard
                         activePanel={activePanel}
+                        activeMeasureTool={activeMeasureTool}
+                        handleMeasureClick={handleMeasureClick}
+                        showMeasureLabels={showMeasureLabels}
+                        setShowMeasureLabels={setShowMeasureLabels}
+                        measurementUnits={measurementUnits}
+                        setMeasurementUnits={setMeasurementUnits}
+                        handleClearMeasurements={handleClearMeasurements}
                     />
                 )}
 
                 {activePanel === 'location' && (
                     <LocationCard
                         activePanel={activePanel}
+                        gotoLat={gotoLat}
+                        setGotoLat={setGotoLat}
+                        gotoLon={gotoLon}
+                        setGotoLon={setGotoLon}
+                        handleGoToLocation={handleGoToLocation}
+                        handleSearch={handleSearch}
+                        isSearching={isSearching}
                     />
                 )}
 

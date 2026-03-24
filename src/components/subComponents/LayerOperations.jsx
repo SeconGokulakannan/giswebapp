@@ -1,5 +1,4 @@
-﻿import { useState, useEffect, useCallback, useContext } from 'react';
-import { useMap } from '../../context/MapContext';
+import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { isEmpty } from 'ol/extent';
@@ -12,12 +11,11 @@ import {
     Brush,
     LayoutGrid,
     Combine,
-    ZoomIn,
-    FileChartPie
+    ZoomIn
 } from 'lucide-react';
 
 const LayerOperations = ({
-    geoServerLayers,
+    isDrawingVisible, setIsDrawingVisible, geoServerLayers,
     handleToggleGeoLayer, handleLayerOpacityChange, handleZoomToLayer,
     handleToggleAllLayers, activeLayerTool, setActiveLayerTool,
     handleToggleLayerQuery, activeZoomLayerId, handleHighlightLayer,
@@ -31,12 +29,10 @@ const LayerOperations = ({
     spatialJoinLayerIds, handleToggleSpatialJoinLayer,
     selectedQueryLayerIds, setSelectedQueryLayerIds,
     setShowSpatialJoin,
-    onOpenSpatialJoin
+    onOpenSpatialJoin,
+    showTopLegend,
+    setShowTopLegend
 }) => {
-    const {
-        isDrawingVisible, setIsDrawingVisible,
-        showTopLegend, setShowTopLegend
-    } = useMap();
 
     const tools = [
         { icon: Eye, label: 'Visibility', id: 'visibility' },
@@ -870,11 +866,9 @@ const LayerOperations = ({
 /**
  * Hook to manage layer visibility, opacity, and CQL filters.
  */
-export const useLayerVisibility = () => {
-    const {
-        geoServerLayers, setGeoServerLayers,
-        localVectorLayers, setLocalVectorLayers
-    } = useMap();
+export const useLayerVisibility = (initialGeoLayers = [], initialLocalLayers = []) => {
+    const [geoServerLayers, setGeoServerLayers] = useState(initialGeoLayers);
+    const [localVectorLayers, setLocalVectorLayers] = useState(initialLocalLayers);
 
     const handleToggleGeoLayer = useCallback((layerId) => {
         setGeoServerLayers(prev => prev.map(l =>
@@ -956,8 +950,7 @@ export const useLayerVisibility = () => {
 /**
  * Hook to manage layer actions like Zoom and Highlight.
  */
-export const useLayerActions = () => {
-    const { mapInstanceRef, operationalLayersRef } = useMap();
+export const useLayerActions = (mapInstanceRef, operationalLayersRef) => {
     const [activeZoomLayerId, setActiveZoomLayerId] = useState(null);
     const [activeHighlightLayerId, setActiveHighlightLayerId] = useState(null);
     const [isHighlightAnimating, setIsHighlightAnimating] = useState(false);
@@ -968,7 +961,7 @@ export const useLayerActions = () => {
         if (!layer) return;
 
         setActiveZoomLayerId(layerId);
-        setActiveHighlightLayerId(null);
+        setActiveHighlightLayerId(null); 
 
         try {
             if (layer.isLocal) {

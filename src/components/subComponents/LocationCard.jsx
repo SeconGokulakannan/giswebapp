@@ -1,83 +1,103 @@
-import React from 'react';
-import {
-    MapPin,
-    Search,
-    Loader2
-} from 'lucide-react';
-import { useLocationTools } from '../../hooks/useLocationTools';
+import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { Loader2, Search } from 'lucide-react';
 
 const LocationCard = ({
     activePanel,
+    gotoLat,
+    setGotoLat,
+    gotoLon,
+    setGotoLon,
+    handleGoToLocation,
+    handleSearch,
+    isSearching
 }) => {
-    const {
-        gotoLat, setGotoLat,
-        gotoLon, setGotoLon,
-        isSearching,
-        handleGoToLocation,
-        handleSearch
-    } = useLocationTools();
+    const [locationTab, setLocationTab] = useState('coordinates'); // 'coordinates' or 'search'
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Reset location values when card is closed or switched
+    useEffect(() => {
+        if (activePanel !== 'location') {
+            setSearchQuery('');
+            setGotoLat('');
+            setGotoLon('');
+        }
+    }, [activePanel, setGotoLat, setGotoLon]);
+
+    const onSearchSubmit = async (e) => {
+        if (e.key === 'Enter' && searchQuery.trim()) {
+            const success = await handleSearch(searchQuery);
+            if (!success) {
+                toast.error('Location not found. Please try a different query.');
+            }
+        }
+    };
 
     if (activePanel !== 'location') return null;
 
     return (
-        <div className="panel-section">
-            <div className="panel-section-title" style={{ marginTop: '24px' }}>Coordinates</div>
-            <div className="form-group-elite">
-                <div className="elite-input-wrapper">
-                    <label className="elite-label">Latitude</label>
-                    <input
-                        type="number"
-                        className="elite-input"
-                        placeholder="e.g., 12.9716"
-                        value={gotoLat}
-                        onChange={(e) => setGotoLat(e.target.value)}
-                    />
-                </div>
-                <div className="elite-input-wrapper">
-                    <label className="elite-label">Longitude</label>
-                    <input
-                        type="number"
-                        className="elite-input"
-                        placeholder="e.g., 77.5946"
-                        value={gotoLon}
-                        onChange={(e) => setGotoLon(e.target.value)}
-                    />
-                </div>
-            </div>
-
-            <button
-                className="elite-primary-button"
-                style={{ width: '100%', marginTop: '16px' }}
-                onClick={handleGoToLocation}
-            >
-                <MapPin size={16} />
-                <span>Go to Location</span>
-            </button>
-
-            <div className="panel-divider" style={{ margin: '24px 0' }} />
-
-            <div className="panel-section-title">Search Address</div>
-            <div className="search-bar-elite">
-                <input
-                    type="text"
-                    className="elite-input search-input"
-                    placeholder="Search for places..."
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSearch(e.target.value);
-                    }}
-                />
+        <div className="panel-section fade-in">
+            <div className="tabs-container">
                 <button
-                    className="search-submit-btn"
-                    onClick={(e) => {
-                        const input = e.currentTarget.previousSibling;
-                        handleSearch(input.value);
-                    }}
-                    disabled={isSearching}
+                    className={`tab-btn ${locationTab === 'coordinates' ? 'active' : ''}`}
+                    onClick={() => setLocationTab('coordinates')}
                 >
-                    {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                    Coordinates
+                </button>
+                <button
+                    className={`tab-btn ${locationTab === 'search' ? 'active' : ''}`}
+                    onClick={() => setLocationTab('search')}
+                >
+                    Find By Place
                 </button>
             </div>
-            <p className="search-hint">Enter a city, landmark, or address</p>
+
+            {locationTab === 'coordinates' ? (
+                <div className="location-tool">
+                    <div className="input-group">
+                        <label>Latitude (-90 to 90)</label>
+                        <input
+                            type="number"
+                            className="coordinate-input"
+                            placeholder="e.g. 51.5074"
+                            value={gotoLat}
+                            onChange={(e) => setGotoLat(e.target.value)}
+                        />
+                    </div>
+                    <div className="input-group">
+                        <label>Longitude (-180 to 180)</label>
+                        <input
+                            type="number"
+                            className="coordinate-input"
+                            placeholder="e.g. -0.1278"
+                            value={gotoLon}
+                            onChange={(e) => setGotoLon(e.target.value)}
+                        />
+                    </div>
+                    <button className="goto-btn" onClick={handleGoToLocation}>
+                        Navigate to Location
+                    </button>
+                </div>
+            ) : (
+                <div className="search-tool-container">
+                    <div className={`search-wrapper ${isSearching ? 'loading' : ''}`}>
+                        {isSearching ? (
+                            <Loader2 className="search-icon animate-spin" size={18} />
+                        ) : (
+                            <Search className="search-icon" size={18} />
+                        )}
+                        <input
+                            type="text"
+                            placeholder="Find a city, address or coordinate..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={onSearchSubmit}
+                            className="elite-search-input"
+                        />
+                    </div>
+                    <p className="search-hint">Press Enter to search</p>
+                </div>
+            )}
         </div>
     );
 };

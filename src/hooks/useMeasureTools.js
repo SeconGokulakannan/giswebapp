@@ -1,18 +1,16 @@
-import { useState, useRef, useEffect, useCallback, useContext } from 'react';
-import { useMap } from '../context/MapContext';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Draw from 'ol/interaction/Draw';
 import Modify from 'ol/interaction/Modify';
 import Snap from 'ol/interaction/Snap';
 import { LineString } from 'ol/geom';
 import { styleFunction, modifyStyle, formatArea, formatLength } from '../utils/mapUtils';
 
-export const useMeasureTools = (saveWorkspaceCallback) => {
-    const {
-        mapInstanceRef,
-        vectorSourceRef,
-        vectorLayerRef
-    } = useMap();
-
+export const useMeasureTools = (
+    mapInstanceRef,
+    vectorSourceRef,
+    vectorLayerRef,
+    saveWorkspaceCallback
+) => {
     const [activeMeasureTool, setActiveMeasureTool] = useState(null);
     const [isMeasuring, setIsMeasuring] = useState(false);
     const [measurementValue, setMeasurementValue] = useState('');
@@ -41,7 +39,7 @@ export const useMeasureTools = (saveWorkspaceCallback) => {
 
         if (saveWorkspaceCallback) saveWorkspaceCallback();
 
-        if (vectorLayerRef && vectorLayerRef.current) {
+        if (vectorLayerRef.current) {
             vectorLayerRef.current.changed();
         }
     }, [measurementUnits, showMeasureLabels, saveWorkspaceCallback, vectorLayerRef]);
@@ -63,6 +61,8 @@ export const useMeasureTools = (saveWorkspaceCallback) => {
         const interactions = mapInstanceRef.current.getInteractions().getArray().slice();
         interactions.forEach((interaction) => {
             if (interaction instanceof Draw || interaction instanceof Modify || interaction instanceof Snap) {
+                // Only remove if it's our own interaction? 
+                // For now, let's keep it simple as drawing tools also remove all
                 mapInstanceRef.current.removeInteraction(interaction);
             }
         });

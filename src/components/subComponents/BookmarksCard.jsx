@@ -2,18 +2,14 @@ import React from 'react';
 import toast from 'react-hot-toast';
 import { Bookmark, Trash2, MapPin } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { useBookmarkTools } from '../../hooks/useBookmarkTools';
 
 const BookmarksCard = ({
     activePanel,
+    bookmarks,
+    handleAddBookmark,
+    handleDeleteBookmark,
+    handleNavigateToBookmark
 }) => {
-    const {
-        bookmarks,
-        handleAddBookmark,
-        handleDeleteBookmark,
-        handleNavigateToBookmark
-    } = useBookmarkTools();
-
     if (activePanel !== 'bookmarks') return null;
 
     const onAddSubmit = (e) => {
