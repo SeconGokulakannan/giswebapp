@@ -95,6 +95,7 @@ function GISMap() {
 
   // Theme and BaseMap
   const [theme, setTheme] = useState('light');
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
@@ -1198,7 +1199,7 @@ function GISMap() {
     map.getView().on(['change:resolution', 'change:center'], () => {
       const currentZoom = map.getView().getZoom() || 0;
       setZoom(parseFloat(currentZoom.toFixed(2)));
-      //triggerAutoSave(); // Save view state on movement
+      saveWorkspace(); // Save view state on movement
 
       // Calculate scale
       const resolution = map.getView().getResolution() || 0;

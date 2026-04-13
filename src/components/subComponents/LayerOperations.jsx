@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { isEmpty } from 'ol/extent';
@@ -11,7 +11,7 @@ import {
     Brush,
     LayoutGrid,
     Combine,
-    ZoomIn
+    ZoomIn, FileChartPie
 } from 'lucide-react';
 
 const LayerOperations = ({
@@ -961,7 +961,7 @@ export const useLayerActions = (mapInstanceRef, operationalLayersRef) => {
         if (!layer) return;
 
         setActiveZoomLayerId(layerId);
-        setActiveHighlightLayerId(null); 
+        setActiveHighlightLayerId(null);
 
         try {
             if (layer.isLocal) {
